@@ -22,10 +22,15 @@
 
 import * as https from 'https';
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import archiver from 'archiver';
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, RegistrySource, ValidationResult, SourceMetadata } from '../types/registry';
 import { Logger } from '../utils/logger';
+
+const execAsync = promisify(exec);
 
 /**
  * Awesome Copilot Collection Schema
@@ -98,6 +103,8 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private collectionsCache: Map<string, { bundles: Bundle[]; timestamp: number }> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     protected logger: Logger;
+    private authToken: string | undefined;
+    private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
 
     constructor(source: RegistrySource) {
         super(source);
@@ -114,7 +121,12 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Fetch list of available bundles from the source (required by IRepositoryAdapter)
+     * Fetch list of available bundles from the source
+     * Scans the collections directory for .collection.yml files and creates Bundle objects.
+     * Results are cached for 5 minutes to reduce API calls.
+     * 
+     * @returns Promise resolving to array of Bundle objects from collection files
+     * @throws Error if GitHub API fails or collection parsing fails
      */
     async fetchBundles(): Promise<Bundle[]> {
         this.logger.debug('Listing bundles from awesome-copilot repository');
@@ -157,7 +169,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Download a bundle as a zip archive (required by IRepositoryAdapter)
+     * Download a bundle as a dynamically-created zip archive
+     * Fetches all items referenced in the collection and creates a ZIP file on the fly.
+     * The archive includes prompts, instructions, and a deployment manifest.
+     * 
+     * @param bundle - Bundle object containing collection metadata
+     * @returns Promise resolving to Buffer containing the ZIP archive
+     * @throws Error if collection fetch fails or archive creation fails
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         this.logger.debug(`Downloading bundle: ${bundle.id}`);
@@ -186,7 +204,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Fetch repository metadata (required by IRepositoryAdapter)
+     * Fetch repository metadata
+     * Retrieves information about the awesome-copilot repository including collection count.
+     * 
+     * @returns Promise resolving to SourceMetadata with repository info
+     * @throws Error if repository access fails or collection listing fails
      */
     async fetchMetadata(): Promise<SourceMetadata> {
         try {
@@ -206,7 +228,12 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Get manifest URL for a bundle (required by IRepositoryAdapter)
+     * Get manifest URL for a bundle
+     * Returns the raw GitHub URL to the collection YAML file.
+     * 
+     * @param bundleId - Bundle identifier matching the collection filename
+     * @param version - Optional version (not used, always uses configured branch)
+     * @returns URL string pointing to collection .yml file on GitHub raw content
      */
     getManifestUrl(bundleId: string, version?: string): string {
         const collectionFile = `${bundleId}.collection.yml`;
@@ -214,7 +241,12 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Get download URL for a bundle (required by IRepositoryAdapter)
+     * Get download URL for a bundle
+     * Returns the collection YAML URL (bundles are created dynamically, not pre-packaged).
+     * 
+     * @param bundleId - Bundle identifier matching the collection filename
+     * @param version - Optional version (not used, always uses configured branch)
+     * @returns URL string pointing to collection .yml file on GitHub raw content
      */
     getDownloadUrl(bundleId: string, version?: string): string {
         // For awesome-copilot, download URL is same as manifest URL
@@ -224,6 +256,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
     /**
      * Validate repository structure
+     * Checks if the collections directory exists and contains at least one collection file.
+     * 
+     * @returns Promise resolving to ValidationResult with status and any errors/warnings
      */
     async validate(): Promise<ValidationResult> {
         try {
@@ -520,21 +555,122 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Fetch URL content using https
+     * Get authentication token using fallback chain:
+     * 1. VSCode GitHub API (if user is logged in)
+     * 2. gh CLI (if installed and authenticated)
+     * 3. Explicit token from source configuration
+     */
+    private async getAuthenticationToken(): Promise<string | undefined> {
+        // Return cached token if already resolved
+        if (this.authToken !== undefined) {
+            this.logger.debug(`[AwesomeCopilotAdapter] Using cached token (method: ${this.authMethod})`);
+            return this.authToken;
+        }
+
+        this.logger.info('[AwesomeCopilotAdapter] Attempting authentication...');
+
+        // Try VSCode GitHub authentication first
+        try {
+            this.logger.debug('[AwesomeCopilotAdapter] Trying VSCode GitHub authentication...');
+            const session = await vscode.authentication.getSession('github', ['repo'], { silent: true });
+            if (session) {
+                this.authToken = session.accessToken;
+                this.authMethod = 'vscode';
+                this.logger.info('[AwesomeCopilotAdapter] ✓ Using VSCode GitHub authentication');
+                this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                return this.authToken;
+            }
+            this.logger.debug('[AwesomeCopilotAdapter] VSCode auth session not found');
+        } catch (error) {
+            this.logger.warn(`[AwesomeCopilotAdapter] VSCode auth failed: ${error}`);
+        }
+
+        // Try gh CLI authentication
+        try {
+            this.logger.debug('[AwesomeCopilotAdapter] Trying gh CLI authentication...');
+            const { stdout } = await execAsync('gh auth token');
+            const token = stdout.trim();
+            if (token && token.length > 0) {
+                this.authToken = token;
+                this.authMethod = 'gh-cli';
+                this.logger.info('[AwesomeCopilotAdapter] ✓ Using gh CLI authentication');
+                this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                return this.authToken;
+            }
+            this.logger.debug('[AwesomeCopilotAdapter] gh CLI returned empty token');
+        } catch (error) {
+            this.logger.warn(`[AwesomeCopilotAdapter] gh CLI auth failed: ${error}`);
+        }
+
+        // Fall back to explicit token from source configuration
+        const explicitToken = this.getAuthToken();
+        if (explicitToken) {
+            this.authToken = explicitToken;
+            this.authMethod = 'explicit';
+            this.logger.info('[AwesomeCopilotAdapter] ✓ Using explicit token from configuration');
+            this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+            return this.authToken;
+        }
+
+        // No authentication available
+        this.authMethod = 'none';
+        this.logger.warn('[AwesomeCopilotAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        return undefined;
+    }
+
+    /**
+     * Fetch URL content with authentication
      */
     private async fetchUrl(url: string): Promise<string> {
+        const token = await this.getAuthenticationToken();
+        const headers: Record<string, string> = {
+            'User-Agent': 'VSCode-Prompt-Registry'
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
+        } else {
+            this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} WITHOUT auth`);
+        }
+
+        // Log headers (sanitized)
+        const sanitizedHeaders = { ...headers };
+        if (sanitizedHeaders['Authorization']) {
+            sanitizedHeaders['Authorization'] = sanitizedHeaders['Authorization'].substring(0, 15) + '...';
+        }
+        this.logger.debug(`[AwesomeCopilotAdapter] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
+
         return new Promise((resolve, reject) => {
-            https.get(url, { headers: { 'User-Agent': 'VSCode-Prompt-Registry' } }, (res) => {
+            https.get(url, { headers }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
                     if (res.statusCode === 200) {
+                        this.logger.debug(`[AwesomeCopilotAdapter] Response OK (${res.statusCode}), ${data.length} bytes`);
                         resolve(data);
                     } else {
-                        reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+                        this.logger.error(`[AwesomeCopilotAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`);
+                        this.logger.error(`[AwesomeCopilotAdapter] URL: ${url}`);
+                        this.logger.error(`[AwesomeCopilotAdapter] Auth method: ${this.authMethod}`);
+                        this.logger.error(`[AwesomeCopilotAdapter] Response: ${data.substring(0, 500)}`);
+                        
+                        // Provide helpful error messages
+                        let errorMsg = `HTTP ${res.statusCode}: ${res.statusMessage}`;
+                        if (res.statusCode === 404) {
+                            errorMsg += ' - Repository not found or not accessible. Check authentication.';
+                        } else if (res.statusCode === 401) {
+                            errorMsg += ' - Authentication failed. Token may be invalid or expired.';
+                        } else if (res.statusCode === 403) {
+                            errorMsg += ' - Access forbidden. Token may lack required scopes (repo).';
+                        }
+                        reject(new Error(errorMsg));
                     }
                 });
-            }).on('error', reject);
+            }).on('error', (error) => {
+                this.logger.error(`[AwesomeCopilotAdapter] Network error: ${error.message}`);
+                reject(error);
+            });
         });
     }
 

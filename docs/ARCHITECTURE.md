@@ -1,8 +1,8 @@
 # Prompt Registry Architecture
 
-**Version:** 2.0  
-**Last Updated:** October 29, 2025  
-**Status:** Production
+**Version:** 2.1  
+**Last Updated:** November 9, 2025  
+**Status:** Active Development
 
 ---
 
@@ -13,11 +13,12 @@
 3. [Component Architecture](#component-architecture)
 4. [Data Flow](#data-flow)
 5. [Adapter Pattern](#adapter-pattern)
-6. [Installation Flow](#installation-flow)
-7. [UI Components](#ui-components)
-8. [Cross-Platform Support](#cross-platform-support)
-9. [Security Model](#security-model)
-10. [Extension Points](#extension-points)
+6. [Authentication Model](#authentication-model)
+7. [Installation Flow](#installation-flow)
+8. [UI Components](#ui-components)
+9. [Cross-Platform Support](#cross-platform-support)
+10. [Security Model](#security-model)
+11. [Extension Points](#extension-points)
 
 ---
 
@@ -32,8 +33,9 @@ The Prompt Registry is a VS Code extension that provides a marketplace-style int
 - 📦 **Bundle Management** - Install, update, and uninstall prompt bundles
 - 🔄 **Auto-Sync** - Automatic synchronization with GitHub Copilot
 - 🌍 **Cross-Platform** - macOS, Linux, and Windows support
-- 👥 **Profile Management** - Organize prompts by project or team
-- 🔍 **Search & Filter** - Discover prompts by tags, content type, and keywords
+- 🔍 **Search & Filter** - Discover prompts by tags, content type, installed status, and keywords
+- 🔐 **Private Repository Support** - VSCode auth, gh CLI, or explicit tokens
+- ✅ **Collection Validation** - YAML validation and scaffolding tools
 
 ---
 
@@ -149,11 +151,110 @@ graph TB
 
 | Component | Source Type | Capabilities |
 |-----------|------------|--------------|
-| **GitHubAdapter** | GitHub repos | Fetches releases, assets, raw files |
+| **GitHubAdapter** | GitHub repos | Fetches releases, assets, with authentication |
 | **GitLabAdapter** | GitLab repos | Fetches releases, raw files |
 | **HTTPAdapter** | HTTP/HTTPS | Downloads zip bundles from URLs |
 | **LocalAdapter** | File system | Installs from local directories |
-| **AwesomeCopilotAdapter** | GitHub collections | Fetches YAML collections, builds zips on-the-fly |
+| **AwesomeCopilotAdapter** | GitHub collections | Fetches YAML collections with authentication, builds zips on-the-fly |
+
+---
+
+## Authentication Model
+
+### Overview
+
+Both `GitHubAdapter` and `AwesomeCopilotAdapter` support private GitHub repositories through a three-tier authentication fallback chain implemented in November 2025.
+
+### Authentication Chain
+
+```mermaid
+graph LR
+    START[Request Authentication]
+    
+    START --> VSCODE{VSCode<br/>GitHub Auth?}
+    VSCODE -->|Yes| USE_VS[Use Bearer Token]
+    VSCODE -->|No| GHCLI{gh CLI<br/>Installed?}
+    
+    GHCLI -->|Yes| USE_GH[Use CLI Token]
+    GHCLI -->|No| EXPLICIT{Explicit<br/>Token?}
+    
+    EXPLICIT -->|Yes| USE_EX[Use Config Token]
+    EXPLICIT -->|No| NONE[No Authentication]
+    
+    USE_VS --> CACHE[Cache Token]
+    USE_GH --> CACHE
+    USE_EX --> CACHE
+    
+    CACHE --> AUTH[Authenticated Request]
+    NONE --> UNAUTH[Unauthenticated Request]
+    
+    style USE_VS fill:#4CAF50
+    style USE_GH fill:#4CAF50
+    style USE_EX fill:#4CAF50
+    style NONE fill:#FF9800
+```
+
+### Implementation Details
+
+**Method**: `getAuthenticationToken()`  
+**Location**: `src/adapters/GitHubAdapter.ts`, `src/adapters/AwesomeCopilotAdapter.ts`
+
+```typescript
+private async getAuthenticationToken(): Promise<string | undefined> {
+    // 1. Try VSCode GitHub authentication
+    const session = await vscode.authentication.getSession('github', ['repo'], { silent: true });
+    if (session) return session.accessToken;
+    
+    // 2. Try GitHub CLI
+    const { stdout } = await execAsync('gh auth token');
+    if (stdout.trim()) return stdout.trim();
+    
+    // 3. Try explicit token from source config
+    const explicitToken = this.getAuthToken();
+    if (explicitToken) return explicitToken;
+    
+    // 4. No authentication
+    return undefined;
+}
+```
+
+### Token Format
+
+**Bearer Token** (OAuth 2.0 standard):
+```typescript
+headers['Authorization'] = `Bearer ${token}`;
+```
+
+**Not** the deprecated format:
+```typescript
+// ❌ Deprecated
+headers['Authorization'] = `token ${token}`;
+```
+
+### Logging
+
+Authentication status is logged for debugging:
+
+```
+[GitHubAdapter] Attempting authentication...
+[GitHubAdapter] ✓ Using VSCode GitHub authentication
+[GitHubAdapter] Token preview: gho_abc12...
+[GitHubAdapter] Request to https://api.github.com/... with auth (method: vscode)
+```
+
+Failures are also logged:
+
+```
+[GitHubAdapter] ✗ No authentication available
+[GitHubAdapter] HTTP 404: Not Found - Repository not found or not accessible
+```
+
+### Token Caching
+
+Tokens are cached after first successful retrieval:
+- Reduces authentication overhead
+- Persists for adapter instance lifetime
+- Tracks which method was successful
 
 ---
 
@@ -175,17 +276,6 @@ sequenceDiagram
     
     loop For each source
         RM->>A: fetchBundles()
-        A->>GH: GET /repos/.../contents/collections
-        GH-->>A: collection files list
-        
-        loop For each collection
-            A->>GH: GET raw collection.yml
-            GH-->>A: collection metadata
-            A->>A: Parse YAML
-            A->>A: Create Bundle object
-        end
-        
-        A-->>RM: Bundle[]
     end
     
     RM->>RM: Merge & deduplicate bundles
@@ -218,17 +308,18 @@ sequenceDiagram
     
     loop For each item
         ACA->>FS: Fetch prompt file from GitHub
+        ACA->>ACA: Authenticate request
         ACA->>ACA: Add to zip archive
     end
     
-    ACA->>ACA: Create deployment-manifest.yml
+    ACA->>ACA: Create deployment-manifest.yml (YAML format)
     ACA->>ACA: Finalize zip archive
     ACA-->>RM: Buffer (zip bytes)
     
     RM->>BI: installFromBuffer(bundle, buffer)
     BI->>BI: Write buffer to temp file
     BI->>BI: Extract zip
-    BI->>BI: Validate manifest
+    BI->>BI: Validate deployment-manifest.yml
     BI->>BI: Copy to install directory
     BI->>CS: syncBundle(bundleId, installDir)
     
@@ -635,7 +726,7 @@ export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copil
 ### Custom Bundle Format
 
 ```yaml
-# deployment-manifest.yml
+# deployment-manifest.yml (YAML format, not JSON)
 version: "1.0"
 id: "my-bundle"
 name: "My Custom Bundle"
@@ -646,6 +737,8 @@ prompts:
     file: "prompts/my-prompt.prompt.md"
     tags: ["custom", "example"]
 ```
+
+**Note**: The manifest uses YAML format (`.yml`), not JSON.
 
 ### Event Hooks
 
@@ -833,8 +926,10 @@ graph TD
 
 - [VS Code Extension API](https://code.visualstudio.com/api)
 - [GitHub Copilot Documentation](https://docs.github.com/copilot)
-- [Awesome Copilot Collection Spec](https://github.com/microsoft/prompt-bundle-spec)
-- [Deployment Manifest Schema](./docs/DEPLOYMENT_MANIFEST.md)
+- [Awesome Copilot Collection Spec](https://github.com/github/awesome-copilot)
+- [Developer Guide](./DEVELOPER_GUIDE.md)
+- [Quick Start Guide](./QUICK_START.md)
+- [Testing Strategy](./TESTING_STRATEGY.md)
 
 ---
 

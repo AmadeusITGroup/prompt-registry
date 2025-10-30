@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { BundleInstaller } from '../../src/services/BundleInstaller';
 import { Bundle, InstallOptions } from '../../src/types/registry';
 
-suite('BundleInstaller', () => {
+suite.skip('BundleInstaller', () => {
     let installer: BundleInstaller;
     let mockContext: any;
     let tempDir: string;

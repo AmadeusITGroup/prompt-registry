@@ -9,6 +9,7 @@ import * as path from 'path';
 import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle } from '../types/registry';
+import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'promptregistry.marketplace';
@@ -56,6 +57,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             // Search for all bundles (empty query)
             const bundles = await this.registryManager.searchBundles({});
             const installedBundles = await this.registryManager.listInstalledBundles();
+            const sources = await this.registryManager.listSources();
             
             const enhancedBundles = bundles.map(bundle => {
                 const installed = installedBundles.find(ib => ib.bundleId === bundle.id);
@@ -70,13 +72,22 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 };
             });
 
+            // Extract dynamic filter options
+            const availableTags = extractAllTags(bundles);
+            const availableSources = extractBundleSources(bundles, sources);
+
             // Send to webview
             this._view?.webview.postMessage({
                 type: 'bundlesLoaded',
-                bundles: enhancedBundles
+                bundles: enhancedBundles,
+                filterOptions: {
+                    tags: availableTags,
+                    sources: availableSources
+                }
             });
 
             this.logger.debug(`Loaded ${enhancedBundles.length} bundles for marketplace`);
+            this.logger.debug(`Available tags: ${availableTags.length}, sources: ${availableSources.length}`);
 
         } catch (error) {
             this.logger.error('Failed to load marketplace bundles', error as Error);
@@ -103,10 +114,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         if (manifest?.prompts && Array.isArray(manifest.prompts)) {
             for (const prompt of manifest.prompts) {
                 const type = prompt.type || 'prompt';
-                if (type === 'prompt') breakdown.prompts++;
-                else if (type === 'instructions') breakdown.instructions++;
-                else if (type === 'chatmode') breakdown.chatmodes++;
-                else if (type === 'agent') breakdown.agents++;
+                if (type === 'prompt') {breakdown.prompts++;}
+                else if (type === 'instructions') {breakdown.instructions++;}
+                else if (type === 'chatmode') {breakdown.chatmodes++;}
+                else if (type === 'agent') {breakdown.agents++;}
             }
             return breakdown;
         }
@@ -116,10 +127,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         if (bundleData.prompts && Array.isArray(bundleData.prompts)) {
             for (const prompt of bundleData.prompts) {
                 const type = prompt.type || 'prompt';
-                if (type === 'prompt') breakdown.prompts++;
-                else if (type === 'instructions') breakdown.instructions++;
-                else if (type === 'chatmode') breakdown.chatmodes++;
-                else if (type === 'agent') breakdown.agents++;
+                if (type === 'prompt') {breakdown.prompts++;}
+                else if (type === 'instructions') {breakdown.instructions++;}
+                else if (type === 'chatmode') {breakdown.chatmodes++;}
+                else if (type === 'agent') {breakdown.agents++;}
             }
             return breakdown;
         }
@@ -570,50 +581,227 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         .controls {
             display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
+            gap: 8px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
+            align-items: center;
         }
 
         .search-box {
             flex: 1;
-            min-width: 200px;
-            padding: 8px 12px;
+            min-width: 180px;
+            max-width: 300px;
+            padding: 6px 10px;
             background: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
             border: 1px solid var(--vscode-input-border);
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: 3px;
+            font-size: 13px;
+            height: 28px;
+        }
+
+        .search-box:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .filter-select {
+            padding: 4px 8px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: pointer;
+            min-width: 120px;
+            max-width: 160px;
+            height: 28px;
+        }
+
+        .filter-select:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        /* Custom Tag Selector */
+        .tag-selector {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tag-selector-btn {
+            padding: 4px 8px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: pointer;
+            min-width: 120px;
+            max-width: 200px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tag-selector-btn:hover {
+            background: var(--vscode-dropdown-listBackground);
+        }
+
+        .tag-selector-btn:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        .dropdown-arrow {
+            margin-left: 8px;
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .tag-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: var(--vscode-dropdown-background);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 3px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 220px;
+            max-width: 300px;
+        }
+
+        .tag-search-container {
+            padding: 8px;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+        }
+
+        .tag-search {
+            width: 100%;
+            padding: 4px 8px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+
+        .tag-search:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        .tag-list {
+            max-height: 240px;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .tag-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        .tag-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .tag-item input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .tag-item.hidden {
+            display: none;
+        }
+
+        /* Installed checkbox filter */
+        .installed-filter {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            cursor: pointer;
+            user-select: none;
+            height: 28px;
+            white-space: nowrap;
+        }
+
+        .installed-filter:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .installed-filter input[type="checkbox"] {
+            cursor: pointer;
+            width: 14px;
+            height: 14px;
+        }
+
+        .installed-filter label {
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--vscode-foreground);
+            font-weight: 500;
         }
 
         .filter-btn {
-            padding: 8px 16px;
+            padding: 5px 12px;
             background: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
             border: none;
-            border-radius: 4px;
+            border-radius: 3px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
+            font-size: 12px;
+            transition: background 0.15s;
+            height: 28px;
+            white-space: nowrap;
         }
 
         .filter-btn:hover {
             background: var(--vscode-button-secondaryHoverBackground);
         }
 
-        .filter-btn.active {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+        .filter-btn:active {
+            transform: translateY(1px);
         }
 
         .refresh-btn {
-            padding: 8px 16px;
+            padding: 5px 12px;
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: none;
-            border-radius: 4px;
+            border-radius: 3px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
+            height: 28px;
+            white-space: nowrap;
         }
 
         .refresh-btn:hover {
@@ -813,13 +1001,40 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     </div>
 
     <div class="controls">
-        <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search bundles...">
-        <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="prompts">Prompts</button>
-        <button class="filter-btn" data-filter="instructions">Instructions</button>
-        <button class="filter-btn" data-filter="chatmodes">Chat Modes</button>
-        <button class="filter-btn" data-filter="agents">Agents</button>
-        <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
+        <input type="text" class="search-box" id="searchBox" placeholder="Search bundles...">
+        
+        <div class="filter-group">
+            <label for="sourceFilter" class="filter-label">Source:</label>
+            <select id="sourceFilter" class="filter-select">
+                <option value="all">All Sources ▾</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label class="filter-label">Tags:</label>
+            <div class="tag-selector">
+                <button class="tag-selector-btn" id="tagSelectorBtn">
+                    <span id="tagSelectorText">All Tags</span>
+                    <span class="dropdown-arrow">▾</span>
+                </button>
+                <div class="tag-dropdown" id="tagDropdown" style="display: none;">
+                    <div class="tag-search-container">
+                        <input type="text" class="tag-search" id="tagSearch" placeholder="Search tags...">
+                    </div>
+                    <div class="tag-list" id="tagList">
+                        <!-- Tags will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="installed-filter" id="installedFilter">
+            <input type="checkbox" id="installedCheckbox">
+            <label for="installedCheckbox">Installed</label>
+        </div>
+        
+        <button class="filter-btn" id="clearFiltersBtn">Clear</button>
+        <button class="refresh-btn" id="refreshBtn">Refresh</button>
     </div>
 
     <div id="marketplace" class="marketplace-grid">
@@ -832,7 +1047,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     <script>
         const vscode = acquireVsCodeApi();
         let allBundles = [];
-        let currentFilter = 'all';
+        let filterOptions = { tags: [], sources: [] };
+        let selectedSource = 'all';
+        let selectedTags = [];
+        let showInstalledOnly = false;
 
         // Handle messages from extension
         window.addEventListener('message', event => {
@@ -840,23 +1058,161 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             
             if (message.type === 'bundlesLoaded') {
                 allBundles = message.bundles;
+                filterOptions = message.filterOptions || { tags: [], sources: [] };
+                updateFilterUI();
                 renderBundles();
             }
         });
 
-        // Search functionality
-        document.getElementById('searchBox').addEventListener('input', (e) => {
-            renderBundles(e.target.value);
+        // Update filter dropdowns with dynamic data
+        function updateFilterUI() {
+            const sourceFilter = document.getElementById('sourceFilter');
+            const tagList = document.getElementById('tagList');
+
+            // Populate source dropdown
+            sourceFilter.innerHTML = '<option value="all">All Sources ▾</option>';
+            filterOptions.sources.forEach(source => {
+                const option = document.createElement('option');
+                option.value = source.id;
+                option.textContent = \`\${source.name} (\${source.bundleCount})\`;
+                sourceFilter.appendChild(option);
+            });
+
+            // Populate tag list with checkboxes
+            tagList.innerHTML = '';
+            filterOptions.tags.forEach(tag => {
+                const tagItem = document.createElement('div');
+                tagItem.className = 'tag-item';
+                tagItem.dataset.tag = tag;
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'tag-' + tag;
+                checkbox.value = tag;
+                
+                const label = document.createElement('label');
+                label.htmlFor = 'tag-' + tag;
+                label.textContent = tag;
+                label.style.cursor = 'pointer';
+                label.style.flex = '1';
+                
+                tagItem.appendChild(checkbox);
+                tagItem.appendChild(label);
+                
+                // Toggle checkbox on item click
+                tagItem.addEventListener('click', (e) => {
+                    if (e.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    updateSelectedTags();
+                });
+                
+                tagList.appendChild(tagItem);
+            });
+        }
+
+        // Update selected tags from checkboxes
+        function updateSelectedTags() {
+            const checkboxes = document.querySelectorAll('#tagList input[type="checkbox"]:checked');
+            selectedTags = Array.from(checkboxes).map(cb => cb.value);
+            updateTagButtonText();
+            renderBundles();
+        }
+
+        // Update the tag button text based on selection
+        function updateTagButtonText() {
+            const tagSelectorText = document.getElementById('tagSelectorText');
+            if (selectedTags.length === 0) {
+                tagSelectorText.textContent = 'All Tags';
+            } else if (selectedTags.length === 1) {
+                tagSelectorText.textContent = selectedTags[0];
+            } else {
+                tagSelectorText.textContent = \`\${selectedTags.length} tags\`;
+            }
+        }
+
+        // Toggle tag dropdown
+        document.getElementById('tagSelectorBtn').addEventListener('click', () => {
+            const dropdown = document.getElementById('tagDropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            
+            if (dropdown.style.display === 'block') {
+                document.getElementById('tagSearch').focus();
+            }
         });
 
-        // Filter functionality
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentFilter = btn.dataset.filter;
-                renderBundles();
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const tagSelector = document.querySelector('.tag-selector');
+            const dropdown = document.getElementById('tagDropdown');
+            
+            if (!tagSelector.contains(e.target) && dropdown.style.display === 'block') {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Tag search functionality
+        document.getElementById('tagSearch').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const tagItems = document.querySelectorAll('.tag-item');
+            
+            tagItems.forEach(item => {
+                const tagName = item.dataset.tag.toLowerCase();
+                if (tagName.includes(searchTerm)) {
+                    item.classList.remove('hidden');
+                } else {
+                    item.classList.add('hidden');
+                }
             });
+        });
+
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            renderBundles();
+        });
+
+        // Source filter change
+        document.getElementById('sourceFilter').addEventListener('change', (e) => {
+            selectedSource = e.target.value;
+            renderBundles();
+        });
+
+        // Installed filter checkbox
+        document.getElementById('installedCheckbox').addEventListener('change', (e) => {
+            showInstalledOnly = e.target.checked;
+            renderBundles();
+        });
+
+        // Make the filter div clickable to toggle checkbox
+        document.getElementById('installedFilter').addEventListener('click', (e) => {
+            if (e.target.id !== 'installedCheckbox') {
+                const checkbox = document.getElementById('installedCheckbox');
+                checkbox.checked = !checkbox.checked;
+                showInstalledOnly = checkbox.checked;
+                renderBundles();
+            }
+        });
+
+        // Clear filters button
+        document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+            document.getElementById('searchBox').value = '';
+            document.getElementById('sourceFilter').value = 'all';
+            document.getElementById('tagSearch').value = '';
+            document.getElementById('installedCheckbox').checked = false;
+            
+            // Uncheck all tag checkboxes
+            const checkboxes = document.querySelectorAll('#tagList input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = false);
+            
+            // Show all tags
+            const tagItems = document.querySelectorAll('.tag-item');
+            tagItems.forEach(item => item.classList.remove('hidden'));
+            
+            selectedSource = 'all';
+            selectedTags = [];
+            showInstalledOnly = false;
+            updateTagButtonText();
+            renderBundles();
         });
 
         // Refresh button
@@ -864,27 +1220,43 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'refresh' });
         });
 
-        function renderBundles(searchTerm = '') {
+        function renderBundles() {
             const marketplace = document.getElementById('marketplace');
+            const searchTerm = document.getElementById('searchBox').value;
             
             let filteredBundles = allBundles;
 
+            // Apply source filter
+            if (selectedSource && selectedSource !== 'all') {
+                filteredBundles = filteredBundles.filter(bundle => bundle.sourceId === selectedSource);
+            }
+
+            // Apply installed filter
+            if (showInstalledOnly) {
+                filteredBundles = filteredBundles.filter(bundle => bundle.installed === true);
+            }
+
+            // Apply tag filter (OR logic - bundle matches if it has ANY of the selected tags)
+            if (selectedTags.length > 0) {
+                filteredBundles = filteredBundles.filter(bundle => {
+                    if (!bundle.tags || bundle.tags.length === 0) return false;
+                    return bundle.tags.some(bundleTag => 
+                        selectedTags.some(selectedTag => 
+                            bundleTag.toLowerCase() === selectedTag.toLowerCase()
+                        )
+                    );
+                });
+            }
+
             // Apply search filter
-            if (searchTerm) {
+            if (searchTerm && searchTerm.trim() !== '') {
                 const term = searchTerm.toLowerCase();
                 filteredBundles = filteredBundles.filter(bundle => 
                     bundle.name.toLowerCase().includes(term) ||
                     bundle.description.toLowerCase().includes(term) ||
-                    (bundle.tags && bundle.tags.some(tag => tag.toLowerCase().includes(term)))
+                    (bundle.tags && bundle.tags.some(tag => tag.toLowerCase().includes(term))) ||
+                    (bundle.author && bundle.author.toLowerCase().includes(term))
                 );
-            }
-
-            // Apply content filter
-            if (currentFilter !== 'all' && currentFilter) {
-                filteredBundles = filteredBundles.filter(bundle => {
-                    if (!bundle.contentBreakdown) return false;
-                    return bundle.contentBreakdown[currentFilter] > 0;
-                });
             }
 
             if (filteredBundles.length === 0) {

@@ -2,11 +2,9 @@
 
 > A visual marketplace for discovering, installing, and managing GitHub Copilot prompt libraries from multiple sources.
 
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/yourusername/prompt-registry)
-
-![Prompt Registry Marketplace](https://via.placeholder.com/800x400/1e1e1e/ffffff?text=Prompt+Registry+Marketplace)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=AmadeusITGroup.prompt-registry)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Version](https://img.shields.io/badge/version-0.0.1-green.svg)](https://github.com/AmadeusITGroup/prompt-registry)
 
 ---
 
@@ -33,6 +31,8 @@
 ## 🌟 Overview
 
 **Prompt Registry** transforms how you discover and manage GitHub Copilot prompts. Instead of manually copying prompt files or cloning repositories, browse a visual marketplace, search by tags, and install curated prompt libraries with a single click.
+
+![Prompty Registry - main views](./docs/assets/prompt-registry-in-vscode.png)
 
 ### Why Prompt Registry?
 
@@ -120,7 +120,7 @@ code --install-extension prompt-registry-2.0.0.vsix
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/prompt-registry.git
+git clone https://github.com/AmadeusITGroup/prompt-registry.git
 cd prompt-registry
 npm install
 npm run compile
@@ -404,7 +404,7 @@ graph TB
     style CS fill:#FF9800
 ```
 
-**For detailed architecture, see [ARCHITECTURE.md](./ARCHITECTURE.md)**
+**For detailed architecture, see [ARCHITECTURE.md](./docs/ARCHITECTURE.md)**
 
 ### Key Components
 
@@ -548,8 +548,8 @@ View logs in Output panel: `View → Output → Prompt Registry`
 ### Getting Help
 
 - 📖 [Documentation](./docs/)
-- 🐛 [Report Issues](https://github.com/yourusername/prompt-registry/issues)
-- 💬 [Discussions](https://github.com/yourusername/prompt-registry/discussions)
+- 🐛 [Report Issues](https://github.com/AmadeusITGroup/prompt-registry/issues)
+- 💬 [Discussions](https://github.com/AmadeusITGroup/prompt-registry/discussions)
 - 📧 [Email Support](mailto:support@example.com)
 
 ---
@@ -562,7 +562,7 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/prompt-registry.git
+git clone https://github.com/AmadeusITGroup/prompt-registry.git
 cd prompt-registry
 
 # Install dependencies
@@ -583,7 +583,7 @@ vsce package
 
 ### Creating a New Adapter
 
-See [ARCHITECTURE.md#extension-points](./ARCHITECTURE.md#extension-points) for details on implementing custom adapters.
+See [ARCHITECTURE.md#extension-points](./docs/ARCHITECTURE.md#extension-points) for details on implementing custom adapters.
 
 ### Project Structure
 
@@ -605,7 +605,7 @@ prompt-registry/
 
 ## 📚 Documentation
 
-- **[Architecture Guide](./ARCHITECTURE.md)** - Detailed system architecture
+- **[Architecture Guide](./docs/ARCHITECTURE.md)** - Detailed system architecture
 - **[API Reference](./docs/API.md)** - Extension API documentation
 - **[Bundle Format](./docs/BUNDLE_FORMAT.md)** - Creating custom bundles
 - **[Adapter Development](./docs/ADAPTERS.md)** - Building new adapters
@@ -644,7 +644,7 @@ prompt-registry/
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
 
 ---
 
@@ -670,8 +670,8 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 - **Homepage**: [https://prompt-registry.dev](https://prompt-registry.dev)
 - **Documentation**: [https://docs.prompt-registry.dev](https://docs.prompt-registry.dev)
-- **GitHub**: [https://github.com/yourusername/prompt-registry](https://github.com/yourusername/prompt-registry)
-- **Issues**: [https://github.com/yourusername/prompt-registry/issues](https://github.com/yourusername/prompt-registry/issues)
+- **GitHub**: [https://github.com/AmadeusITGroup/prompt-registry](https://github.com/AmadeusITGroup/prompt-registry)
+- **Issues**: [https://github.com/AmadeusITGroup/prompt-registry/issues](https://github.com/AmadeusITGroup/prompt-registry/issues)
 - **Marketplace**: [VS Code Marketplace](https://marketplace.visualstudio.com/)
 
 ---
@@ -680,6 +680,6 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 **Made with ❤️ by the Prompt Registry Team**
 
-[Report Bug](https://github.com/yourusername/prompt-registry/issues) · [Request Feature](https://github.com/yourusername/prompt-registry/issues) · [Documentation](./docs/)
+[Report Bug](https://github.com/AmadeusITGroup/prompt-registry/issues) · [Request Feature](https://github.com/AmadeusITGroup/prompt-registry/issues) · [Documentation](./docs/)
 
 </div>
