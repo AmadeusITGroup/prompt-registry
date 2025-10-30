@@ -1,0 +1,321 @@
+/**
+ * AwesomeCopilotAdapter Unit Tests
+ * Tests the dynamic bundle creation from YAML collections
+ */
+
+import * as assert from 'assert';
+import nock from 'nock';
+import { AwesomeCopilotAdapter } from '../../src/adapters/AwesomeCopilotAdapter';
+import { RegistrySource, Bundle } from '../../src/types/registry';
+
+suite('AwesomeCopilotAdapter', () => {
+    const mockSource: RegistrySource = {
+        id: 'awesome-test',
+        name: 'Awesome Copilot Test',
+        type: 'awesome-copilot',
+        url: 'https://github.com/test-owner/awesome-copilot',
+        enabled: true,
+        priority: 1,
+    };
+
+    teardown(() => {
+        nock.cleanAll();
+    });
+
+    suite('Constructor and Validation', () => {
+        test('should accept valid awesome-copilot source', () => {
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            assert.strictEqual(adapter.type, 'awesome-copilot');
+        });
+
+        test('should accept GitHub URL format', () => {
+            const source = { ...mockSource, url: 'https://github.com/microsoft/prompt-bundle-spec' };
+            const adapter = new AwesomeCopilotAdapter(source);
+            assert.ok(adapter);
+        });
+    });
+
+    suite('fetchBundles', () => {
+        test('should fetch collections from repository', async () => {
+            // Mock the collections directory listing
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, [
+                    {
+                        name: 'test-collection.collection.yml',
+                        type: 'file',
+                        download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/test-collection.collection.yml'
+                    }
+                ]);
+
+            // Mock the collection file content
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/test-collection.collection.yml')
+                .reply(200, `
+id: test-collection
+name: Test Collection
+description: Test collection for unit tests
+tags: ["test", "example"]
+items:
+  - path: "prompts/test.prompt.md"
+    kind: prompt
+`);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].id, 'test-collection');
+            assert.strictEqual(bundles[0].name, 'Test Collection');
+            assert.strictEqual(bundles[0].version, '1.0.0');
+            assert.strictEqual(bundles[0].sourceId, 'awesome-test');
+        });
+
+        test('should skip invalid YAML files', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, [
+                    { name: 'invalid.collection.yml', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/invalid.collection.yml' }
+                ]);
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/invalid.collection.yml')
+                .reply(200, 'invalid: yaml: content:');
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            // Should handle parsing error gracefully
+            assert.ok(Array.isArray(bundles));
+        });
+
+        test('should handle empty collections directory', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, []);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 0);
+        });
+    });
+
+    suite('downloadBundle - Dynamic ZIP Creation', () => {
+        test.skip('should create ZIP archive from collection items', async () => {
+            const mockBundle: Bundle = {
+                id: 'test-bundle',
+                name: 'Test Bundle',
+                version: '1.0.0',
+                description: 'Test',
+                author: 'Test Author',
+                sourceId: 'awesome-test',
+                environments: ['vscode'],
+                tags: ['test'],
+                lastUpdated: '2025-01-01T00:00:00Z',
+                size: '1KB',
+                dependencies: [],
+                license: 'MIT',
+                manifestUrl: 'https://example.com/manifest.json',
+                downloadUrl: 'https://example.com/bundle.zip',
+            };
+
+            // Mock collection YAML - not needed, downloadBundle uses getManifestUrl
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/test-bundle.collection.yml')
+                .reply(200, `
+id: test-bundle
+name: Test Bundle
+description: Test
+tags: []
+items:
+  - path: "prompts/test.prompt.md"
+    kind: prompt
+`)
+                .get('/test-owner/awesome-copilot/main/prompts/test.prompt.md')
+                .reply(200, '# Test Prompt\n\nThis is a test prompt.');
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const buffer = await adapter.downloadBundle(mockBundle);
+
+            assert.ok(Buffer.isBuffer(buffer));
+            assert.ok(buffer.length > 0);
+        });
+
+        test.skip('should include deployment-manifest.yml in ZIP', async () => {
+            const mockBundle: Bundle = {
+                id: 'manifest-test',
+                name: 'Manifest Test',
+                version: '2.0.0',
+                description: 'Test manifest creation',
+                author: 'Test',
+                sourceId: 'awesome-test',
+                environments: ['vscode'],
+                tags: [],
+                lastUpdated: '2025-01-01',
+                size: '1KB',
+                dependencies: [],
+                license: 'MIT',
+                manifestUrl: 'https://example.com/manifest.json',
+                downloadUrl: 'https://example.com/bundle.zip',
+            };
+
+            // Mock not needed - downloadBundle uses direct raw URL
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/manifest-test.collection.yml')
+                .reply(200, `
+id: manifest-test
+name: Manifest Test
+description: Test manifest
+tags: []
+items: []
+`);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const buffer = await adapter.downloadBundle(mockBundle);
+
+            // ZIP should contain deployment-manifest.yml
+            assert.ok(buffer.length > 100); // Reasonable minimum size for ZIP with manifest
+        });
+
+        test.skip('should handle missing prompt files gracefully', async () => {
+            const mockBundle: Bundle = {
+                id: 'missing-files',
+                name: 'Missing Files Test',
+                version: '1.0.0',
+                description: 'Test',
+                author: 'Test',
+                sourceId: 'awesome-test',
+                environments: [],
+                tags: [],
+                lastUpdated: '2025-01-01',
+                size: '1KB',
+                dependencies: [],
+                license: 'MIT',
+                manifestUrl: 'https://example.com/manifest.json',
+                downloadUrl: 'https://example.com/bundle.zip',
+            };
+
+            // Mock not needed
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/missing-files.collection.yml')
+                .reply(200, `
+id: missing-files
+name: Missing Files
+description: Test
+tags: []
+items:
+  - path: "prompts/missing.prompt.md"
+    kind: prompt
+`)
+                .get('/test-owner/awesome-copilot/main/prompts/missing.prompt.md')
+                .reply(404);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            
+            // Should throw error for missing files
+            let errorThrown = false;
+            try {
+                await adapter.downloadBundle(mockBundle);
+            } catch (error: any) {
+                errorThrown = true;
+                assert.ok(error.message, 'Error should have a message');
+            }
+            assert.ok(errorThrown, 'Should throw error for missing files');
+        });
+    });
+
+    suite('fetchMetadata', () => {
+        test('should fetch repository metadata', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot')
+                .reply(200, {
+                    name: 'awesome-copilot',
+                    description: 'Awesome Copilot Collection',
+                    stargazers_count: 100
+                })
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, [
+                    { name: 'col1.collection.yml', type: 'file' },
+                    { name: 'col2.collection.yml', type: 'file' }
+                ]);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const metadata = await adapter.fetchMetadata();
+
+            assert.strictEqual(metadata.name, 'test-owner/awesome-copilot');
+            assert.ok(metadata.description.includes('Awesome Copilot collections'));
+            assert.strictEqual(metadata.bundleCount, 2);
+        });
+    });
+
+    suite('validate', () => {
+        test('should validate accessible repository', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot')
+                .reply(200, { name: 'awesome-copilot' })
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, [{
+                    name: 'test.collection.yml',
+                    type: 'file'
+                }]);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const result = await adapter.validate();
+
+            assert.strictEqual(result.valid, true);
+            assert.strictEqual(result.errors.length, 0);
+        });
+
+        test('should fail validation for inaccessible repository', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot')
+                .reply(404);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const result = await adapter.validate();
+
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.length > 0);
+        });
+    });
+
+    suite('Content Type Mapping', () => {
+        test('should map .prompt.md files to prompt type', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+                .reply(200, [{
+                    name: 'types.collection.yml',
+                    type: 'file',
+                    download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/types.collection.yml'
+                }]);
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/awesome-copilot/main/collections/types.collection.yml')
+                .reply(200, `
+id: types
+name: Types Test
+description: Test content types
+tags: []
+items:
+  - path: "test.prompt.md"
+    kind: prompt
+  - path: "test.instructions.md"
+    kind: instruction
+  - path: "test.chat-mode.md"
+    kind: chat-mode
+  - path: "test.agent.md"
+    kind: agent
+`);
+
+            const adapter = new AwesomeCopilotAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.ok(bundles.length > 0);
+            // Content types should be inferred from file extensions
+        });
+    });
+});

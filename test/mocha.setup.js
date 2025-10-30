@@ -2,6 +2,11 @@
 const path = require('path');
 const Module = require('module');
 
+// Ensure this is running in Mocha context
+if (typeof global.suite === 'undefined' && typeof global.describe === 'undefined') {
+  console.warn('[mocha.setup.js] Warning: Mocha test functions not available yet. This file should be loaded via --require flag.');
+}
+
 // Clear module cache to ensure fresh mocks
 Object.keys(require.cache).forEach(key => {
   if (key.includes('vscode') || key.includes('logger')) {
@@ -51,6 +56,11 @@ const vscode = {
       };
       return channel;
     }
+  },
+  authentication: {
+    // Mock authentication API for GitHub tests
+    getSession: async () => undefined,
+    onDidChangeSessions: () => ({ dispose: () => {} })
   },
   Uri: {
     file: (path) => ({

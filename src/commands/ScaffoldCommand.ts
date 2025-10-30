@@ -54,6 +54,15 @@ export class ScaffoldCommand {
             // Create directory structure
             await this.createDirectoryStructure(targetPath);
 
+            // Create GitHub CI workflow
+            await this.createGitHubWorkflow(targetPath);
+
+            // Create validation script
+            await this.createValidationScript(targetPath);
+
+            // Create package.json
+            await this.createPackageJson(targetPath, options);
+
             // Create example files
             if (!options?.skipExamples) {
                 await this.createExampleFiles(targetPath, options);
@@ -77,7 +86,9 @@ export class ScaffoldCommand {
             'prompts',
             'instructions',
             'chatmodes',
-            'collections'
+            'collections',
+            '.github/workflows',
+            'scripts'
         ];
 
         // Create base directory
@@ -639,6 +650,40 @@ display:
 
 ## 🧪 Testing and Validation
 
+### Automated CI Validation
+
+This project includes GitHub Actions CI workflow for automatic validation:
+
+**Workflow Location**: \`.github/workflows/validate-collections.yml\`
+
+**What it does**:
+- ✅ Runs automatically on every push to main/develop
+- ✅ Runs on pull requests
+- ✅ Validates all collection files
+- ✅ Checks required fields, ID format, file references
+- ✅ Reports errors and warnings
+- ✅ Fails CI if validation errors found
+
+**Local Validation**:
+\`\`\`bash
+# Install dependencies first
+npm install
+
+# Run validation
+npm run validate
+
+# Or run directly
+node scripts/validate-collections.js
+\`\`\`
+
+**Validation Rules**:
+- ✅ Required fields: \`id\`, \`name\`, \`description\`, \`items\`
+- ✅ ID format: lowercase, numbers, hyphens only
+- ✅ Valid kinds: \`prompt\`, \`instruction\`, \`chat-mode\`, \`agent\`
+- ✅ All referenced files must exist
+- ⚠️  Description max 500 characters (warning)
+- ⚠️  Max 10 tags recommended (warning)
+
 ### Test Your Prompts
 
 1. Open Copilot Chat in VS Code
@@ -675,7 +720,8 @@ Once you've published your repository to GitHub, use the Prompt Registry extensi
 - [ ] Content is clear and helpful
 - [ ] Examples are provided
 - [ ] Tags are relevant
-- [ ] Collections validated using Prompt Registry extension
+- [ ] Local validation passes (\`npm run validate\`)
+- [ ] CI validation passes (check GitHub Actions)
 
 ## 📚 Best Practices
 
@@ -723,7 +769,7 @@ Once you've published your repository to GitHub, use the Prompt Registry extensi
 
 ## 📄 License
 
-This collection is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This collection is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -762,6 +808,166 @@ Happy prompting! 🚀
 
         fs.writeFileSync(readmePath, content, 'utf8');
         this.logger.debug(`Created README: ${readmePath}`);
+    }
+
+    /**
+     * Create GitHub CI workflow for collection validation
+     */
+    private async createGitHubWorkflow(targetPath: string): Promise<void> {
+        const workflowPath = path.join(targetPath, '.github', 'workflows', 'validate-collections.yml');
+        
+        const workflow = `name: Validate Collections
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Collections
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Validate collections
+        run: npm run validate
+      
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            collections/
+          if-no-files-found: ignore
+`;
+
+        fs.writeFileSync(workflowPath, workflow, 'utf8');
+        this.logger.debug(`Created GitHub workflow: ${workflowPath}`);
+    }
+
+    /**
+     * Create validation script
+     */
+    private async createValidationScript(targetPath: string): Promise<void> {
+        const scriptPath = path.join(targetPath, 'scripts', 'validate-collections.js');
+        
+        // Read template from templates directory
+        const templatePath = path.join(__dirname, '../../templates/validate-collections.js');
+        
+        if (fs.existsSync(templatePath)) {
+            const template = fs.readFileSync(templatePath, 'utf8');
+            fs.writeFileSync(scriptPath, template, 'utf8');
+            
+            // Make script executable on Unix systems
+            try {
+                fs.chmodSync(scriptPath, 0o755);
+            } catch (error) {
+                // Ignore chmod errors on Windows
+                this.logger.debug('Could not set executable permission (likely Windows)');
+            }
+        } else {
+            // Fallback: embed script inline if template not found
+            this.logger.warn('Template not found, using embedded script');
+            const script = this.getEmbeddedValidationScript();
+            fs.writeFileSync(scriptPath, script, 'utf8');
+        }
+        
+        this.logger.debug(`Created validation script: ${scriptPath}`);
+    }
+
+    /**
+     * Create package.json for the scaffolded project
+     */
+    private async createPackageJson(targetPath: string, options?: ScaffoldOptions): Promise<void> {
+        const packageJsonPath = path.join(targetPath, 'package.json');
+        const projectName = options?.projectName || path.basename(targetPath);
+        
+        const packageJson = {
+            name: projectName.toLowerCase().replace(/\s+/g, '-'),
+            version: '1.0.0',
+            description: 'Awesome Copilot prompt collection',
+            scripts: {
+                validate: 'node scripts/validate-collections.js',
+                'validate:verbose': 'node scripts/validate-collections.js --verbose'
+            },
+            keywords: [
+                'copilot',
+                'prompts',
+                'ai',
+                'github-copilot'
+            ],
+            author: '',
+            license: 'MIT',
+            dependencies: {
+                'js-yaml': '^4.1.0'
+            },
+            devDependencies: {},
+            engines: {
+                node: '>=18.0.0'
+            }
+        };
+
+        fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
+        this.logger.debug(`Created package.json: ${packageJsonPath}`);
+    }
+
+    /**
+     * Get embedded validation script (fallback if template not found)
+     */
+    private getEmbeddedValidationScript(): string {
+        // This is a minified version for embedding
+        return `#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
+
+// Validation logic embedded
+console.log('Running collection validation...');
+console.log('For full functionality, ensure templates/validate-collections.js exists');
+
+const collectionsDir = path.join(process.cwd(), 'collections');
+if (!fs.existsSync(collectionsDir)) {
+    console.error('Collections directory not found');
+    process.exit(1);
+}
+
+const files = fs.readdirSync(collectionsDir).filter(f => f.endsWith('.collection.yml'));
+console.log(\`Found \${files.length} collection(s)\`);
+
+let hasErrors = false;
+files.forEach(file => {
+    const content = fs.readFileSync(path.join(collectionsDir, file), 'utf8');
+    try {
+        const collection = yaml.load(content);
+        if (!collection.id || !collection.name || !collection.items) {
+            console.error(\`❌ \${file}: Missing required fields\`);
+            hasErrors = true;
+        } else {
+            console.log(\`✓ \${file}: Valid\`);
+        }
+    } catch (error) {
+        console.error(\`❌ \${file}: YAML parse error\`);
+        hasErrors = true;
+    }
+});
+
+process.exit(hasErrors ? 1 : 0);
+`;
     }
 
     /**

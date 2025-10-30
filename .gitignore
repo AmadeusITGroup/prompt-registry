@@ -12,7 +12,11 @@ yarn-error.log
 
 # IDE files
 .idea/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/README.md
 *.swp
 *.swo
 
@@ -124,6 +128,7 @@ research/
 *_GUIDE.md
 *_COMPLETE.md
 *_IMPLEMENTATION_*.md
+!docs/
 debug-*.js
 fix_*.py
 fix_*.js
@@ -151,3 +156,7 @@ post-compile-fixes-cross-platform.js
 !package.json
 !package-lock.json
 !tsconfig*.json
+.c8_output/
+
+# Cache directories
+.cache/

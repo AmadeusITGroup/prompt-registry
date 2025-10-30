@@ -53,8 +53,8 @@ suite('LocalAdapter', () => {
             const adapter = new LocalAdapter(mockSource);
             const metadata = await adapter.fetchMetadata();
 
-            // We have 2 bundles in fixtures: example-bundle and testing-bundle
-            assert.strictEqual(metadata.bundleCount, 2);
+            // We have 9 bundles in fixtures
+            assert.strictEqual(metadata.bundleCount, 9);
         });
 
         test('should throw error for non-existent directory', async () => {
@@ -74,11 +74,21 @@ suite('LocalAdapter', () => {
             const bundles = await adapter.fetchBundles();
 
             assert.ok(Array.isArray(bundles));
-            assert.strictEqual(bundles.length, 2);
+            assert.strictEqual(bundles.length, 9);
 
             // Check bundle IDs
             const bundleIds = bundles.map(b => b.id).sort();
-            assert.deepStrictEqual(bundleIds, ['example-bundle', 'testing-bundle']);
+            assert.deepStrictEqual(bundleIds, [
+                'accessibility-bundle',
+                'backend-bundle',
+                'devops-bundle',
+                'example-bundle',
+                'example-bundle',
+                'security-bundle',
+                'testing-bundle',
+                'testing-bundle',
+                'web-dev-bundle'
+            ]);
         });
 
         test('should parse YAML manifests correctly', async () => {

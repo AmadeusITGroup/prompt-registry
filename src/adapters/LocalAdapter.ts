@@ -214,6 +214,10 @@ export class LocalAdapter extends RepositoryAdapter {
 
     /**
      * Fetch repository metadata from local filesystem
+     * Scans the local directory and reads registry.json if available.
+     * 
+     * @returns Promise resolving to SourceMetadata with directory info
+     * @throws Error if directory doesn't exist or is not accessible
      */
     async fetchMetadata(): Promise<SourceMetadata> {
         try {
@@ -262,6 +266,10 @@ export class LocalAdapter extends RepositoryAdapter {
 
     /**
      * Fetch bundles from local filesystem
+     * Scans subdirectories for deployment-manifest.yml files and creates Bundle objects.
+     * 
+     * @returns Promise resolving to array of Bundle objects found in local directory
+     * @throws Error if directory is not accessible or manifest parsing fails
      */
     async fetchBundles(): Promise<Bundle[]> {
         try {
@@ -309,7 +317,10 @@ export class LocalAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Validate local registry
+     * Validate local registry accessibility
+     * Checks if the directory exists and contains at least one valid bundle.
+     * 
+     * @returns Promise resolving to ValidationResult with status and any warnings
      */
     async validate(): Promise<ValidationResult> {
         try {
@@ -351,6 +362,11 @@ export class LocalAdapter extends RepositoryAdapter {
 
     /**
      * Get manifest URL for a bundle
+     * Returns a file:// URL pointing to the local deployment manifest.
+     * 
+     * @param bundleId - Bundle directory name
+     * @param version - Optional version (not used for local bundles)
+     * @returns file:// URL string pointing to deployment-manifest.yml
      */
     getManifestUrl(bundleId: string, version?: string): string {
         const localPath = this.getLocalPath();
@@ -359,6 +375,11 @@ export class LocalAdapter extends RepositoryAdapter {
 
     /**
      * Get download URL for a bundle
+     * Returns a file:// URL pointing to the local bundle directory.
+     * 
+     * @param bundleId - Bundle directory name
+     * @param version - Optional version (not used for local bundles)
+     * @returns file:// URL string pointing to bundle directory
      */
     getDownloadUrl(bundleId: string, version?: string): string {
         const localPath = this.getLocalPath();
@@ -366,7 +387,12 @@ export class LocalAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Download a bundle (for local, just read the directory path)
+     * Download a bundle (for local bundles, no actual download needed)
+     * Local bundles are accessed directly from the filesystem, so this returns an empty buffer.
+     * The installer can work directly with the local directory path.
+     * 
+     * @param bundle - Bundle object with local file:// path
+     * @returns Promise resolving to empty Buffer (local bundles don't need downloading)
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         // For local bundles, we don't actually need to download

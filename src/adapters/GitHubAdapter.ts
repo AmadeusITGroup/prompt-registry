@@ -9,6 +9,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
+import { Logger } from '../utils/logger';
 
 const execAsync = promisify(exec);
 
@@ -42,13 +43,30 @@ export class GitHubAdapter extends RepositoryAdapter {
     private apiBase = 'https://api.github.com';
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
+    private logger: Logger;
 
     constructor(source: RegistrySource) {
         super(source);
+        this.logger = Logger.getInstance();
         
-        if (!this.isValidUrl(source.url)) {
+        if (!this.isValidGitHubUrl(source.url)) {
             throw new Error(`Invalid GitHub URL: ${source.url}`);
         }
+    }
+
+    /**
+     * Validate GitHub URL (supports both HTTPS and SSH formats)
+     */
+    private isValidGitHubUrl(url: string): boolean {
+        // HTTPS format: https://github.com/owner/repo
+        if (url.startsWith('https://')) {
+            return url.includes('github.com');
+        }
+        // SSH format: git@github.com:owner/repo.git
+        if (url.startsWith('git@')) {
+            return url.includes('github.com:');
+        }
+        return false;
     }
 
     /**
@@ -77,34 +95,43 @@ export class GitHubAdapter extends RepositoryAdapter {
     private async getAuthenticationToken(): Promise<string | undefined> {
         // Return cached token if already resolved
         if (this.authToken !== undefined) {
+            this.logger.debug(`[GitHubAdapter] Using cached token (method: ${this.authMethod})`);
             return this.authToken;
         }
 
+        this.logger.info('[GitHubAdapter] Attempting authentication...');
+
         // Try VSCode GitHub authentication first
         try {
+            this.logger.debug('[GitHubAdapter] Trying VSCode GitHub authentication...');
             const session = await vscode.authentication.getSession('github', ['repo'], { silent: true });
             if (session) {
                 this.authToken = session.accessToken;
                 this.authMethod = 'vscode';
-                console.log('[GitHubAdapter] Using VSCode GitHub authentication');
+                this.logger.info('[GitHubAdapter] ✓ Using VSCode GitHub authentication');
+                this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
                 return this.authToken;
             }
+            this.logger.debug('[GitHubAdapter] VSCode auth session not found');
         } catch (error) {
-            // VSCode auth not available, continue to next method
+            this.logger.warn(`[GitHubAdapter] VSCode auth failed: ${error}`);
         }
 
         // Try gh CLI authentication
         try {
+            this.logger.debug('[GitHubAdapter] Trying gh CLI authentication...');
             const { stdout } = await execAsync('gh auth token');
             const token = stdout.trim();
             if (token && token.length > 0) {
                 this.authToken = token;
                 this.authMethod = 'gh-cli';
-                console.log('[GitHubAdapter] Using gh CLI authentication');
+                this.logger.info('[GitHubAdapter] ✓ Using gh CLI authentication');
+                this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
                 return this.authToken;
             }
+            this.logger.debug('[GitHubAdapter] gh CLI returned empty token');
         } catch (error) {
-            // gh CLI not available or not authenticated, continue to next method
+            this.logger.warn(`[GitHubAdapter] gh CLI auth failed: ${error}`);
         }
 
         // Fall back to explicit token from source configuration
@@ -112,18 +139,19 @@ export class GitHubAdapter extends RepositoryAdapter {
         if (explicitToken) {
             this.authToken = explicitToken;
             this.authMethod = 'explicit';
-            console.log('[GitHubAdapter] Using explicit token from configuration');
+            this.logger.info('[GitHubAdapter] ✓ Using explicit token from configuration');
+            this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
             return this.authToken;
         }
 
         // No authentication available
         this.authMethod = 'none';
-        console.log('[GitHubAdapter] No authentication available, API rate limits will apply');
+        this.logger.warn('[GitHubAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
         return undefined;
     }
 
     /**
-     * Make HTTP request to GitHub API
+     * Make HTTP request to GitHub API with authentication
      */
     private async makeRequest(url: string): Promise<any> {
         const headers = this.getHeaders();
@@ -131,8 +159,19 @@ export class GitHubAdapter extends RepositoryAdapter {
         // Get authentication token using fallback chain
         const token = await this.getAuthenticationToken();
         if (token) {
-            headers['Authorization'] = `token ${token}`;
+            // Use Bearer token format for OAuth tokens (recommended)
+            headers['Authorization'] = `Bearer ${token}`;
+            this.logger.debug(`[GitHubAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
+        } else {
+            this.logger.debug(`[GitHubAdapter] Request to ${url} WITHOUT auth`);
         }
+
+        // Log headers (sanitized)
+        const sanitizedHeaders = { ...headers };
+        if (sanitizedHeaders['Authorization']) {
+            sanitizedHeaders['Authorization'] = sanitizedHeaders['Authorization'].substring(0, 15) + '...';
+        }
+        this.logger.debug(`[GitHubAdapter] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
 
         return new Promise((resolve, reject) => {
             https.get(url, { headers }, (res) => {
@@ -144,28 +183,69 @@ export class GitHubAdapter extends RepositoryAdapter {
 
                 res.on('end', () => {
                     if (res.statusCode && res.statusCode >= 400) {
-                        reject(new Error(`GitHub API error: ${res.statusCode} ${res.statusMessage}`));
+                        this.logger.error(`[GitHubAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`);
+                        this.logger.error(`[GitHubAdapter] URL: ${url}`);
+                        this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
+                        this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
+                        
+                        // Provide helpful error messages
+                        let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
+                        if (res.statusCode === 404) {
+                            errorMsg += ' - Repository not found or not accessible. Check authentication.';
+                        } else if (res.statusCode === 401) {
+                            errorMsg += ' - Authentication failed. Token may be invalid or expired.';
+                        } else if (res.statusCode === 403) {
+                            errorMsg += ' - Access forbidden. Token may lack required scopes (repo).';
+                        }
+                        reject(new Error(errorMsg));
                         return;
                     }
 
+                    this.logger.debug(`[GitHubAdapter] Response OK (${res.statusCode})`);
                     try {
                         resolve(JSON.parse(data));
                     } catch (error) {
+                        this.logger.error(`[GitHubAdapter] Failed to parse response: ${error}`);
                         reject(new Error(`Failed to parse GitHub response: ${error}`));
                     }
                 });
             }).on('error', (error) => {
+                this.logger.error(`[GitHubAdapter] Network error: ${error.message}`);
                 reject(new Error(`GitHub API request failed: ${error.message}`));
             });
         });
     }
 
     /**
-     * Download file from URL
+     * Download file from URL with authentication
      */
     private async downloadFile(url: string): Promise<Buffer> {
+        // Include authentication for private repos
+        const token = await this.getAuthenticationToken();
+        const headers: any = {
+            'User-Agent': 'Prompt-Registry-VSCode-Extension',
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            this.logger.debug(`[GitHubAdapter] Downloading ${url} with auth (method: ${this.authMethod})`);
+        } else {
+            this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth`);
+        }
+
         return new Promise((resolve, reject) => {
-            https.get(url, (res) => {
+            https.get(url, { headers }, (res) => {
+                // Handle redirects (GitHub may redirect downloads)
+                if (res.statusCode === 302 || res.statusCode === 301) {
+                    const redirectUrl = res.headers.location;
+                    if (redirectUrl) {
+                        this.logger.debug(`[GitHubAdapter] Following redirect to: ${redirectUrl}`);
+                        // Recursive call to follow redirect
+                        this.downloadFile(redirectUrl).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+
                 const chunks: Buffer[] = [];
 
                 res.on('data', (chunk: Buffer) => {
@@ -174,12 +254,17 @@ export class GitHubAdapter extends RepositoryAdapter {
 
                 res.on('end', () => {
                     if (res.statusCode && res.statusCode >= 400) {
+                        this.logger.error(`[GitHubAdapter] Download failed: HTTP ${res.statusCode}`);
+                        this.logger.error(`[GitHubAdapter] URL: ${url}`);
+                        this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
                         reject(new Error(`Download failed: ${res.statusCode} ${res.statusMessage}`));
                         return;
                     }
+                    this.logger.debug(`[GitHubAdapter] Download complete: ${chunks.length} chunks, ${Buffer.concat(chunks).length} bytes`);
                     resolve(Buffer.concat(chunks));
                 });
             }).on('error', (error) => {
+                this.logger.error(`[GitHubAdapter] Download error: ${error.message}`);
                 reject(new Error(`Download failed: ${error.message}`));
             });
         });
@@ -187,6 +272,11 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Fetch bundles from GitHub releases
+     * Scans all releases in the repository and creates Bundle objects for those
+     * that contain both a deployment manifest and a bundle archive.
+     * 
+     * @returns Promise resolving to array of Bundle objects
+     * @throws Error if GitHub API request fails or authentication issues occur
      */
     async fetchBundles(): Promise<Bundle[]> {
         const { owner, repo } = this.parseGitHubUrl();
@@ -200,7 +290,8 @@ export class GitHubAdapter extends RepositoryAdapter {
                 // Look for deployment manifest in release assets
                 const manifestAsset = release.assets.find(a => 
                     a.name === 'deployment-manifest.yml' || 
-                    a.name === 'deployment-manifest.yaml'
+                    a.name === 'deployment-manifest.yaml' ||
+                    a.name === 'deployment-manifest.json'
                 );
 
                 if (!manifestAsset) {
@@ -246,7 +337,11 @@ export class GitHubAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Download a bundle
+     * Download a bundle from GitHub release assets
+     * 
+     * @param bundle - Bundle object containing downloadUrl
+     * @returns Promise resolving to Buffer containing bundle ZIP file
+     * @throws Error if download fails or network issues occur
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         try {
@@ -257,7 +352,11 @@ export class GitHubAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Fetch repository metadata
+     * Fetch repository metadata from GitHub API
+     * Retrieves repository information including name, description, and release count.
+     * 
+     * @returns Promise resolving to SourceMetadata object
+     * @throws Error if repository not found or API request fails
      */
     async fetchMetadata(): Promise<SourceMetadata> {
         const { owner, repo } = this.parseGitHubUrl();
@@ -276,12 +375,15 @@ export class GitHubAdapter extends RepositoryAdapter {
                 version: '1.0.0', // Could extract from latest release
             };
         } catch (error) {
-            throw new Error(`Failed to fetch metadata from GitHub: ${error}`);
+            throw new Error(`Failed to fetch GitHub metadata: ${error}`);
         }
     }
 
     /**
      * Validate GitHub repository accessibility
+     * Checks if the repository exists and is accessible with current authentication.
+     * 
+     * @returns Promise resolving to ValidationResult with status and any errors/warnings
      */
     async validate(): Promise<ValidationResult> {
         try {
@@ -312,15 +414,25 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Get manifest URL for a bundle
+     * Constructs the GitHub release asset URL for the deployment manifest.
+     * 
+     * @param bundleId - Bundle identifier (not used, URL based on repo)
+     * @param version - Optional version tag (defaults to 'latest')
+     * @returns URL string pointing to deployment-manifest.json in release assets
      */
     getManifestUrl(bundleId: string, version?: string): string {
         const { owner, repo } = this.parseGitHubUrl();
         const tag = version ? `v${version}` : 'latest';
-        return `https://github.com/${owner}/${repo}/releases/download/${tag}/deployment-manifest.yml`;
+        return `https://github.com/${owner}/${repo}/releases/download/${tag}/deployment-manifest.json`;
     }
 
     /**
      * Get download URL for a bundle
+     * Constructs the GitHub release asset URL for the bundle ZIP file.
+     * 
+     * @param bundleId - Bundle identifier (not used, URL based on repo)
+     * @param version - Optional version tag (defaults to 'latest')
+     * @returns URL string pointing to bundle.zip in release assets
      */
     getDownloadUrl(bundleId: string, version?: string): string {
         const { owner, repo } = this.parseGitHubUrl();
