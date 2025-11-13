@@ -17,7 +17,6 @@ export enum TreeItemType {
     INSTALLED_ROOT = 'installed_root',
     DISCOVER_ROOT = 'discover_root',
     SOURCES_ROOT = 'sources_root',
-    SETTINGS_ROOT = 'settings_root',
 
     // Profile items
     PROFILE = 'profile',
@@ -90,7 +89,6 @@ export class RegistryTreeItem extends vscode.TreeItem {
             [TreeItemType.SOURCE]: 'repo',
             [TreeItemType.ADD_SOURCE]: 'add',
             
-            [TreeItemType.SETTINGS_ROOT]: 'settings-gear',
             [TreeItemType.BUNDLE]: 'file-zip',
         };
 
@@ -169,7 +167,6 @@ export class RegistryTreeItem extends vscode.TreeItem {
             TreeItemType.SOURCE,
             TreeItemType.CREATE_PROFILE,
             TreeItemType.ADD_SOURCE,
-            TreeItemType.SETTINGS_ROOT,
             TreeItemType.DISCOVER_CATEGORY,
             TreeItemType.DISCOVER_POPULAR,
             TreeItemType.DISCOVER_RECENT,
@@ -195,8 +192,6 @@ export class RegistryTreeItem extends vscode.TreeItem {
                 return 'promptRegistry.createProfile';
             case TreeItemType.ADD_SOURCE:
                 return 'promptRegistry.addSource';
-            case TreeItemType.SETTINGS_ROOT:
-                return 'promptRegistry.openSettings';
             case TreeItemType.DISCOVER_CATEGORY:
                 return 'promptRegistry.browseByCategory';
             case TreeItemType.DISCOVER_POPULAR:
@@ -310,12 +305,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                 TreeItemType.SOURCES_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Collapsed
-            ),
-            new RegistryTreeItem(
-                '⚙️  Settings',
-                TreeItemType.SETTINGS_ROOT,
-                undefined,
-                vscode.TreeItemCollapsibleState.None
             ),
         ];
     }

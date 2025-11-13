@@ -12,6 +12,7 @@ import { HttpAdapter } from '../adapters/HttpAdapter';
 import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
+import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
 import {
     RegistrySource,
     Bundle,
@@ -64,6 +65,7 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('http', HttpAdapter);
         RepositoryAdapterFactory.register('local', LocalAdapter);
         RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
+        RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
     }
 
     /**
@@ -337,10 +339,10 @@ export class RegistryManager {
 
         const adapter = this.getAdapter(source);
         
-        // For awesome-copilot, download the bundle directly from the adapter
+        // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
         // For other adapters, use the downloadUrl
         let installation: InstalledBundle;
-        if (source.type === 'awesome-copilot') {
+        if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
             this.logger.debug('Downloading bundle from awesome-copilot adapter');
             const bundleBuffer = await adapter.downloadBundle(bundle);
             this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);

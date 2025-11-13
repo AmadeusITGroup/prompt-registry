@@ -164,6 +164,12 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "promptRegistry.openSettings",
+        "title": "Open Settings",
+        "category": "Prompt Registry",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "promptRegistry.listProfiles",
         "title": "List All Profiles",
         "category": "Prompt Registry"
@@ -192,6 +198,42 @@
         "command": "promptRegistry.viewBundle",
         "title": "View Bundle Details",
         "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.addSource",
+        "title": "Add Source",
+        "category": "Prompt Registry",
+        "icon": "$(add)"
+      },
+      {
+        "command": "promptRegistry.editSource",
+        "title": "Edit Source",
+        "category": "Prompt Registry",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "promptRegistry.removeSource",
+        "title": "Remove Source",
+        "category": "Prompt Registry",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "promptRegistry.syncSource",
+        "title": "Sync Source",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptRegistry.syncAllSources",
+        "title": "Sync All Sources",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptRegistry.toggleSource",
+        "title": "Toggle Source Enabled/Disabled",
+        "category": "Prompt Registry",
+        "icon": "$(circle-slash)"
       }
     ],
     "viewsContainers": {
@@ -257,6 +299,11 @@
           "command": "promptRegistry.importSettings",
           "when": "view == promptRegistryExplorer",
           "group": "navigation@2"
+        },
+        {
+          "command": "promptRegistry.openSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -299,6 +346,26 @@
           "command": "promptRegistry.uninstallBundle",
           "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
           "group": "bundleActions@4"
+        },
+        {
+          "command": "promptRegistry.editSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@1"
+        },
+        {
+          "command": "promptRegistry.syncSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@2"
+        },
+        {
+          "command": "promptRegistry.removeSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@3"
+        },
+        {
+          "command": "promptRegistry.toggleSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@4"
         }
       ]
     },
@@ -374,7 +441,7 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "npm run test:all",
-    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,services,utils}/**/*.test.js' --timeout 5000",
+    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,commands,services,utils}/**/*.test.js' --timeout 5000",
     "test:integration": "npm run compile-tests && node ./test/runExtensionTests.js",
     "test:all": "npm run compile-tests && npm run test:unit && npm run test:integration",
     "test:coverage": "npm run compile-tests && c8 npm run test:all",
@@ -389,9 +456,9 @@
     "package:prepare": "node scripts/package-helpers.js prod && npm run compile",
     "package:cleanup": "node scripts/package-helpers.js dev",
     "package:full": "npm run package:prepare && npm run package:vsix && npm run package:cleanup",
-    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"📦 Production package created with optimized size\"",
-    "dev:setup": "npm run ignore:dev && echo \"🔧 Development mode activated - Copilot friendly\"",
-    "dev:package-test": "npm run package:prepare && echo \"📋 Switched to production mode - check file exclusions\" && npm run ignore:status",
+    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"\ud83d\udce6 Production package created with optimized size\"",
+    "dev:setup": "npm run ignore:dev && echo \"\ud83d\udd27 Development mode activated - Copilot friendly\"",
+    "dev:package-test": "npm run package:prepare && echo \"\ud83d\udccb Switched to production mode - check file exclusions\" && npm run ignore:status",
     "version:update": "./scripts/update-version.sh",
     "version:bump:major": "npm version major --no-git-tag-version && npm run version:update",
     "version:bump:minor": "npm version minor --no-git-tag-version && npm run version:update",

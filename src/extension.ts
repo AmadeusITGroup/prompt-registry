@@ -195,6 +195,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.removeSource', (sourceId?) => this.sourceCommands!.removeSource(sourceId)),
             vscode.commands.registerCommand('promptRegistry.syncSource', (sourceId?) => this.sourceCommands!.syncSource(sourceId)),
             vscode.commands.registerCommand('promptRegistry.syncAllSources', () => this.sourceCommands!.syncAllSources()),
+            vscode.commands.registerCommand('promptRegistry.toggleSource', (sourceId?) => this.sourceCommands!.toggleSource(sourceId)),
             vscode.commands.registerCommand('promptRegistry.listSources', () => this.sourceCommands!.listSources()),
             
             // Bundle Management Commands
