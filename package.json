@@ -152,6 +152,18 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.exportSettings",
+        "title": "Export Settings",
+        "category": "Prompt Registry",
+        "icon": "$(export)"
+      },
+      {
+        "command": "promptRegistry.importSettings",
+        "title": "Import Settings",
+        "category": "Prompt Registry",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "promptRegistry.listProfiles",
         "title": "List All Profiles",
         "category": "Prompt Registry"
@@ -233,6 +245,18 @@
         },
         {
           "command": "promptregistry.uninstallAll"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "promptRegistry.exportSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "promptRegistry.importSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -407,7 +431,7 @@
     "archiver": "^7.0.1",
     "axios": "^1.6.0",
     "glob": "^11.0.3",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.1.1",
     "semver": "^7.5.4",
     "yauzl": "^2.10.0"
   },

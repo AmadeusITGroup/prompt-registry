@@ -5,6 +5,7 @@ import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
 import { ProfileCommands } from './commands/ProfileCommands';
 import { SourceCommands } from './commands/SourceCommands';
 import { BundleCommands } from './commands/BundleCommands';
+import { SettingsCommands } from './commands/SettingsCommands';
 import { ScaffoldCommand } from './commands/ScaffoldCommand';
 import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
@@ -39,6 +40,7 @@ export class PromptRegistryExtension {
     private profileCommands: ProfileCommands | undefined;
     private sourceCommands: SourceCommands | undefined;
     private bundleCommands: BundleCommands | undefined;
+    private settingsCommands: SettingsCommands | undefined;
     private validateCollectionsCommand: ValidateCollectionsCommand | undefined;
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
@@ -157,6 +159,7 @@ export class PromptRegistryExtension {
         // Initialize Command Handlers
         this.profileCommands = new ProfileCommands(this.registryManager);
         this.sourceCommands = new SourceCommands(this.registryManager);
+        this.settingsCommands = new SettingsCommands(this.registryManager);
         this.bundleCommands = new BundleCommands(this.registryManager);
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
@@ -182,6 +185,10 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.importProfile', () => this.profileCommands!.importProfile()),
             vscode.commands.registerCommand('promptRegistry.listProfiles', () => this.profileCommands!.listProfiles()),
             
+            // Settings Management Commands
+            vscode.commands.registerCommand('promptRegistry.exportSettings', () => this.settingsCommands!.exportSettings()),
+            vscode.commands.registerCommand('promptRegistry.importSettings', () => this.settingsCommands!.importSettings()),
+
             // Source Management Commands
             vscode.commands.registerCommand('promptRegistry.addSource', () => this.sourceCommands!.addSource()),
             vscode.commands.registerCommand('promptRegistry.editSource', (sourceId?) => this.sourceCommands!.editSource(sourceId)),
