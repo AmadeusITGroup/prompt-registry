@@ -62,11 +62,11 @@ Connect to various prompt sources:
 | Source Type | Description | Use Case |
 |------------|-------------|----------|
 | **Awesome Copilot** | Curated community collections | Discover popular prompts |
+| **Local Awesome Copilot** | Local awesome-copilot collections | Develop/test collections locally |
 | **GitHub** | Direct from GitHub repositories | Team/project-specific prompts |
 | **GitLab** | GitLab repositories and releases | Enterprise GitLab users |
 | **HTTP** | Any HTTP/HTTPS URL | Custom hosting |
 | **Local** | File system directories | Private/offline prompts |
-
 ### 📦 Bundle Management
 
 - **Install/Uninstall**: Manage bundles through UI or commands
@@ -88,6 +88,17 @@ Personal Profile
   ├── creative-writing (v1.0.0)
   └── learning-resources (v0.9.0)
 ```
+
+### ⚙️ Settings Management
+
+Export and import your entire Prompt Registry configuration:
+
+- **📤 Export** - Save sources, profiles, and settings to JSON/YAML
+- **📥 Import** - Restore configuration with merge or replace strategies
+- **🔄 Backup** - Keep configuration safe before changes
+- **👥 Share** - Distribute team configurations easily
+- **💾 Version Control** - Track settings in Git with YAML format
+
 
 ### 🌍 Cross-Platform
 
@@ -335,6 +346,82 @@ Sidebar → "My Profiles" → Select profile
 
 ---
 
+
+### Using Registry Explorer
+
+The **Registry Explorer** sidebar provides a comprehensive view of your Prompt Registry ecosystem.
+
+#### Overview
+
+Access via the sidebar icon or:
+```bash
+Ctrl+Shift+P → "View: Show Prompt Registry Explorer"
+```
+
+#### Features
+
+**📦 Installed Bundles**
+- View all installed bundles by scope (User/Workspace)
+- Right-click for actions: View Details, Update, Uninstall, Check Updates
+- See installation status and version information
+
+**👥 My Profiles**
+- Manage profile-based installations
+- Right-click for actions: Activate, Edit, Export, Delete
+- Quick profile switching
+
+**📡 Sources**
+- View all configured sources with priority and status
+- Right-click context menu for quick actions:
+  - **Edit Source** - Modify configuration, change priority, toggle enabled/disabled
+  - **Sync Source** - Refresh bundle listings from source
+  - **Toggle Enabled/Disabled** - Quick enable/disable without editing
+  - **Remove Source** - Delete source configuration
+- Status indicators: ✓ (enabled) or ○ (disabled)
+
+**⚙️ Settings Management**
+- **Export Settings** - Save complete configuration (sources, profiles, settings)
+  - JSON format: Pretty-printed, easy to read
+  - YAML format: Human-friendly, version control compatible
+- **Import Settings** - Restore or share configuration
+  - Merge strategy: Add new sources/profiles, keep existing
+  - Replace strategy: Clear all, restore from file
+  - Format auto-detection from file extension
+
+#### Settings Export/Import
+
+Export your entire Prompt Registry configuration for backup, sharing, or migration:
+
+```bash
+# Export
+1. Click Export button in Registry Explorer toolbar
+2. Choose format: JSON or YAML
+3. Select save location
+4. Optionally open file after export
+
+# Import
+1. Click Import button in Registry Explorer toolbar
+2. Select settings file (.json, .yaml, .yml)
+3. Choose strategy:
+   - Merge: Add new items, keep existing
+   - Replace: Clear all, restore from file
+4. Confirm operation
+```
+
+**What's Included in Export:**
+- All sources with URLs, types, priorities, and credentials
+- All profiles with their bundle associations
+- Extension settings (auto-updates, logging, etc.)
+- Timestamp and version information
+
+**Use Cases:**
+- 🔄 **Backup** - Save configuration before major changes
+- 👥 **Team Sharing** - Distribute standard source configurations
+- �� **Multi-Machine** - Sync settings across workstations
+- 🔧 **Version Control** - Track configuration changes in Git
+
+Learn more in the [Settings Export/Import Guide](./docs/SETTINGS_EXPORT_IMPORT.md).
+
 ## 🔌 Supported Sources
 
 ### Awesome Copilot Collection
@@ -352,6 +439,65 @@ Features:
 - ✅ Well-tested prompts
 - ✅ Regular updates
 - ✅ Wide variety of use cases
+
+
+### Local Awesome Copilot Collection
+
+**Local filesystem-based awesome-copilot collections for development and testing.**
+
+```yaml
+Type: local-awesome-copilot
+URL: /path/to/collections  # or file:///path/to/collections
+Collections Path: collections (default)
+```
+
+Features:
+- ✅ Develop collections locally before publishing
+- ✅ Test collection structure and content
+- ✅ No network dependencies
+- ✅ Fast iteration during development
+- ✅ Same format as awesome-copilot adapter
+
+**Directory Structure:**
+```
+/path/to/collections/
+├── collections/
+│   ├── azure-cloud.collection.yml
+│   └── python-dev.collection.yml
+├── prompts/
+│   ├── azure-resource-health.prompt.md
+│   └── python-testing.prompt.md
+└── instructions/
+    └── bicep-best-practices.instructions.md
+```
+
+**Collection File Format (.collection.yml):**
+```yaml
+id: my-collection
+name: My Collection
+description: Description of your collection
+tags: [tag1, tag2, tag3]
+items:
+  - path: prompts/example.prompt.md
+    kind: prompt
+  - path: instructions/guidelines.instructions.md
+    kind: instruction
+  - path: chatmodes/mode.chatmode.md
+    kind: chat-mode
+```
+
+**Add Local Collection Source:**
+1. Open Command Palette (`Ctrl+Shift+P`)
+2. Run `Prompt Registry: Add Source`
+3. Select type: `local-awesome-copilot`
+4. Enter path: `/path/to/your/collections`
+5. Bundles appear in Registry Explorer
+
+**Use Cases:**
+- 🔧 **Development** - Build and test collections locally
+- 🧪 **Testing** - Validate structure before GitHub push
+- 🚀 **Prototyping** - Quick experimentation with prompts
+- 📝 **Documentation** - Create examples for contributors
 
 ### GitHub Repository
 
@@ -663,7 +809,7 @@ prompt-registry/
 ### Current Version (2.0.0)
 
 - ✅ Visual marketplace interface
-- ✅ Multi-source support (5 adapter types)
+- ✅ Multi-source support (6 adapter types)
 - ✅ Profile management
 - ✅ Cross-platform support (macOS, Linux, Windows)
 - ✅ Auto-sync with GitHub Copilot
@@ -703,7 +849,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 
 ## 📊 Stats
 
-- **Supported Source Types**: 5 (GitHub, GitLab, HTTP, Local, Awesome Copilot)
+- **Supported Source Types**: 6 (GitHub, GitLab, HTTP, Local, Awesome Copilot, Local Awesome Copilot)
 - **Platforms**: macOS, Linux, Windows
 - **VS Code Flavors**: Stable, Insiders, Windsurf
 - **Architecture**: Adapter pattern with extensible design

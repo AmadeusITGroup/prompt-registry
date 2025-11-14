@@ -446,4 +446,21 @@ export class RegistryStorage {
         const config = await this.loadConfig();
         return config.settings;
     }
+
+    /**
+     * Clear all data (sources, profiles, caches) - used for replace import strategy
+     */
+    async clearAll(): Promise<void> {
+        // Reset config to defaults
+        const config: RegistryConfig = {
+            version: '1.0.0',
+            sources: [],
+            profiles: [],
+            settings: DEFAULT_SETTINGS,
+        };
+        await this.saveConfig(config);
+        
+        // Clear all caches
+        await this.clearAllCaches();
+    }
 }

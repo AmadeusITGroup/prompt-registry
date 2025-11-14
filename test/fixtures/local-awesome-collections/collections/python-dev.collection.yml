@@ -1,0 +1,7 @@
+id: python-dev
+name: Python Development
+description: Python development prompts and instructions
+tags: ["python", "development", "testing"]
+items:
+  - path: prompts/test-prompt.prompt.md
+    kind: prompt

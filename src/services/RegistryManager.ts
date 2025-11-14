@@ -12,6 +12,7 @@ import { HttpAdapter } from '../adapters/HttpAdapter';
 import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
+import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
 import {
     RegistrySource,
     Bundle,
@@ -23,6 +24,7 @@ import {
     BundleUpdate,
     ProfileBundle,
 } from '../types/registry';
+import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
 
 /**
@@ -63,6 +65,7 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('http', HttpAdapter);
         RepositoryAdapterFactory.register('local', LocalAdapter);
         RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
+        RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
     }
 
     /**
@@ -336,10 +339,10 @@ export class RegistryManager {
 
         const adapter = this.getAdapter(source);
         
-        // For awesome-copilot, download the bundle directly from the adapter
+        // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
         // For other adapters, use the downloadUrl
         let installation: InstalledBundle;
-        if (source.type === 'awesome-copilot') {
+        if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
             this.logger.debug('Downloading bundle from awesome-copilot adapter');
             const bundleBuffer = await adapter.downloadBundle(bundle);
             this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
@@ -576,6 +579,131 @@ export class RegistryManager {
         return profile;
     }
 
+
+    /**
+     * Export complete registry settings (sources + profiles + configuration)
+     */
+    async exportSettings(format: ExportFormat = 'json'): Promise<string> {
+        const sources = await this.listSources();
+        const profiles = await this.storage.getProfiles();
+        
+        const config = vscode.workspace.getConfiguration('promptregistry');
+        
+        const settings: ExportedSettings = {
+            version: '1.0.0',
+            exportedAt: new Date().toISOString(),
+            sources,
+            profiles,
+            configuration: {
+                autoCheckUpdates: config.get('autoCheckUpdates'),
+                installationScope: config.get('installationScope'),
+                defaultVersion: config.get('defaultVersion'),
+                enableLogging: config.get('enableLogging'),
+            },
+        };
+
+        if (format === 'yaml') {
+            const yaml = require('js-yaml');
+            return yaml.dump(settings, {
+                indent: 2,
+                lineWidth: 120,
+                noRefs: true,
+            });
+        }
+        
+        return JSON.stringify(settings, null, 2);
+    }
+
+    /**
+     * Import registry settings (sources + profiles + configuration)
+     */
+    async importSettings(
+        data: string, 
+        format: ExportFormat = 'json',
+        strategy: ImportStrategy = 'merge'
+    ): Promise<void> {
+        // Parse data
+        let settings: ExportedSettings;
+        try {
+            if (format === 'yaml') {
+                const yaml = require('js-yaml');
+                settings = yaml.load(data) as ExportedSettings;
+            } else {
+                settings = JSON.parse(data);
+            }
+        } catch (error: any) {
+            throw new Error(`Invalid ${format.toUpperCase()} format: ${error.message}`);
+        }
+
+        // Validate schema version
+        if (!settings.version || settings.version !== '1.0.0') {
+            throw new Error(`Incompatible settings version: ${settings.version || 'unknown'}. Expected 1.0.0`);
+        }
+
+        // Validate required fields
+        if (!Array.isArray(settings.sources) || !Array.isArray(settings.profiles)) {
+            throw new Error('Invalid settings format: sources and profiles must be arrays');
+        }
+
+        // Clear if replacing
+        if (strategy === 'replace') {
+            await this.storage.clearAll();
+        }
+
+        // Import sources
+        for (const source of settings.sources) {
+            try {
+                const existingSources = await this.listSources();
+                const existing = existingSources.find(s => s.id === source.id);
+                
+                if (!existing || strategy === 'replace') {
+                    // addSource will validate the source
+                    await this.addSource(source);
+                }
+            } catch (error: any) {
+                Logger.getInstance().warn(`Failed to import source ${source.name}: ${error.message}`);
+            }
+        }
+
+        // Import profiles
+        for (const profile of settings.profiles) {
+            try {
+                const existingProfiles = await this.storage.getProfiles();
+                const existing = existingProfiles.find(p => p.id === profile.id);
+                
+                if (!existing || strategy === 'replace') {
+                    // Reset timestamps and active state
+                    profile.createdAt = new Date().toISOString();
+                    profile.updatedAt = new Date().toISOString();
+                    profile.active = false;
+                    
+                    await this.storage.addProfile(profile);
+                }
+            } catch (error: any) {
+                Logger.getInstance().warn(`Failed to import profile ${profile.name}: ${error.message}`);
+            }
+        }
+
+        // Import configuration
+        if (settings.configuration) {
+            const config = vscode.workspace.getConfiguration('promptregistry');
+            
+            if (settings.configuration.autoCheckUpdates !== undefined) {
+                await config.update('autoCheckUpdates', settings.configuration.autoCheckUpdates, true);
+            }
+            if (settings.configuration.installationScope !== undefined) {
+                await config.update('installationScope', settings.configuration.installationScope, true);
+            }
+            if (settings.configuration.defaultVersion !== undefined) {
+                await config.update('defaultVersion', settings.configuration.defaultVersion, true);
+            }
+            if (settings.configuration.enableLogging !== undefined) {
+                await config.update('enableLogging', settings.configuration.enableLogging, true);
+            }
+        }
+
+        // Settings imported - triggering UI refresh via source/profile events
+    }
     // ===== Helper Methods =====
 
     /**

@@ -152,6 +152,24 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.exportSettings",
+        "title": "Export Settings",
+        "category": "Prompt Registry",
+        "icon": "$(export)"
+      },
+      {
+        "command": "promptRegistry.importSettings",
+        "title": "Import Settings",
+        "category": "Prompt Registry",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "promptRegistry.openSettings",
+        "title": "Open Settings",
+        "category": "Prompt Registry",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "promptRegistry.listProfiles",
         "title": "List All Profiles",
         "category": "Prompt Registry"
@@ -180,6 +198,42 @@
         "command": "promptRegistry.viewBundle",
         "title": "View Bundle Details",
         "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.addSource",
+        "title": "Add Source",
+        "category": "Prompt Registry",
+        "icon": "$(add)"
+      },
+      {
+        "command": "promptRegistry.editSource",
+        "title": "Edit Source",
+        "category": "Prompt Registry",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "promptRegistry.removeSource",
+        "title": "Remove Source",
+        "category": "Prompt Registry",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "promptRegistry.syncSource",
+        "title": "Sync Source",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptRegistry.syncAllSources",
+        "title": "Sync All Sources",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptRegistry.toggleSource",
+        "title": "Toggle Source Enabled/Disabled",
+        "category": "Prompt Registry",
+        "icon": "$(circle-slash)"
       }
     ],
     "viewsContainers": {
@@ -235,6 +289,23 @@
           "command": "promptregistry.uninstallAll"
         }
       ],
+      "view/title": [
+        {
+          "command": "promptRegistry.exportSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "promptRegistry.importSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "promptRegistry.openSettings",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@3"
+        }
+      ],
       "view/item/context": [
         {
           "command": "promptRegistry.activateProfile",
@@ -275,6 +346,26 @@
           "command": "promptRegistry.uninstallBundle",
           "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
           "group": "bundleActions@4"
+        },
+        {
+          "command": "promptRegistry.editSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@1"
+        },
+        {
+          "command": "promptRegistry.syncSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@2"
+        },
+        {
+          "command": "promptRegistry.removeSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@3"
+        },
+        {
+          "command": "promptRegistry.toggleSource",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@4"
         }
       ]
     },
@@ -350,7 +441,7 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "npm run test:all",
-    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,services,utils}/**/*.test.js' --timeout 5000",
+    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,commands,services,utils}/**/*.test.js' --timeout 5000",
     "test:integration": "npm run compile-tests && node ./test/runExtensionTests.js",
     "test:all": "npm run compile-tests && npm run test:unit && npm run test:integration",
     "test:coverage": "npm run compile-tests && c8 npm run test:all",
@@ -374,7 +465,7 @@
     "version:bump:patch": "npm version patch --no-git-tag-version && npm run version:update"
   },
   "devDependencies": {
-    "@istanbuljs/nyc-config-typescript": "^1.0.2",
+    "@istanbuljs/nyc-config-typescript": "^1.0.0",
     "@types/adm-zip": "^0.5.7",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
@@ -407,7 +498,7 @@
     "archiver": "^7.0.1",
     "axios": "^1.6.0",
     "glob": "^11.0.3",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.1.1",
     "semver": "^7.5.4",
     "yauzl": "^2.10.0"
   },

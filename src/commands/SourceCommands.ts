@@ -51,6 +51,11 @@ export class SourceCommands {
                         description: 'GitHub repository with .collection.yml files',
                         value: 'awesome-copilot' as SourceType
                     },
+                    {
+                        label: '$(folder-library) Local Awesome Copilot Collection',
+                        description: 'Local filesystem directory with .collection.yml files',
+                        value: 'local-awesome-copilot' as SourceType
+                    },
                 ],
                 {
                     placeHolder: 'Select source type',
@@ -84,7 +89,7 @@ export class SourceCommands {
                 return;
             }
 
-            // Step 3.5: Get additional config for awesome-copilot
+            // Step 3.5: Get additional config for awesome-copilot and local-awesome-copilot
             let config: any = undefined;
             if (sourceType.value === 'awesome-copilot') {
                 const branch = await vscode.window.showInputBox({
@@ -103,27 +108,42 @@ export class SourceCommands {
                     branch: branch || 'main',
                     collectionsPath: collectionsPath || 'collections'
                 };
+            } else if (sourceType.value === 'local-awesome-copilot') {
+                const collectionsPath = await vscode.window.showInputBox({
+                    prompt: 'Enter collections directory path (or press Enter for "collections")',
+                    placeHolder: 'collections',
+                    value: 'collections'
+                });
+
+                config = {
+                    collectionsPath: collectionsPath || 'collections'
+                };
             }
 
-            // Step 4: Check if private/authentication needed
-            const isPrivate = await vscode.window.showQuickPick(
-                [
-                    { label: 'Public', description: 'No authentication required', value: false },
-                    { label: 'Private', description: 'Requires authentication', value: true }
-                ],
-                {
-                    placeHolder: 'Is this source private?',
-                    title: 'Source Access'
-                }
-            );
-
+            // Step 4: Check if private/authentication needed (skip for local sources)
             let token: string | undefined;
-            if (isPrivate?.value) {
-                token = await vscode.window.showInputBox({
-                    prompt: 'Enter access token (optional - can be configured later)',
-                    password: true,
-                    placeHolder: 'Leave empty to configure later'
-                });
+            let isPrivate: { label: string; description: string; value: boolean } | undefined;
+            const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot';
+            
+            if (!isLocalSource) {
+                isPrivate = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Public', description: 'No authentication required', value: false },
+                        { label: 'Private', description: 'Requires authentication', value: true }
+                    ],
+                    {
+                        placeHolder: 'Is this source private?',
+                        title: 'Source Access'
+                    }
+                );
+
+                if (isPrivate?.value) {
+                    token = await vscode.window.showInputBox({
+                        prompt: 'Enter access token (optional - can be configured later)',
+                        password: true,
+                        placeHolder: 'Leave empty to configure later'
+                    });
+                }
             }
 
             // Step 5: Get priority
@@ -599,6 +619,17 @@ export class SourceCommands {
                     }
                 });
 
+            case 'local-awesome-copilot': {
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFolders: true,
+                    canSelectFiles: false,
+                    canSelectMany: false,
+                    title: 'Select local awesome-copilot collections directory'
+                });
+                
+                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+            }
+
             default:
                 return undefined;
         }
@@ -709,17 +740,52 @@ export class SourceCommands {
     /**
      * Toggle source enabled/disabled
      */
-    private async toggleSource(sourceId: string): Promise<void> {
-        const sources = await this.registryManager.listSources();
-        const source = sources.find(s => s.id === sourceId);
+    async toggleSource(sourceId?: string): Promise<void> {
+        try {
+            // If no sourceId, let user select
+            if (!sourceId) {
+                const sources = await this.registryManager.listSources();
+                
+                if (sources.length === 0) {
+                    vscode.window.showInformationMessage('No sources found.');
+                    return;
+                }
 
-        if (!source) {
-            return;
+                const selected = await vscode.window.showQuickPick(
+                    sources.map(s => ({
+                        label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
+                        description: s.url,
+                        detail: `${s.type} • Priority: ${s.priority}`,
+                        source: s
+                    })),
+                    {
+                        placeHolder: 'Select source to toggle',
+                        title: 'Toggle Source'
+                    }
+                );
+
+                if (!selected) {
+                    return;
+                }
+
+                sourceId = selected.source.id;
+            }
+
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === sourceId);
+
+            if (!source) {
+                vscode.window.showErrorMessage('Source not found');
+                return;
+            }
+
+            await this.registryManager.updateSource(sourceId, { enabled: !source.enabled });
+            vscode.window.showInformationMessage(
+                `Source "${source.name}" ${source.enabled ? 'disabled' : 'enabled'}`
+            );
+        } catch (error) {
+            this.logger.error('Failed to toggle source', error as Error);
+            vscode.window.showErrorMessage(`Failed to toggle source: ${(error as Error).message}`);
         }
-
-        await this.registryManager.updateSource(sourceId, { enabled: !source.enabled });
-        vscode.window.showInformationMessage(
-            `Source "${source.name}" ${source.enabled ? 'disabled' : 'enabled'}`
-        );
     }
 }
