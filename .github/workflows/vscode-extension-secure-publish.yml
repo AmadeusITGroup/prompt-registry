@@ -99,8 +99,8 @@ jobs:
       - name: Install dependencies with integrity check
         working-directory: ${{ env.EXTENSION_DIR }}
         run: |
-          npm ci --fund=false --production --audit
-          npm audit --production --audit-level=moderate --omit=dev
+          npm ci --fund=false
+          npm audit --omit=dev --audit-level=moderate
 
       - name: Update version in package.json
         working-directory: ${{ env.EXTENSION_DIR }}
