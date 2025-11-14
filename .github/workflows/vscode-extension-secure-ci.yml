@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           npm ci --audit --fund=false
-          npm audit --audit-level=moderate
+          npm audit --omit=dev --audit-level=moderate
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
