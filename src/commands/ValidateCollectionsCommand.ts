@@ -38,10 +38,12 @@ interface ValidationResult {
 export class ValidateCollectionsCommand {
     private outputChannel: vscode.OutputChannel;
     private schemaValidator: SchemaValidator;
+    private context: vscode.ExtensionContext;
 
-    constructor() {
+    constructor(context: vscode.ExtensionContext) {
+        this.context = context;
         this.outputChannel = vscode.window.createOutputChannel('Collection Validator');
-        this.schemaValidator = new SchemaValidator();
+        this.schemaValidator = new SchemaValidator(context.extensionPath);
     }
 
     async execute(options?: { checkRefs?: boolean; listOnly?: boolean }): Promise<void> {

@@ -1,6 +1,7 @@
 /**
  * Core type definitions for the Prompt Registry system
  */
+import { McpServersManifest } from './mcp';
 
 /**
  * Registry source types
@@ -266,4 +267,5 @@ export interface DeploymentManifest {
         tags?: string[];
         type?: 'prompt' | 'instructions' | 'chatmode' | 'agent'; // GitHub Copilot file type
     }>;
+    mcpServers?: McpServersManifest;
 }

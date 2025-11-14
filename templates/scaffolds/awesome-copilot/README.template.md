@@ -9,6 +9,7 @@ Welcome to your awesome-copilot prompt collection! This repository contains prom
 ├── instructions/         # Coding standards and best practices (.instructions.md)
 ├── chatmodes/           # AI personas and specialized modes (.chatmode.md)
 ├── collections/         # Curated collections (.collection.yml)
+├── mcp-server/          # Optional: MCP server configuration
 ├── schemas/             # JSON schemas for validation
 ├── .vscode/             # VS Code settings and extensions
 └── package.json         # Node.js dependencies
@@ -46,14 +47,24 @@ The scaffold includes VS Code configuration:
 - IntelliSense for collection properties
 - Real-time validation errors
 
-### 4. Ensure that the GitHub runner label is conrrectly configured
+### 4. Ensure that the GitHub runner label is correctly configured
 
 - open `.github/workflows/validate-collections.yml`
 - look for `runs-on:`
-- ensure you are using the runner label as per reccomendations of your organisation
+- ensure you are using the runner label as per recommendations of your organisation
 
+### 5. (Optional) Enable MCP Servers
 
-### 5. Publish to GitHub
+**What is MCP?** Model Context Protocol allows your collection to provide custom tools and context to GitHub Copilot.
+
+**Quick Setup:**
+1. Edit your `collections/*.collection.yml` file
+2. Uncomment the `mcp` section
+3. Choose from pre-built servers (time, filesystem, memory) or create your own
+
+See `mcp-server/README.md` for detailed instructions.
+
+### 6. Publish to GitHub
 
 ```bash
 # Initialize git (if needed)
@@ -67,7 +78,7 @@ git branch -M main
 git push -u origin main
 ```
 
-### 5. Use with Prompt Registry Extension
+### 7. Use with Prompt Registry Extension
 
 **Option A: Add as Source**
 1. Open VS Code Command Palette (`Ctrl+Shift+P`)
@@ -167,6 +178,30 @@ items:
 - `items`: 1-50 items, paths must exist
 - `kind`: `prompt`, `instruction`, `chat-mode`, or `agent`
 
+### MCP Servers (Optional)
+
+Add Model Context Protocol servers to provide custom tools:
+
+```yaml
+# In collections/*.collection.yml
+mcp:
+  items:
+    # Pre-built server (recommended)
+    time:
+      command: npx
+      args:
+        - -y
+        - "@modelcontextprotocol/server-sequential-thinking"
+    
+    # Custom server (advanced)
+    custom:
+      command: node
+      args:
+        - ${bundlePath}/mcp-server/server.js
+```
+
+See `mcp-server/README.md` for available servers and custom implementation guides.
+
 ## 🧪 Testing Workflow
 
 ### Local Validation
@@ -193,6 +228,7 @@ The included workflow (`.github/workflows/validate-collections.yml`) runs automa
 1. **In Copilot Chat**: Use `/` to access prompts
 2. **With Prompt Registry**: Browse and install collections
 3. **Validate Files**: Check YAML syntax and file references
+4. **MCP Servers** (if enabled): Verify server appears in VS Code MCP settings
 
 ## 📋 Quality Checklist
 
@@ -204,6 +240,7 @@ Before committing:
 - [ ] All collection paths exist
 - [ ] YAML syntax is valid
 - [ ] VS Code shows no schema errors
+- [ ] MCP configuration tested (if enabled)
 
 ## 📚 Resources
 
@@ -211,6 +248,8 @@ Before committing:
 - [Awesome Copilot Repository](https://github.com/github/awesome-copilot)
 - [Collection Template](https://github.com/github/awesome-copilot/blob/main/collections/TEMPLATE.md)
 - [Prompt Engineering Guide](https://www.promptingguide.ai/)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [MCP Server Examples](https://github.com/modelcontextprotocol/servers)
 
 ## 🛠️ Extension Commands
 

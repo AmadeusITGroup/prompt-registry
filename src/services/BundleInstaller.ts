@@ -14,6 +14,7 @@ import { Logger } from '../utils/logger';
 import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest } from '../types/registry';
 import { CopilotSyncService } from './CopilotSyncService';
 
+import { McpServerManager } from './McpServerManager';
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
 const readFile = promisify(fs.readFile);
@@ -28,10 +29,12 @@ const rmdir = promisify(fs.rmdir);
 export class BundleInstaller {
     private logger: Logger;
     private copilotSync: CopilotSyncService;
+    private mcpManager: McpServerManager;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.copilotSync = new CopilotSyncService(context);
+        this.mcpManager = new McpServerManager();
     }
 
     /**
@@ -103,8 +106,17 @@ export class BundleInstaller {
             };
 
             // Step 9: Sync to GitHub Copilot native directory
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
             await this.copilotSync.syncBundle(bundle.id, installDir);
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
             this.logger.debug('Synced to GitHub Copilot');
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
 
             this.logger.info(`Bundle installed successfully: ${bundle.name}`);
             return installed;
@@ -168,8 +180,17 @@ export class BundleInstaller {
             };
 
             // Step 9: Sync to GitHub Copilot native directory
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
             await this.copilotSync.syncBundle(bundle.id, installDir);
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
             this.logger.debug('Synced to GitHub Copilot');
+            // Step 10: Install MCP servers if defined
+            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            this.logger.debug('MCP servers installation completed');
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;
@@ -188,6 +209,9 @@ export class BundleInstaller {
 
         try {
             // Remove from GitHub Copilot native directory
+            // Uninstall MCP servers
+            await this.uninstallMcpServers(installed.bundleId, installed.scope);
+            this.logger.debug('MCP servers uninstalled');
             await this.copilotSync.unsyncBundle(installed.bundleId);
             this.logger.debug('Removed from GitHub Copilot');
 
@@ -422,6 +446,74 @@ export class BundleInstaller {
         } catch (error) {
             this.logger.warn('Failed to cleanup temp directory', error as Error);
             // Don't fail the installation if cleanup fails
+        }
+    }
+
+    /**
+     * Install MCP servers from manifest
+     */
+    private async installMcpServers(
+        bundleId: string,
+        bundleVersion: string,
+        installPath: string,
+        manifest: DeploymentManifest,
+        scope: 'user' | 'workspace'
+    ): Promise<void> {
+        if (!manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0) {
+            this.logger.debug(`No MCP servers to install for bundle ${bundleId}`);
+            return;
+        }
+
+        this.logger.info(`Installing MCP servers for bundle ${bundleId}`);
+
+        try {
+            const result = await this.mcpManager.installServers(
+                bundleId,
+                bundleVersion,
+                installPath,
+                manifest.mcpServers,
+                {
+                    scope,
+                    overwrite: false,
+                    skipOnConflict: false,
+                    createBackup: true
+                }
+            );
+
+            if (!result.success) {
+                this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+            } else {
+                this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers`);
+            }
+
+            if (result.warnings && result.warnings.length > 0) {
+                this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to install MCP servers for bundle ${bundleId}`, error as Error);
+            // Don't fail the entire bundle installation if MCP installation fails
+        }
+    }
+
+    /**
+     * Uninstall MCP servers for a bundle
+     */
+    private async uninstallMcpServers(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
+        this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
+
+        try {
+            const result = await this.mcpManager.uninstallServers(bundleId, scope);
+
+            if (!result.success) {
+                this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
+            } else if (result.serversRemoved > 0) {
+                this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers`);
+            } else {
+                this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
+            // Don't fail the entire bundle uninstallation if MCP uninstallation fails
         }
     }
 }

@@ -163,7 +163,7 @@ export class PromptRegistryExtension {
         this.bundleCommands = new BundleCommands(this.registryManager);
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
-        this.validateCollectionsCommand = new ValidateCollectionsCommand();
+        this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
 
         // Legacy commands

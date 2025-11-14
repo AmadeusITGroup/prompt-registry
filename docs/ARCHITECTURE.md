@@ -143,7 +143,9 @@ graph TB
 | Component | Responsibility |
 |-----------|---------------|
 | **RegistryManager** | Orchestrates sources, bundles, and installations |
-| **BundleInstaller** | Handles bundle extraction, validation, and installation |
+| **BundleInstaller** | Handles bundle extraction, validation, and installation (includes MCP integration) |
+| **McpServerManager** | Manages MCP server installation, uninstallation, and tracking |
+| **McpConfigService** | Reads/writes VS Code's mcp.json configuration with atomic operations |
 | **CopilotSyncService** | Syncs installed bundles to Copilot directories |
 | **StorageService** | Manages persistent state (sources, installations, profiles) |
 
@@ -884,6 +886,196 @@ graph TD
 - **Enterprise**: Private registry
 
 ---
+## MCP (Model Context Protocol) Integration
+
+### Overview
+
+The Prompt Registry extension provides seamless integration with the Model Context Protocol (MCP), allowing bundles to include MCP servers that extend Copilot's capabilities with custom tools, resources, and prompts.
+
+### Key Features
+
+- **Automatic Installation**: MCP servers defined in bundle manifests are automatically installed to VS Code's MCP configuration when the bundle is installed
+- **Lifecycle Management**: MCP servers are tracked and automatically removed when the bundle is uninstalled
+- **Visual Display**: MCP server configurations are displayed in the Marketplace detail view
+- **Variable Substitution**: Supports dynamic variables like `${bundlePath}`, `${bundleId}`, and `${env:VAR_NAME}`
+- **Scope Support**: MCP servers can be installed at user or workspace scope
+
+### Architecture
+
+```
+Bundle Installation Flow:
+┌─────────────────┐
+│ Bundle Manifest │
+│  mcpServers:    │
+│   - server-1    │
+│   - server-2    │
+└────────┬────────┘
+         │
+         v
+┌─────────────────────┐
+│  BundleInstaller    │
+│  installMcpServers()│
+└────────┬────────────┘
+         │
+         v
+┌─────────────────────┐
+│ McpServerManager    │
+│ - installServers()  │
+│ - tracking metadata │
+└────────┬────────────┘
+         │
+         v
+┌─────────────────────┐
+│  McpConfigService   │
+│ - Write to mcp.json │
+│ - Name mangling     │
+│ - Conflict handling │
+└─────────────────────┘
+```
+
+### Component Responsibilities
+
+#### **BundleInstaller** (`src/services/BundleInstaller.ts`)
+- Calls `installMcpServers()` after bundle files are extracted
+- Calls `uninstallMcpServers()` during bundle removal
+- Passes manifest's `mcpServers` configuration to McpServerManager
+
+#### **McpServerManager** (`src/services/McpServerManager.ts`)
+- Orchestrates MCP server installation/uninstallation
+- Manages server naming (adds bundle prefix to avoid conflicts)
+- Maintains tracking metadata for installed servers
+- Handles variable substitution in commands and arguments
+
+#### **McpConfigService** (`src/services/McpConfigService.ts`)
+- Reads/writes VS Code's `mcp.json` configuration
+- Implements atomic write operations with backup/rollback
+- Handles server name conflicts and overwrites
+- Performs variable substitution with bundle context
+
+#### **MarketplaceViewProvider** (`src/ui/MarketplaceViewProvider.ts`)
+- Displays MCP servers in bundle detail view
+- Shows server configuration (command, args, env vars)
+- Indicates enabled/disabled status with badges
+- Provides visual feedback about MCP integration
+
+### Bundle Manifest Schema
+
+```yaml
+mcpServers:
+  server-name:
+    command: string          # Required: executable command
+    args: string[]           # Optional: command arguments
+    env: Record<string, string>  # Optional: environment variables
+    disabled: boolean        # Optional: disable server (default: false)
+    description: string      # Optional: human-readable description
+```
+
+### Example Configuration
+
+```yaml
+id: my-bundle
+name: My Bundle with MCP
+version: 1.0.0
+
+mcpServers:
+  time-server:
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-sequential-thinking"
+    description: Provides current time information
+    
+  custom-server:
+    command: node
+    args:
+      - "${bundlePath}/servers/custom.js"
+    env:
+      BUNDLE_ID: "${bundleId}"
+      API_KEY: "${env:MY_API_KEY}"
+    description: Custom operations for this bundle
+```
+
+### Variable Substitution
+
+The following variables are supported in `command`, `args`, and `env` values:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `${bundlePath}` | Absolute path to bundle installation directory | `/home/user/.vscode/...` |
+| `${bundleId}` | Bundle identifier | `my-bundle` |
+| `${bundleVersion}` | Bundle version | `1.0.0` |
+| `${env:VAR_NAME}` | Environment variable value | `${env:API_KEY}` |
+
+### Marketplace Display
+
+The bundle detail view includes an **MCP Servers** section that shows:
+
+1. **Server Count**: Number of MCP servers included
+2. **Server Cards**: Each server displays:
+   - Server name with ⚡ icon
+   - Enabled/Disabled badge
+   - Description (if provided)
+   - Full command with arguments
+   - Environment variables (if defined)
+
+### CSS Styling
+
+Custom CSS classes for MCP display:
+- `.mcp-server-card` - Server card container
+- `.mcp-server-header` - Server name and status
+- `.mcp-server-command` - Command display with code block styling
+- `.mcp-env-vars` - Environment variables section
+- `.mcp-status-badge` - Status badge (enabled/disabled)
+- `.mcp-status-enabled` - Green badge for enabled servers
+- `.mcp-status-disabled` - Gray badge for disabled servers
+
+### Installation Flow
+
+1. **Bundle Install**: User installs bundle from Marketplace
+2. **File Extraction**: BundleInstaller extracts bundle files
+3. **Manifest Validation**: Validates `mcpServers` configuration
+4. **Server Installation**: McpServerManager processes each server:
+   - Adds bundle prefix to server name (e.g., `mybundle:time-server`)
+   - Substitutes variables in command, args, and env
+   - Writes configuration to `mcp.json`
+   - Creates tracking metadata
+5. **VS Code Integration**: MCP servers are immediately available to Copilot
+
+### Uninstallation Flow
+
+1. **Bundle Uninstall**: User removes bundle
+2. **Server Cleanup**: McpServerManager:
+   - Reads tracking metadata to find bundle's servers
+   - Removes servers from `mcp.json`
+   - Updates tracking metadata
+3. **Atomic Operations**: All changes use backup/rollback for safety
+
+### Testing
+
+MCP integration is covered by:
+- **Unit Tests**: `test/services/McpServerManager.test.ts`
+- **Schema Validation**: `test/services/SchemaValidator.test.ts` (MCP-specific tests)
+- **Integration Tests**: Bundle install/uninstall with MCP servers
+
+### Error Handling
+
+- **Missing Command**: Server installation fails if `command` is not provided
+- **Invalid Variables**: Undefined variables are left as-is (not substituted)
+- **Conflicts**: Server name conflicts can be handled with overwrite or skip options
+- **Disabled Servers**: Servers with `disabled: true` are skipped during installation
+- **Rollback**: Failed installations trigger automatic rollback of `mcp.json` changes
+
+### Best Practices
+
+1. **Naming**: Use descriptive server names that indicate functionality
+2. **Descriptions**: Always provide `description` for user clarity
+3. **Variables**: Use `${bundlePath}` for bundle-relative paths
+4. **Environment**: Document required environment variables in bundle README
+5. **Testing**: Test MCP servers independently before bundling
+6. **Disabled**: Use `disabled: true` for optional or experimental servers
+
+---
+
 
 ## Future Enhancements
 

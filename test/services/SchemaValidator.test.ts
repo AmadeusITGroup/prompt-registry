@@ -34,7 +34,7 @@ suite('SchemaValidator', () => {
     };
 
     setup(() => {
-        validator = new SchemaValidator();
+        validator = new SchemaValidator(process.cwd());
         tempDir = path.join(__dirname, '..', '..', 'test-temp-schema');
         
         // Create temp directory
@@ -244,6 +244,444 @@ suite('SchemaValidator', () => {
             assert.ok(result.errors.some(e => e.includes('maximum') || e.includes('500')));
         });
     });
+
+        test('should validate collection with valid MCP configuration', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithMcp = {
+                id: 'test-mcp-collection',
+                name: 'Test MCP Collection',
+                description: 'Collection with MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ],
+                mcp: {
+                    items: {
+                        'time-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-sequential-thinking']
+                        },
+                        'custom-server': {
+                            command: 'node',
+                            args: ['${bundlePath}/server.js'],
+                            env: {
+                                LOG_LEVEL: 'debug'
+                            },
+                            disabled: false
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(collectionWithMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+            assert.strictEqual(result.errors.length, 0);
+        });
+
+        test('should detect MCP server missing required command', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const invalidMcpCollection = {
+                id: 'test-invalid-mcp',
+                name: 'Invalid MCP Collection',
+                description: 'Collection with invalid MCP config',
+                items: [],
+                mcp: {
+                    items: {
+                        'invalid-server': {
+                            // Missing required 'command' field
+                            args: ['some-arg']
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(invalidMcpCollection);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('command')));
+        });
+
+        test('should validate MCP with environment variables', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithEnv = {
+                id: 'test-mcp-env',
+                name: 'MCP with Environment',
+                description: 'Collection with MCP env variables',
+                items: [],
+                mcp: {
+                    items: {
+                        'github-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-github'],
+                            env: {
+                                GITHUB_TOKEN: '${env:GITHUB_TOKEN}',
+                                LOG_LEVEL: 'info'
+                            }
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithEnv);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should validate MCP with variable substitution in args', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithVariables = {
+                id: 'test-mcp-vars',
+                name: 'MCP with Variables',
+                description: 'Collection with variable substitution',
+                items: [],
+                mcp: {
+                    items: {
+                        'custom': {
+                            command: 'node',
+                            args: [
+                                '${bundlePath}/server.js',
+                                '--id',
+                                '${bundleId}',
+                                '--version',
+                                '${bundleVersion}'
+                            ]
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithVariables);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should allow collection without MCP (optional)', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithoutMcp = {
+                id: 'test-no-mcp',
+                name: 'No MCP Collection',
+                description: 'Collection without MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ]
+            };
+
+            const result = await validator.validateCollection(collectionWithoutMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should validate collection with valid MCP configuration', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithMcp = {
+                id: 'test-mcp-collection',
+                name: 'Test MCP Collection',
+                description: 'Collection with MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ],
+                mcp: {
+                    items: {
+                        'time-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-sequential-thinking']
+                        },
+                        'custom-server': {
+                            command: 'node',
+                            args: ['${bundlePath}/server.js'],
+                            env: {
+                                LOG_LEVEL: 'debug'
+                            },
+                            disabled: false
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(collectionWithMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+            assert.strictEqual(result.errors.length, 0);
+        });
+
+        test('should detect MCP server missing required command', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const invalidMcpCollection = {
+                id: 'test-invalid-mcp',
+                name: 'Invalid MCP Collection',
+                description: 'Collection with invalid MCP config',
+                items: [],
+                mcp: {
+                    items: {
+                        'invalid-server': {
+                            // Missing required 'command' field
+                            args: ['some-arg']
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(invalidMcpCollection);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('command')));
+        });
+
+        test('should validate MCP with environment variables', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithEnv = {
+                id: 'test-mcp-env',
+                name: 'MCP with Environment',
+                description: 'Collection with MCP env variables',
+                items: [],
+                mcp: {
+                    items: {
+                        'github-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-github'],
+                            env: {
+                                GITHUB_TOKEN: '${env:GITHUB_TOKEN}',
+                                LOG_LEVEL: 'info'
+                            }
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithEnv);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should validate MCP with variable substitution in args', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithVariables = {
+                id: 'test-mcp-vars',
+                name: 'MCP with Variables',
+                description: 'Collection with variable substitution',
+                items: [],
+                mcp: {
+                    items: {
+                        'custom': {
+                            command: 'node',
+                            args: [
+                                '${bundlePath}/server.js',
+                                '--id',
+                                '${bundleId}',
+                                '--version',
+                                '${bundleVersion}'
+                            ]
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithVariables);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should allow collection without MCP (optional)', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithoutMcp = {
+                id: 'test-no-mcp',
+                name: 'No MCP Collection',
+                description: 'Collection without MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ]
+            };
+
+            const result = await validator.validateCollection(collectionWithoutMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should validate collection with valid MCP configuration', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithMcp = {
+                id: 'test-mcp-collection',
+                name: 'Test MCP Collection',
+                description: 'Collection with MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ],
+                mcp: {
+                    items: {
+                        'time-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-sequential-thinking']
+                        },
+                        'custom-server': {
+                            command: 'node',
+                            args: ['${bundlePath}/server.js'],
+                            env: {
+                                LOG_LEVEL: 'debug'
+                            },
+                            disabled: false
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(collectionWithMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+            assert.strictEqual(result.errors.length, 0);
+        });
+
+        test('should detect MCP server missing required command', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const invalidMcpCollection = {
+                id: 'test-invalid-mcp',
+                name: 'Invalid MCP Collection',
+                description: 'Collection with invalid MCP config',
+                items: [],
+                mcp: {
+                    items: {
+                        'invalid-server': {
+                            // Missing required 'command' field
+                            args: ['some-arg']
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(invalidMcpCollection);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('command')));
+        });
+
+        test('should validate MCP with environment variables', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithEnv = {
+                id: 'test-mcp-env',
+                name: 'MCP with Environment',
+                description: 'Collection with MCP env variables',
+                items: [],
+                mcp: {
+                    items: {
+                        'github-server': {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-github'],
+                            env: {
+                                GITHUB_TOKEN: '${env:GITHUB_TOKEN}',
+                                LOG_LEVEL: 'info'
+                            }
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithEnv);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should validate MCP with variable substitution in args', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const mcpWithVariables = {
+                id: 'test-mcp-vars',
+                name: 'MCP with Variables',
+                description: 'Collection with variable substitution',
+                items: [],
+                mcp: {
+                    items: {
+                        'custom': {
+                            command: 'node',
+                            args: [
+                                '${bundlePath}/server.js',
+                                '--id',
+                                '${bundleId}',
+                                '--version',
+                                '${bundleVersion}'
+                            ]
+                        }
+                    }
+                }
+            };
+
+            const result = await validator.validateCollection(mcpWithVariables);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should allow collection without MCP (optional)', async function() {
+            if (!fs.existsSync(testCollectionSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const collectionWithoutMcp = {
+                id: 'test-no-mcp',
+                name: 'No MCP Collection',
+                description: 'Collection without MCP servers',
+                items: [
+                    { path: 'prompts/test.md', kind: 'prompt' }
+                ]
+            };
+
+            const result = await validator.validateCollection(collectionWithoutMcp);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
 
     suite('Error Formatting', () => {
         test('should format required field errors', async () => {

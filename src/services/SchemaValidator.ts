@@ -28,8 +28,9 @@ export class SchemaValidator {
     private ajv: Ajv.Ajv;
     private schemaCache: Map<string, Ajv.ValidateFunction>;
     private logger: Logger;
+    private extensionPath: string;
 
-    constructor() {
+    constructor(extensionPath?: string) {
         // Use default export for AJV v6
         const AjvConstructor = (Ajv as any).default || Ajv;
         this.ajv = new AjvConstructor({
@@ -42,6 +43,7 @@ export class SchemaValidator {
         
         this.schemaCache = new Map();
         this.logger = Logger.getInstance();
+        this.extensionPath = extensionPath || process.cwd();
     }
 
     /**
@@ -128,7 +130,7 @@ export class SchemaValidator {
         data: any,
         options: ValidationOptions = {}
     ): Promise<ValidationResult> {
-        const schemaPath = path.join(process.cwd(), 'schemas', 'collection.schema.json');
+        const schemaPath = path.join(this.extensionPath, 'schemas', 'collection.schema.json');
         return this.validate(data, schemaPath, options);
     }
 

@@ -415,6 +415,54 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-list-hoverBackground);
             border-radius: 4px;
         }
+        .mcp-server-card {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .mcp-server-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .mcp-server-command {
+            background: var(--vscode-textCodeBlock-background);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 12px;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        .mcp-env-vars {
+            margin-top: 8px;
+            padding-left: 12px;
+        }
+        .mcp-env-var {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            margin: 4px 0;
+        }
+        .mcp-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .mcp-status-enabled {
+            background: var(--vscode-testing-iconPassed);
+            color: var(--vscode-editor-background);
+        }
+        .mcp-status-disabled {
+            background: var(--vscode-descriptionForeground);
+            color: var(--vscode-editor-background);
+        }
     </style>
     <script>
         const vscode = acquireVsCodeApi();
@@ -515,6 +563,36 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <div class="tags">
             ${bundle.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
         </div>
+    </div>
+    ` : ''}
+
+    ${installed?.manifest?.mcpServers && Object.keys(installed.manifest.mcpServers).length > 0 ? `
+    <div class="section">
+        <h2>🔌 MCP Servers</h2>
+        <p style="color: var(--vscode-descriptionForeground); margin-bottom: 16px; font-size: 13px;">
+            This bundle includes ${Object.keys(installed.manifest.mcpServers).length} Model Context Protocol server${Object.keys(installed.manifest.mcpServers).length > 1 ? 's' : ''} that will be automatically integrated with VS Code.
+        </p>
+        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => `
+            <div class="mcp-server-card">
+                <div class="mcp-server-header">
+                    <span>⚡ ${serverName}</span>
+                    ${config.disabled ? '<span class="mcp-status-badge mcp-status-disabled">Disabled</span>' : '<span class="mcp-status-badge mcp-status-enabled">Enabled</span>'}
+                </div>
+                ${config.description ? `<div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 8px;">${config.description}</div>` : ''}
+                <div class="mcp-server-command">
+                    <strong>Command:</strong> ${config.command}
+                    ${config.args && config.args.length > 0 ? ` ${config.args.join(' ')}` : ''}
+                </div>
+                ${config.env && Object.keys(config.env).length > 0 ? `
+                <div class="mcp-env-vars">
+                    <strong style="font-size: 12px;">Environment Variables:</strong>
+                    ${Object.entries(config.env).map(([key, value]) => `
+                        <div class="mcp-env-var">• <code>${key}</code> = <code>${value}</code></div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            </div>
+        `).join('')}
     </div>
     ` : ''}
 
@@ -737,6 +815,108 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         .tag-item.hidden {
             display: none;
+        }
+
+        /* Source selector styles (mirror of tag selector) */
+        .source-selector {
+            position: relative;
+            display: inline-block;
+        }
+
+        .source-selector-btn {
+            padding: 4px 8px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: pointer;
+            min-width: 140px;
+            max-width: 240px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .source-selector-btn:hover {
+            background: var(--vscode-dropdown-listBackground);
+        }
+
+        .source-selector-btn:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        .source-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: var(--vscode-dropdown-background);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 3px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 240px;
+            max-width: 320px;
+        }
+
+        .source-search-container {
+            padding: 8px;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+        }
+
+        .source-search {
+            width: 100%;
+            padding: 4px 8px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+
+        .source-search:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+
+        .source-list {
+            max-height: 240px;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .source-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        .source-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .source-item input[type="radio"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .source-item.hidden {
+            display: none;
+        }
+
+        .source-item.active {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
         }
 
         /* Installed checkbox filter */
@@ -1004,10 +1184,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <input type="text" class="search-box" id="searchBox" placeholder="Search bundles...">
         
         <div class="filter-group">
-            <label for="sourceFilter" class="filter-label">Source:</label>
-            <select id="sourceFilter" class="filter-select">
-                <option value="all">All Sources ▾</option>
-            </select>
+            <label class="filter-label">Source:</label>
+            <div class="source-selector">
+                <button class="source-selector-btn" id="sourceSelectorBtn">
+                    <span id="sourceSelectorText">All Sources</span>
+                    <span class="dropdown-arrow">▾</span>
+                </button>
+                <div class="source-dropdown" id="sourceDropdown" style="display: none;">
+                    <div class="source-search-container">
+                        <input type="text" class="source-search" id="sourceSearch" placeholder="Search sources...">
+                    </div>
+                    <div class="source-list" id="sourceList">
+                        <div class="source-item active" data-source="all">
+                            <input type="radio" name="source" id="source-all" value="all" checked>
+                            <label for="source-all">All Sources</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div class="filter-group">
@@ -1066,16 +1260,54 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         // Update filter dropdowns with dynamic data
         function updateFilterUI() {
-            const sourceFilter = document.getElementById('sourceFilter');
+            const sourceList = document.getElementById('sourceList');
             const tagList = document.getElementById('tagList');
 
-            // Populate source dropdown
-            sourceFilter.innerHTML = '<option value="all">All Sources ▾</option>';
+            // Populate source dropdown with radio buttons
+            sourceList.innerHTML = '';
+            
+            // Add "All Sources" option
+            const allItem = document.createElement('div');
+            allItem.className = 'source-item' + (selectedSource === 'all' ? ' active' : '');
+            allItem.dataset.source = 'all';
+            allItem.innerHTML = \`
+                <input type="radio" name="source" id="source-all" value="all" \${selectedSource === 'all' ? 'checked' : ''}>
+                <label for="source-all">All Sources</label>
+            \`;
+            sourceList.appendChild(allItem);
+            
+            // Add source options
             filterOptions.sources.forEach(source => {
-                const option = document.createElement('option');
-                option.value = source.id;
-                option.textContent = \`\${source.name} (\${source.bundleCount})\`;
-                sourceFilter.appendChild(option);
+                const sourceItem = document.createElement('div');
+                sourceItem.className = 'source-item' + (selectedSource === source.id ? ' active' : '');
+                sourceItem.dataset.source = source.id;
+                sourceItem.innerHTML = \`
+                    <input type="radio" name="source" id="source-\${source.id}" value="\${source.id}" \${selectedSource === source.id ? 'checked' : ''}>
+                    <label for="source-\${source.id}">\${source.name} (\${source.bundleCount})</label>
+                \`;
+                sourceList.appendChild(sourceItem);
+                
+                // Add click handler
+                sourceItem.addEventListener('click', () => {
+                    document.querySelectorAll('.source-item').forEach(i => i.classList.remove('active'));
+                    sourceItem.classList.add('active');
+                    selectedSource = source.id;
+                    document.getElementById('sourceSelectorText').textContent = \`\${source.name} (\${source.bundleCount})\`;
+                    sourceItem.querySelector('input[type="radio"]').checked = true;
+                    document.getElementById('sourceDropdown').style.display = 'none';
+                    renderBundles();
+                });
+            });
+            
+            // Add click handler for "All Sources"
+            allItem.addEventListener('click', () => {
+                document.querySelectorAll('.source-item').forEach(i => i.classList.remove('active'));
+                allItem.classList.add('active');
+                selectedSource = 'all';
+                document.getElementById('sourceSelectorText').textContent = 'All Sources';
+                allItem.querySelector('input[type="radio"]').checked = true;
+                document.getElementById('sourceDropdown').style.display = 'none';
+                renderBundles();
             });
 
             // Populate tag list with checkboxes
@@ -1171,10 +1403,65 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             renderBundles();
         });
 
-        // Source filter change
-        document.getElementById('sourceFilter').addEventListener('change', (e) => {
-            selectedSource = e.target.value;
-            renderBundles();
+        // Source selector button click
+        document.getElementById('sourceSelectorBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const dropdown = document.getElementById('sourceDropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            
+            if (dropdown.style.display === 'block') {
+                document.getElementById('sourceSearch').focus();
+            }
+        });
+
+        // Close source dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const sourceSelector = document.querySelector('.source-selector');
+            const dropdown = document.getElementById('sourceDropdown');
+            
+            if (sourceSelector && !sourceSelector.contains(e.target) && dropdown && dropdown.style.display === 'block') {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Source search functionality
+        document.getElementById('sourceSearch').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const sourceItems = document.querySelectorAll('.source-item');
+            
+            sourceItems.forEach(item => {
+                const sourceName = item.dataset.source.toLowerCase();
+                if (sourceName.includes(searchTerm)) {
+                    item.classList.remove('hidden');
+                } else {
+                    item.classList.add('hidden');
+                }
+            });
+        });
+
+        // Source item selection
+        document.querySelectorAll('.source-item').forEach(item => {
+            item.addEventListener('click', () => {
+                // Update selection
+                document.querySelectorAll('.source-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Update selected source
+                selectedSource = item.dataset.source;
+                
+                // Update button text
+                const label = item.querySelector('label').textContent;
+                document.getElementById('sourceSelectorText').textContent = label;
+                
+                // Check radio button
+                item.querySelector('input[type="radio"]').checked = true;
+                
+                // Close dropdown
+                document.getElementById('sourceDropdown').style.display = 'none';
+                
+                // Re-render bundles
+                renderBundles();
+            });
         });
 
         // Installed filter checkbox
@@ -1196,9 +1483,20 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         // Clear filters button
         document.getElementById('clearFiltersBtn').addEventListener('click', () => {
             document.getElementById('searchBox').value = '';
-            document.getElementById('sourceFilter').value = 'all';
+            document.getElementById('sourceSearch').value = '';
             document.getElementById('tagSearch').value = '';
             document.getElementById('installedCheckbox').checked = false;
+            
+            // Reset source selector
+            selectedSource = 'all';
+            document.getElementById('sourceSelectorText').textContent = 'All Sources';
+            document.querySelectorAll('.source-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.source === 'all') {
+                    item.classList.add('active');
+                    item.querySelector('input[type="radio"]').checked = true;
+                }
+            });
             
             // Uncheck all tag checkboxes
             const checkboxes = document.querySelectorAll('#tagList input[type="checkbox"]');
