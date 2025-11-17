@@ -11,6 +11,7 @@ import { GitLabAdapter } from '../adapters/GitLabAdapter';
 import { HttpAdapter } from '../adapters/HttpAdapter';
 import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
+import { OlafCompetenciesAdapter } from '../adapters/OlafCompetenciesAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import {
     RegistrySource,
@@ -63,6 +64,7 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('http', HttpAdapter);
         RepositoryAdapterFactory.register('local', LocalAdapter);
         RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
+        RepositoryAdapterFactory.register('olaf-competencies', OlafCompetenciesAdapter);
     }
 
     /**

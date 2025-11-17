@@ -51,10 +51,16 @@ export class SourceCommands {
                         description: 'GitHub repository with .collection.yml files',
                         value: 'awesome-copilot' as SourceType
                     },
+                    {
+                        label: '$(extensions) OLAF Competencies (native)',
+                        description: 'Git repo with olaf-core/competencies',
+                        value: 'olaf-competencies' as SourceType
+                    },
                 ],
                 {
                     placeHolder: 'Select source type',
-                    title: 'Add Registry Source'
+                    title: 'Add Registry Source',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -66,6 +72,7 @@ export class SourceCommands {
             const name = await vscode.window.showInputBox({
                 prompt: 'Enter source name',
                 placeHolder: 'e.g., Company Prompt Library',
+                ignoreFocusOut: true,
                 validateInput: (value) => {
                     if (!value || value.trim().length === 0) {
                         return 'Source name is required';
@@ -84,24 +91,52 @@ export class SourceCommands {
                 return;
             }
 
-            // Step 3.5: Get additional config for awesome-copilot
+            // Step 3.5: Get additional config for awesome-copilot / olaf-competencies
             let config: any = undefined;
             if (sourceType.value === 'awesome-copilot') {
                 const branch = await vscode.window.showInputBox({
                     prompt: 'Enter branch name (or press Enter for "main")',
                     placeHolder: 'main',
-                    value: 'main'
+                    value: 'main',
+                    ignoreFocusOut: true
                 });
 
                 const collectionsPath = await vscode.window.showInputBox({
                     prompt: 'Enter collections directory path (or press Enter for "collections")',
                     placeHolder: 'collections',
-                    value: 'collections'
+                    value: 'collections',
+                    ignoreFocusOut: true
                 });
 
                 config = {
                     branch: branch || 'main',
                     collectionsPath: collectionsPath || 'collections'
+                };
+            } else if (sourceType.value === 'olaf-competencies') {
+                const branch = await vscode.window.showInputBox({
+                    prompt: 'Enter branch name (or press Enter for "main")',
+                    placeHolder: 'main',
+                    value: 'main',
+                    ignoreFocusOut: true
+                });
+
+                const basePath = await vscode.window.showInputBox({
+                    prompt: 'Enter competencies base path',
+                    placeHolder: 'olaf-core/competencies',
+                    value: 'olaf-core/competencies',
+                    ignoreFocusOut: true
+                });
+
+                const collectionFilter = await vscode.window.showInputBox({
+                    prompt: 'Optional domain filter (e.g., developer). Leave empty for all',
+                    placeHolder: 'developer',
+                    ignoreFocusOut: true
+                });
+
+                config = {
+                    branch: branch || 'main',
+                    basePath: basePath || 'olaf-core/competencies',
+                    collectionFilter: collectionFilter || ''
                 };
             }
 
@@ -113,7 +148,8 @@ export class SourceCommands {
                 ],
                 {
                     placeHolder: 'Is this source private?',
-                    title: 'Source Access'
+                    title: 'Source Access',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -122,7 +158,8 @@ export class SourceCommands {
                 token = await vscode.window.showInputBox({
                     prompt: 'Enter access token (optional - can be configured later)',
                     password: true,
-                    placeHolder: 'Leave empty to configure later'
+                    placeHolder: 'Leave empty to configure later',
+                    ignoreFocusOut: true
                 });
             }
 
@@ -130,6 +167,7 @@ export class SourceCommands {
             const priority = await vscode.window.showInputBox({
                 prompt: 'Enter priority (1 = highest)',
                 value: '10',
+                ignoreFocusOut: true,
                 validateInput: (value) => {
                     const num = parseInt(value, 10);
                     if (isNaN(num) || num < 1) {
@@ -543,6 +581,7 @@ export class SourceCommands {
                 return await vscode.window.showInputBox({
                     prompt: 'Enter GitHub repository URL',
                     placeHolder: 'https://github.com/owner/repo',
+                    ignoreFocusOut: true,
                     validateInput: (value) => {
                         if (!value || !value.match(/github\.com/)) {
                             return 'Please enter a valid GitHub URL';
@@ -555,6 +594,7 @@ export class SourceCommands {
                 return await vscode.window.showInputBox({
                     prompt: 'Enter GitLab repository URL',
                     placeHolder: 'https://gitlab.com/owner/repo',
+                    ignoreFocusOut: true,
                     validateInput: (value) => {
                         if (!value || value.trim().length === 0) {
                             return 'URL is required';
@@ -567,6 +607,7 @@ export class SourceCommands {
                 return await vscode.window.showInputBox({
                     prompt: 'Enter HTTP registry URL',
                     placeHolder: 'https://registry.example.com',
+                    ignoreFocusOut: true,
                     validateInput: (value) => {
                         if (!value || !value.match(/^https?:\/\//)) {
                             return 'Please enter a valid HTTP/HTTPS URL';
@@ -591,6 +632,20 @@ export class SourceCommands {
                     prompt: 'Enter GitHub repository URL (or press Enter for official awesome-copilot)',
                     placeHolder: 'https://github.com/github/awesome-copilot',
                     value: 'https://github.com/github/awesome-copilot',
+                    ignoreFocusOut: true,
+                    validateInput: (value) => {
+                        if (!value || !value.match(/github\.com/)) {
+                            return 'Please enter a valid GitHub URL';
+                        }
+                        return undefined;
+                    }
+                });
+
+            case 'olaf-competencies':
+                return await vscode.window.showInputBox({
+                    prompt: 'Enter GitHub repository URL containing olaf-core/competencies',
+                    placeHolder: 'https://github.com/owner/repo',
+                    ignoreFocusOut: true,
                     validateInput: (value) => {
                         if (!value || !value.match(/github\.com/)) {
                             return 'Please enter a valid GitHub URL';

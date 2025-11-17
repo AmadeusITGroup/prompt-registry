@@ -6,6 +6,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as https from 'https';
 import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle } from '../types/registry';
@@ -199,6 +200,16 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Installing bundle from marketplace: ${bundleId}`);
 
+            // If bundle belongs to OLAF native source, stub the action (M2)
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = bundle ? sources.find(s => s.id === bundle.sourceId) : undefined;
+            if (source?.type === 'olaf-competencies') {
+                vscode.window.showInformationMessage('OLAF competencies use native sync. Install is stubbed for now. Use Source Actions → Sync to refresh.');
+                return;
+            }
+
             // Use RegistryManager to install
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -228,6 +239,16 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     private async handleUninstall(bundleId: string): Promise<void> {
         try {
             this.logger.info(`Uninstalling bundle from marketplace: ${bundleId}`);
+
+            // If bundle belongs to OLAF native source, stub the action (M2)
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = bundle ? sources.find(s => s.id === bundle.sourceId) : undefined;
+            if (source?.type === 'olaf-competencies') {
+                vscode.window.showInformationMessage('OLAF competencies uninstall is stubbed. Use Unsync from Source/Explorer when native sync is available.');
+                return;
+            }
 
             await this.registryManager.uninstallBundle(bundleId, 'user');
 
@@ -263,6 +284,21 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const installed = installedBundles.find(ib => ib.bundleId === bundleId);
             const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
+            // If this is an OLAF competency, try to fetch manifest JSON to display entry_points
+            let olafEntryPoints: Array<{ name: string; command: string; file: string; protocol: string }> | undefined;
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            if (source?.type === 'olaf-competencies' && bundle.manifestUrl) {
+                try {
+                    const manifest = await this.fetchJson<any>(bundle.manifestUrl);
+                    if (manifest && Array.isArray(manifest.entry_points)) {
+                        olafEntryPoints = manifest.entry_points;
+                    }
+                } catch (e) {
+                    this.logger.warn('Failed to load OLAF manifest for details', e as Error);
+                }
+            }
+
             // Create webview panel
             const panel = vscode.window.createWebviewPanel(
                 'bundleDetails',
@@ -274,7 +310,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             );
 
             // Set HTML content
-            panel.webview.html = this.getBundleDetailsHtml(bundle, installed, breakdown);
+            panel.webview.html = this.getBundleDetailsHtml(bundle, installed, breakdown, olafEntryPoints);
 
             // Handle messages from the details panel
             panel.webview.onDidReceiveMessage(
@@ -296,7 +332,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Get HTML for bundle details panel
      */
-    private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: any): string {
+    private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: any, olafEntryPoints?: Array<{ name: string; command: string; file: string; protocol: string }>): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
         // Escape backslashes and quotes for safe embedding in HTML onclick attributes
@@ -535,8 +571,49 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         </div>
     </div>
     ` : ''}
+
+    ${olafEntryPoints && olafEntryPoints.length > 0 ? `
+    <div class="section">
+        <h2>🚀 Entry Points</h2>
+        <div class="info-grid">
+            ${olafEntryPoints.map(ep => `
+                <div class="info-row">
+                    <div class="info-label">${ep.name}:</div>
+                    <div class="info-value">
+                        <code>${ep.command}</code> → <em>${ep.protocol}</em>
+                        ${ep.file ? `<div style="color: var(--vscode-descriptionForeground);">file: ${ep.file}</div>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+    ` : ''}
 </body>
 </html>`;
+    }
+
+    private async fetchJson<T>(url: string): Promise<T> {
+        return await new Promise<T>((resolve, reject) => {
+            const req = https.request(url, { method: 'GET', headers: { 'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0', 'Accept': 'application/json' } }, (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (d) => chunks.push(d));
+                res.on('end', () => {
+                    const status = res.statusCode || 0;
+                    const body = Buffer.concat(chunks).toString('utf8');
+                    if (status >= 200 && status < 300) {
+                        try {
+                            resolve(JSON.parse(body));
+                        } catch (e) {
+                            reject(new Error(`Invalid JSON from ${url}`));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${status} for ${url}`));
+                    }
+                });
+            });
+            req.on('error', reject);
+            req.end();
+        });
     }
 
     /**

@@ -5,7 +5,7 @@
 /**
  * Registry source types
  */
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot';
+export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot' | 'olaf-competencies';
 
 /**
  * Installation scope

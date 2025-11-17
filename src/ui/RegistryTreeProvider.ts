@@ -4,6 +4,7 @@
  */
 
 import * as vscode from 'vscode';
+import * as https from 'https';
 import { RegistryManager } from '../services/RegistryManager';
 import { RegistrySource, Profile, Bundle, InstalledBundle } from '../types/registry';
 import { Logger } from '../utils/logger';
@@ -39,6 +40,10 @@ export enum TreeItemType {
 
     // Bundle items
     BUNDLE = 'bundle',
+
+    // OLAF items
+    OLAF_DOMAIN = 'olaf_domain',
+    OLAF_ENTRY = 'olaf_entry',
 }
 
 /**
@@ -92,6 +97,8 @@ export class RegistryTreeItem extends vscode.TreeItem {
             
             [TreeItemType.SETTINGS_ROOT]: 'settings-gear',
             [TreeItemType.BUNDLE]: 'file-zip',
+            [TreeItemType.OLAF_DOMAIN]: 'folder',
+            [TreeItemType.OLAF_ENTRY]: 'play',
         };
 
         const iconId = iconMap[this.type];
@@ -276,6 +283,10 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             
             case TreeItemType.SOURCES_ROOT:
                 return this.getSourceItems();
+            case TreeItemType.SOURCE:
+                return this.getSourceChildren(element.data as RegistrySource);
+            case TreeItemType.OLAF_DOMAIN:
+                return this.getOlafEntryPointItems((element.data as any).bundle);
             
             default:
                 return [];
@@ -494,7 +505,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                         `${status} ${source.name}`,
                         TreeItemType.SOURCE,
                         source,
-                        vscode.TreeItemCollapsibleState.None
+                        source.type === 'olaf-competencies' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
                     )
                 );
             }
@@ -514,5 +525,78 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             this.logger.error('Failed to load sources', error as Error);
             return [];
         }
+    }
+
+    private async getSourceChildren(source: RegistrySource): Promise<RegistryTreeItem[]> {
+        if (source.type !== 'olaf-competencies') {
+            return [];
+        }
+        try {
+            const bundles = await this.registryManager.searchBundles({ sourceId: source.id });
+            const items: RegistryTreeItem[] = [];
+            for (const bundle of bundles) {
+                items.push(
+                    new RegistryTreeItem(
+                        `📁 ${bundle.name}`,
+                        TreeItemType.OLAF_DOMAIN,
+                        { source, bundle },
+                        vscode.TreeItemCollapsibleState.Collapsed
+                    )
+                );
+            }
+            return items;
+        } catch (error) {
+            this.logger.error('Failed to load OLAF domains', error as Error);
+            return [];
+        }
+    }
+
+    private async getOlafEntryPointItems(bundle: Bundle): Promise<RegistryTreeItem[]> {
+        try {
+            if (!bundle.manifestUrl) {
+                return [];
+            }
+            const manifest = await this.fetchJson<any>(bundle.manifestUrl);
+            const eps = Array.isArray(manifest?.entry_points) ? manifest.entry_points : [];
+            const items: RegistryTreeItem[] = [];
+            for (const ep of eps) {
+                const label = `${ep.name} (${ep.protocol})`;
+                const item = new RegistryTreeItem(
+                    label,
+                    TreeItemType.OLAF_ENTRY,
+                    { bundle, entry: ep },
+                    vscode.TreeItemCollapsibleState.None
+                );
+                items.push(item);
+            }
+            return items;
+        } catch (error) {
+            this.logger.warn('Failed to load OLAF entry points', error as Error);
+            return [];
+        }
+    }
+
+    private async fetchJson<T>(url: string): Promise<T> {
+        return await new Promise<T>((resolve, reject) => {
+            const req = https.request(url, { method: 'GET', headers: { 'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0', 'Accept': 'application/json' } }, (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (d) => chunks.push(d));
+                res.on('end', () => {
+                    const status = res.statusCode || 0;
+                    const body = Buffer.concat(chunks).toString('utf8');
+                    if (status >= 200 && status < 300) {
+                        try {
+                            resolve(JSON.parse(body));
+                        } catch (e) {
+                            reject(new Error(`Invalid JSON from ${url}`));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${status} for ${url}`));
+                    }
+                });
+            });
+            req.on('error', reject);
+            req.end();
+        });
     }
 }
