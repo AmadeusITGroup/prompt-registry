@@ -30,6 +30,7 @@ export interface RegistrySource {
     priority: number;
     private?: boolean;
     token?: string;  // Environment variable or secure storage key
+    hubId?: string;  // Hub identifier if this source is from a curated hub
     metadata?: {
         description?: string;
         homepage?: string;
@@ -59,6 +60,8 @@ export interface Bundle {
     license: string;
     manifestUrl: string;
     downloadUrl: string;
+    isCurated?: boolean;  // True if bundle is from a curated hub
+    hubName?: string;  // Name of the curated hub
     checksum?: {
         algorithm: string;
         hash: string;
@@ -111,6 +114,7 @@ export interface Profile {
 export interface ProfileBundle {
     id: string;
     version: string;  // Semantic version or 'latest'
+    sourceId?: string;  // Optional source identifier for disambiguation
     required: boolean;
 }
 
@@ -228,6 +232,8 @@ export interface DeploymentManifest {
             environment_bundle: string;
             full_bundle?: string;
         };
+    isCurated?: boolean;  // True if bundle is from a curated hub
+    hubName?: string;  // Name of the curated hub
         checksum?: {
             enabled: boolean;
             algorithms: string[];

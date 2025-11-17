@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/wherka/prompt-registry/schemas/hub-config.schema.json",
+  "title": "Hub Configuration Schema",
+  "description": "JSON Schema for Prompt Registry hub configuration files",
+  "type": "object",
+  "required": ["version", "metadata", "sources"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the hub configuration format",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Hub metadata and descriptive information",
+      "required": ["name", "description", "maintainer", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the hub",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the hub's purpose and content",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "maintainer": {
+          "type": "string",
+          "description": "Name or identifier of the hub maintainer",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of last update",
+          "format": "date-time"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Optional integrity checksum for the hub configuration",
+          "pattern": "^(sha256|sha512):[a-f0-9]+$"
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "List of bundle sources available in this hub",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "enabled", "priority"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the source",
+            "pattern": "^[a-zA-Z0-9-_]+$",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of the source repository",
+            "enum": ["github", "local", "url"]
+          },
+          "url": {
+            "type": "string",
+            "description": "URL or path to the source (optional if repository is specified)"
+          },
+          "repository": {
+            "type": "string",
+            "description": "GitHub repository in owner/repo format"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch name"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the source"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this source is currently active"
+          },
+          "priority": {
+            "type": "number",
+            "description": "Priority order for source resolution (higher = higher priority)",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "description": "Predefined bundle profiles/collections",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "bundles"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the profile",
+            "pattern": "^[a-zA-Z0-9-_]+$",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the profile",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the profile's purpose",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "icon": {
+            "type": "string",
+            "description": "Optional icon/emoji for the profile"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether this profile is currently active"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp of creation",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp of last update",
+            "format": "date-time"
+          },
+          "bundles": {
+            "type": "array",
+            "description": "List of bundles included in this profile",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "version", "source", "required"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Bundle identifier",
+                  "pattern": "^[a-zA-Z0-9-_]+$",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "version": {
+                  "type": "string",
+                  "description": "Bundle version (semver or 'latest')",
+                  "pattern": "^(\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?|latest)$"
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Source ID where this bundle is available",
+                  "pattern": "^[a-zA-Z0-9-_]+$",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "required": {
+                  "type": "boolean",
+                  "description": "Whether this bundle is mandatory for the profile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Optional hub-level configuration settings",
+      "additionalProperties": true,
+      "properties": {
+        "autoSync": {
+          "type": "boolean",
+          "description": "Enable automatic synchronization with hub sources"
+        },
+        "syncInterval": {
+          "type": "number",
+          "description": "Sync interval in seconds",
+          "minimum": 60,
+          "maximum": 86400
+        },
+        "strictMode": {
+          "type": "boolean",
+          "description": "Enable strict validation and security checks"
+        }
+      }
+    }
+  }
+}

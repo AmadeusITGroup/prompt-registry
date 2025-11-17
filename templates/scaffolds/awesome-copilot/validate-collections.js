@@ -5,6 +5,11 @@
  * Standalone script to validate awesome-copilot collection files.
  * Can be run locally or in CI/CD pipelines.
  * 
+ * Validation logic matches VS Code extension for consistency:
+ * - Schema validation (required fields, types, formats)
+ * - File reference checking
+ * - Tag limits and formatting
+ * 
  * Attribution: Inspired by github/awesome-copilot
  * https://github.com/github/awesome-copilot
  */
@@ -23,7 +28,7 @@ const colors = {
     bold: '\x1b[1m'
 };
 
-// Validation constants
+// Validation constants (match VS Code extension)
 const VALID_KINDS = ['prompt', 'instruction', 'chat-mode', 'agent'];
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_TAGS = 10;
@@ -33,8 +38,13 @@ const ID_PATTERN = /^[a-z0-9-]+$/;
 
 /**
  * Validate a single collection file
+ * 
+ * @param {string} filePath - Path to collection file
+ * @param {string} projectRoot - Project root for resolving references
+ * @param {boolean} checkRefs - Whether to validate file references exist
+ * @returns {object} Validation result
  */
-function validateCollection(filePath, projectRoot) {
+function validateCollection(filePath, projectRoot, checkRefs = true) {
     const errors = [];
     const warnings = [];
     const fileName = path.basename(filePath);
@@ -54,7 +64,7 @@ function validateCollection(filePath, projectRoot) {
             };
         }
 
-        if (!collection) {
+        if (!collection || typeof collection !== 'object') {
             return {
                 valid: false,
                 errors: [{ file: fileName, message: 'Empty or invalid YAML file' }],
@@ -62,7 +72,7 @@ function validateCollection(filePath, projectRoot) {
             };
         }
 
-        // Validate required fields
+        // REQUIRED FIELDS VALIDATION (matches JSON schema)
         if (!collection.id) {
             errors.push({ file: fileName, message: 'Missing required field: id' });
         }
@@ -76,7 +86,7 @@ function validateCollection(filePath, projectRoot) {
             errors.push({ file: fileName, message: 'Missing or invalid field: items (must be an array)' });
         }
 
-        // Validate ID format
+        // ID FORMAT VALIDATION
         if (collection.id && !ID_PATTERN.test(collection.id)) {
             errors.push({
                 file: fileName,
@@ -84,7 +94,7 @@ function validateCollection(filePath, projectRoot) {
             });
         }
 
-        // Validate description length
+        // DESCRIPTION LENGTH VALIDATION
         if (collection.description && collection.description.length > MAX_DESCRIPTION_LENGTH) {
             warnings.push({
                 file: fileName,
@@ -92,7 +102,7 @@ function validateCollection(filePath, projectRoot) {
             });
         }
 
-        // Validate items
+        // ITEMS VALIDATION
         if (collection.items && Array.isArray(collection.items)) {
             if (collection.items.length === 0) {
                 warnings.push({ file: fileName, message: 'Collection has no items' });
@@ -108,11 +118,12 @@ function validateCollection(filePath, projectRoot) {
             collection.items.forEach((item, index) => {
                 const itemNumber = index + 1;
 
+                // Required item fields
                 if (!item.path) {
-                    errors.push({ file: fileName, message: `Item ${itemNumber}: Missing 'path' field` });
+                    errors.push({ file: fileName, message: `Item ${itemNumber}: Missing required field 'path'` });
                 }
                 if (!item.kind) {
-                    errors.push({ file: fileName, message: `Item ${itemNumber}: Missing 'kind' field` });
+                    errors.push({ file: fileName, message: `Item ${itemNumber}: Missing required field 'kind'` });
                 } else if (!VALID_KINDS.includes(item.kind)) {
                     errors.push({
                         file: fileName,
@@ -120,8 +131,8 @@ function validateCollection(filePath, projectRoot) {
                     });
                 }
 
-                // Validate file exists
-                if (item.path) {
+                // FILE REFERENCE VALIDATION (when enabled)
+                if (checkRefs && item.path) {
                     const itemPath = path.join(projectRoot, item.path);
                     if (!fs.existsSync(itemPath)) {
                         errors.push({
@@ -133,7 +144,7 @@ function validateCollection(filePath, projectRoot) {
             });
         }
 
-        // Validate tags
+        // TAGS VALIDATION
         if (collection.tags) {
             if (!Array.isArray(collection.tags)) {
                 errors.push({ file: fileName, message: 'Tags must be an array' });
@@ -182,6 +193,14 @@ function main() {
     console.log(`${colors.cyan}Attribution: Inspired by github/awesome-copilot${colors.reset}`);
     console.log(`${colors.cyan}https://github.com/github/awesome-copilot${colors.reset}\n`);
 
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    const skipRefs = args.includes('--skip-refs') || args.includes('--no-check-refs');
+
+    if (skipRefs) {
+        console.log(`${colors.yellow}⚠️  File reference checking disabled${colors.reset}\n`);
+    }
+
     // Find collections directory
     const projectRoot = process.cwd();
     const collectionsDir = path.join(projectRoot, 'collections');
@@ -210,7 +229,7 @@ function main() {
     // Validate each collection
     for (const file of files) {
         const filePath = path.join(collectionsDir, file);
-        const result = validateCollection(filePath, projectRoot);
+        const result = validateCollection(filePath, projectRoot, !skipRefs);
 
         console.log(`Validating: ${colors.bold}${file}${colors.reset}`);
 

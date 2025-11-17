@@ -50,8 +50,10 @@ export class BundleInstaller {
         try {
             // Check if this is a local bundle (file:// URL)
             const isLocalBundle = downloadUrl.startsWith('file://');
-            this.logger.debug(`Bundle type: ${isLocalBundle ? 'local' : 'remote'}`);
-
+            // Check if this is an awesome-copilot YAML collection (not a zip)
+            const isAwesomeCopilotCollection = bundle.sourceId?.includes('awesome-copilot');
+            this.logger.debug(`Bundle type: ${isLocalBundle ? 'local' : isAwesomeCopilotCollection ? 'awesome-copilot-collection' : 'remote'}`);
+            
             let extractDir: string;
             let tempDir: string | null = null;
 
@@ -59,6 +61,20 @@ export class BundleInstaller {
                 // Local bundle: use the directory directly
                 extractDir = downloadUrl.replace('file://', '');
                 this.logger.debug(`Using local bundle directory: ${extractDir}`);
+            } else if (isAwesomeCopilotCollection) {
+                // Awesome Copilot collection: download YAML and create structure
+                // Step 1: Create temp directory
+                tempDir = await this.createTempDir();
+                this.logger.debug(`Created temp directory for collection: ${tempDir}`);
+
+                // Step 2: Download collection YAML file
+                const collectionFile = path.join(tempDir, `${bundle.id}.collection.yml`);
+                await this.downloadFile(downloadUrl, collectionFile);
+                this.logger.debug(`Downloaded collection to: ${collectionFile}`);
+
+                // Step 3: Use temp directory as extract dir (no extraction needed)
+                extractDir = tempDir;
+                this.logger.debug(`Using collection directory: ${extractDir}`);
             } else {
                 // Remote bundle: download and extract
                 // Step 1: Create temp directory
@@ -101,6 +117,7 @@ export class BundleInstaller {
                 version: bundle.version,
                 installedAt: new Date().toISOString(),
                 scope: options.scope,
+                profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
             };
@@ -175,15 +192,19 @@ export class BundleInstaller {
                 version: bundle.version,
                 installedAt: new Date().toISOString(),
                 scope: options.scope,
+                profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
             };
 
-            // Step 9: Sync to GitHub Copilot native directory
+            
             // Step 10: Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
+            
+            // Step 9: Sync to GitHub Copilot native directory
             await this.copilotSync.syncBundle(bundle.id, installDir);
+
             // Step 10: Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
@@ -336,7 +357,31 @@ export class BundleInstaller {
         const manifestPath = path.join(extractDir, 'deployment-manifest.yml');
         
         if (!fs.existsSync(manifestPath)) {
-            throw new Error('Bundle missing deployment-manifest.yml');
+            // For local bundles (like awesome-copilot), deployment-manifest.yml is optional
+            // Create a minimal manifest from the bundle info
+            this.logger.info(`No deployment-manifest.yml found for ${bundle.id}, creating minimal manifest`);
+            return {
+                common: {
+                    directories: [],
+                    files: [],
+                    include_patterns: ['**/*'],
+                    exclude_patterns: []
+                },
+                bundle_settings: {
+                    include_common_in_environment_bundles: true,
+                    create_common_bundle: true,
+                    compression: 'none' as any,
+                    naming: {
+                        environment_bundle: bundle.id
+                    }
+                },
+                metadata: {
+                    manifest_version: '1.0',
+                    description: bundle.description || bundle.name || bundle.id,
+                    author: 'awesome-copilot',
+                    last_updated: new Date().toISOString()
+                }
+            } as DeploymentManifest;
         }
 
         this.logger.debug(`Validating manifest: ${manifestPath}`);
