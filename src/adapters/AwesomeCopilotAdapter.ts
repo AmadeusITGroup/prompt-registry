@@ -39,12 +39,18 @@ interface CollectionManifest {
     id: string;
     name: string;
     description: string;
+    version?: string;
+    author?: string;
     tags?: string[];
     items: CollectionItem[];
     display?: {
         ordering?: string;
         show_badge?: boolean;
     };
+    mcp?: {
+        items?: Record<string, any>;
+    };
+    mcpServers?: Record<string, any>;
 }
 
 interface CollectionItem {
@@ -323,9 +329,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             const bundle: Bundle = {
                 id: collection.id,
                 name: collection.name,
-                version: '1.0.0',
+                version: collection.version || '1.0.0',
                 description: collection.description,
-                author: this.extractRepoOwner(),
+                author: collection.author || this.extractRepoOwner(),
                 repository: this.source.url,
                 tags: collection.tags || [],
                 environments: this.inferEnvironments(collection.tags || []),
@@ -433,16 +439,20 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             };
         });
 
+        // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
+        const mcpServers = collection.mcpServers || collection.mcp?.items;
+        
         return {
             id: collection.id,
             name: collection.name,
-            version: '1.0.0',
+            version: collection.version || '1.0.0',
             description: collection.description,
-            author: this.extractRepoOwner(),
+            author: collection.author || this.extractRepoOwner(),
             repository: this.source.url,
             license: 'MIT',
             tags: collection.tags || [],
-            prompts
+            prompts,
+            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
         };
     }
 
@@ -572,7 +582,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         // Try VSCode GitHub authentication first
         try {
             this.logger.debug('[AwesomeCopilotAdapter] Trying VSCode GitHub authentication...');
-            const session = await vscode.authentication.getSession('github', ['repo'], { silent: true });
+            const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
             if (session) {
                 this.authToken = session.accessToken;
                 this.authMethod = 'vscode';

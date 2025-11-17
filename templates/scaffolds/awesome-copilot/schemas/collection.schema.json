@@ -65,6 +65,57 @@
         "additionalProperties": false
       }
     },
+    "mcp": {
+      "type": "object",
+      "description": "Model Context Protocol (MCP) server configurations to be installed with this collection",
+      "properties": {
+        "items": {
+          "type": "object",
+          "description": "MCP servers to install (follows mcp.json spec)",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "type": "object",
+              "description": "MCP server configuration",
+              "required": ["command"],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Command to start the MCP server",
+                  "examples": ["node", "python", "npx"]
+                },
+                "args": {
+                  "type": "array",
+                  "description": "Arguments for the server command",
+                  "items": {
+                    "type": "string"
+                  },
+                  "examples": [
+                    ["${bundlePath}/server.js"],
+                    ["${bundlePath}/mcp_server.py"],
+                    ["${env:HOME}/.local/bin/my-mcp-server"]
+                  ]
+                },
+                "env": {
+                  "type": "object",
+                  "description": "Environment variables for the server",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "disabled": {
+                  "type": "boolean",
+                  "description": "Whether the server is disabled",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "version": {
       "type": "string",
       "description": "Version of the collection",
@@ -93,6 +144,15 @@
         "icon": {
           "type": "string",
           "description": "Icon identifier for the collection"
+        },
+        "ordering": {
+          "type": "string",
+          "description": "How to order items in the collection",
+          "enum": ["manual", "alphabetical"]
+        },
+        "show_badge": {
+          "type": "boolean",
+          "description": "Whether to show a badge for the collection"
         }
       },
       "additionalProperties": false

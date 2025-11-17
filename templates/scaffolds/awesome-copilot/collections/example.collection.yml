@@ -12,3 +12,59 @@ items:
 display:
   ordering: manual
   show_badge: true
+
+# ============================================================================
+# Optional: MCP (Model Context Protocol) Server Configuration
+# ============================================================================
+# Uncomment this section to enable MCP functionality for your collection.
+# MCP servers provide custom tools and context to GitHub Copilot.
+#
+# OPTION 1: Use existing MCP servers with npx (recommended for beginners)
+# ============================================================================
+# mcp:
+#   items:
+#     # Sequential thinking - helps AI break down complex problems
+#     sequential-thinking:
+#       command: npx
+#       args:
+#         - -y
+#         - "@modelcontextprotocol/server-sequential-thinking"
+#
+#     # Filesystem access - allows reading/writing files in a directory
+#     filesystem:
+#       command: npx
+#       args:
+#         - -y
+#         - "@modelcontextprotocol/server-filesystem"
+#         - ${env:HOME}/Documents
+#
+#     # Memory/notes server - persistent key-value storage
+#     memory:
+#       command: npx
+#       args:
+#         - -y
+#         - "@modelcontextprotocol/server-memory"
+#
+# ============================================================================
+# OPTION 2: Custom MCP server (advanced users)
+# ============================================================================
+# Create your own server in mcp-server/server.js, then uncomment:
+#
+# mcp:
+#   items:
+#     custom-server:
+#       command: node
+#       args:
+#         - ${bundlePath}/mcp-server/server.js
+#       env:
+#         LOG_LEVEL: info
+#
+# ============================================================================
+# Available variables for substitution:
+#   ${bundlePath}    - Path where this bundle is installed
+#   ${bundleId}      - This collection's ID ({{collectionId}})
+#   ${bundleVersion} - Bundle version
+#   ${env:VAR_NAME}  - Any environment variable
+#
+# See mcp-server/README.md for detailed documentation.
+# ============================================================================

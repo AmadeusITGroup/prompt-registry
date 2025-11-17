@@ -57,12 +57,18 @@ interface CollectionManifest {
     id: string;
     name: string;
     description: string;
+    version?: string;
+    author?: string;
     tags?: string[];
     items: CollectionItem[];
     display?: {
         ordering?: string;
         show_badge?: boolean;
     };
+    mcp?: {
+        items?: Record<string, any>;
+    };
+    mcpServers?: Record<string, any>;
 }
 
 interface CollectionItem {
@@ -397,9 +403,9 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             const bundle: Bundle = {
                 id: collection.id,
                 name: collection.name,
-                version: '1.0.0',
+                version: collection.version || '1.0.0',
                 description: collection.description,
-                author: 'Local Developer',
+                author: collection.author || 'Local Developer',
                 repository: this.source.url,
                 tags: collection.tags || [],
                 environments: this.inferEnvironments(collection.tags || []),
@@ -508,16 +514,20 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             };
         });
 
+        // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
+        const mcpServers = collection.mcpServers || collection.mcp?.items;
+        
         return {
             id: collection.id,
             name: collection.name,
-            version: '1.0.0',
+            version: collection.version || '1.0.0',
             description: collection.description,
-            author: 'Local Developer',
+            author: collection.author || 'Local Developer',
             repository: this.source.url,
             license: 'MIT',
             tags: collection.tags || [],
-            prompts
+            prompts,
+            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
         };
     }
 
