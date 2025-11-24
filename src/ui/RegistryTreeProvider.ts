@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { RegistryManager } from '../services/RegistryManager';
+import { HubManager } from '../services/HubManager';
 import { RegistrySource, Profile, Bundle, InstalledBundle } from '../types/registry';
 import { Logger } from '../utils/logger';
 
@@ -17,6 +18,11 @@ export enum TreeItemType {
     INSTALLED_ROOT = 'installed_root',
     DISCOVER_ROOT = 'discover_root',
     SOURCES_ROOT = 'sources_root',
+
+    // Hub items
+    HUBS_ROOT = 'hubs_root',
+    HUB = 'hub',
+    IMPORT_HUB = 'import_hub',
 
     // Profile items
     PROFILE = 'profile',
@@ -88,6 +94,9 @@ export class RegistryTreeItem extends vscode.TreeItem {
             [TreeItemType.SOURCES_ROOT]: 'radio-tower',
             [TreeItemType.SOURCE]: 'repo',
             [TreeItemType.ADD_SOURCE]: 'add',
+            [TreeItemType.HUBS_ROOT]: 'server',
+            [TreeItemType.HUB]: 'server-process',
+            [TreeItemType.IMPORT_HUB]: 'cloud-download',
             
             [TreeItemType.BUNDLE]: 'file-zip',
         };
@@ -165,8 +174,10 @@ export class RegistryTreeItem extends vscode.TreeItem {
             TreeItemType.INSTALLED_BUNDLE,
             TreeItemType.PROFILE,
             TreeItemType.SOURCE,
+            TreeItemType.HUB,
             TreeItemType.CREATE_PROFILE,
             TreeItemType.ADD_SOURCE,
+            TreeItemType.IMPORT_HUB,
             TreeItemType.DISCOVER_CATEGORY,
             TreeItemType.DISCOVER_POPULAR,
             TreeItemType.DISCOVER_RECENT,
@@ -192,6 +203,10 @@ export class RegistryTreeItem extends vscode.TreeItem {
                 return 'promptRegistry.createProfile';
             case TreeItemType.ADD_SOURCE:
                 return 'promptRegistry.addSource';
+            case TreeItemType.IMPORT_HUB:
+                return 'promptregistry.importHub';
+            case TreeItemType.HUB:
+                return 'promptregistry.listHubs';
             case TreeItemType.DISCOVER_CATEGORY:
                 return 'promptRegistry.browseByCategory';
             case TreeItemType.DISCOVER_POPULAR:
@@ -217,7 +232,10 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
     private logger: Logger;
 
-    constructor(private registryManager: RegistryManager) {
+    constructor(
+        private registryManager: RegistryManager,
+        private hubManager: HubManager
+    ) {
         this.logger = Logger.getInstance();
         
         // Listen to registry events and refresh tree
@@ -225,7 +243,15 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
         registryManager.onBundleUninstalled(() => this.refresh());
         registryManager.onBundleUpdated(() => this.refresh());
         registryManager.onProfileActivated(() => this.refresh());
+        registryManager.onProfileCreated(() => this.refresh());
+        registryManager.onProfileUpdated(() => this.refresh());
+        registryManager.onProfileDeleted(() => this.refresh());
         registryManager.onSourceAdded(() => this.refresh());
+        
+        // Listen to hub events
+        hubManager.onHubImported(() => this.refresh());
+        hubManager.onHubDeleted(() => this.refresh());
+        hubManager.onHubSynced(() => this.refresh());
         registryManager.onSourceRemoved(() => this.refresh());
     }
 
@@ -254,6 +280,9 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
         // Get children based on parent type
         switch (element.type) {
+            case TreeItemType.HUBS_ROOT:
+                return this.getHubItems();
+ 
             case TreeItemType.PROFILES_ROOT:
                 return this.getProfileItems();
             
@@ -271,7 +300,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             
             case TreeItemType.SOURCES_ROOT:
                 return this.getSourceItems();
-            
+                       
             default:
                 return [];
         }
@@ -294,15 +323,21 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                 undefined,
                 vscode.TreeItemCollapsibleState.Expanded
             ),
+            // new RegistryTreeItem(
+            //     '🔍 Discover',
+            //     TreeItemType.DISCOVER_ROOT,
+            //     undefined,
+            //     vscode.TreeItemCollapsibleState.Collapsed
+            // ),
             new RegistryTreeItem(
-                '🔍 Discover',
-                TreeItemType.DISCOVER_ROOT,
+                '📡 Sources',
+                TreeItemType.SOURCES_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Collapsed
             ),
             new RegistryTreeItem(
-                '📡 Sources',
-                TreeItemType.SOURCES_ROOT,
+                '🌐 Hubs',
+                TreeItemType.HUBS_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Collapsed
             ),
@@ -319,14 +354,19 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
             for (const profile of profiles) {
                 const icon = profile.icon || '📦';
-                items.push(
-                    new RegistryTreeItem(
-                        `${icon} ${profile.name}`,
-                        TreeItemType.PROFILE,
-                        profile,
-                        vscode.TreeItemCollapsibleState.Collapsed
-                    )
+                const treeItem = new RegistryTreeItem(
+                    `${icon} ${profile.name}`,
+                    TreeItemType.PROFILE,
+                    profile,
+                    vscode.TreeItemCollapsibleState.Collapsed
                 );
+                
+                // Set contextValue based on active state
+                if (profile.active) {
+                    treeItem.contextValue = 'profile-active';
+                }
+                
+                items.push(treeItem);
             }
 
             // Add "Create New Profile" item
@@ -504,4 +544,43 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             return [];
         }
     }
+
+    /**
+     * Get hub items for tree view
+     */
+    private async getHubItems(): Promise<RegistryTreeItem[]> {
+        try {
+            const items: RegistryTreeItem[] = [];
+            
+            // Get all hubs
+            const hubs = await this.hubManager.listHubs();
+            
+            for (const hub of hubs) {
+                items.push(
+                    new RegistryTreeItem(
+                        hub.name,
+                        TreeItemType.HUB,
+                        hub,
+                        vscode.TreeItemCollapsibleState.None
+                    )
+                );
+            }
+            
+            // Add "Import Hub" item
+            items.push(
+                new RegistryTreeItem(
+                    '➕ Import Hub...',
+                    TreeItemType.IMPORT_HUB,
+                    undefined,
+                    vscode.TreeItemCollapsibleState.None
+                )
+            );
+            
+            return items;
+        } catch (error) {
+            this.logger.error('Failed to load hubs', error as Error);
+            return [];
+        }
+    }
+
 }

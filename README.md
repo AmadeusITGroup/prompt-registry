@@ -59,14 +59,15 @@ Browse prompt bundles in a modern, tile-based interface inspired by VS Code's ex
 
 Connect to various prompt sources:
 
+*Note:* some of the flows are still experimental and may not work perfectly.
+
 | Source Type | Description | Use Case |
 |------------|-------------|----------|
 | **Awesome Copilot** | Curated community collections | Discover popular prompts |
 | **Local Awesome Copilot** | Local awesome-copilot collections | Develop/test collections locally |
 | **GitHub** | Direct from GitHub repositories | Team/project-specific prompts |
-| **GitLab** | GitLab repositories and releases | Enterprise GitLab users |
-| **HTTP** | Any HTTP/HTTPS URL | Custom hosting |
 | **Local** | File system directories | Private/offline prompts |
+
 ### 📦 Bundle Management
 
 - **Install/Uninstall**: Manage bundles through UI or commands
@@ -344,8 +345,74 @@ Sidebar → "My Profiles" → Select profile
 # See all bundles in that profile
 ```
 
----
 
+### Working with Hubs
+
+Hubs provide centralized configuration management for sources and profiles.
+
+#### Export Hub
+
+Create a hub configuration from your current sources and profiles:
+
+```bash
+Ctrl+Shift+P → "Prompt Registry: Export Hub Configuration"
+# Provide hub details:
+#   - Hub Name
+#   - Description
+#   - Maintainer Name>
+# Save as hub-config.yml
+# Commit to version control or share with your team
+```
+
+**Use Cases:**
+- Share team configurations across organization
+- Version control your prompt setup
+- Create reusable hub templates
+- Backup your current configuration
+
+
+#### Import Hub
+
+```bash
+Ctrl+Shift+P → "Prompt Registry: Import Hub"
+# Choose source type: GitHub or Local
+# Provide hub location
+```
+
+#### Browse Hub Profiles
+
+```bash
+Ctrl+Shift+P → "Prompt Registry: Browse Hub Profiles"
+# View and activate profiles from imported hubs
+```
+
+#### Sync Hub
+
+```bash
+Right-click hub in Registry Explorer → "Sync Hub"
+# Updates hub configuration and profiles
+```
+
+#### Hub Configuration
+
+Hubs use YAML format with metadata, sources, and profiles:
+>
+```yaml
+version: "1.0.0"
+metadata:
+  name: "Team Hub"
+  description: "Shared prompt configuration"
+sources:
+  - id: "team-prompts"
+    type: "github"
+    repository: "org/prompts"
+profiles:
+  - id: "backend"
+    name: "Backend Developer"
+    bundles:
+      - id: "api-design"
+        version: "latest"
+```
 
 ### Using Registry Explorer
 
@@ -420,7 +487,6 @@ Export your entire Prompt Registry configuration for backup, sharing, or migrati
 - �� **Multi-Machine** - Sync settings across workstations
 - 🔧 **Version Control** - Track configuration changes in Git
 
-Learn more in the [Settings Export/Import Guide](./docs/SETTINGS_EXPORT_IMPORT.md).
 
 ## 🔌 Supported Sources
 
@@ -430,8 +496,9 @@ Learn more in the [Settings Export/Import Guide](./docs/SETTINGS_EXPORT_IMPORT.m
 
 ```yaml
 Type: awesome-copilot
-URL: https://github.com/microsoft/prompt-bundle-spec
-Collections Path: examples
+URL: https://github.com/github/awesome-copilot
+Branch: main
+Collections Path: collections
 ```
 
 Features:
@@ -515,45 +582,6 @@ Requirements:
 - Collections directory with `.collection.yml` files
 - Each collection references prompt files
 
-### GitLab Repository
-
-**GitLab repositories and releases.**
-
-```yaml
-Type: gitlab
-URL: https://gitlab.com/owner/repo
-Branch: main
-```
-
-### HTTP/HTTPS Source
-
-**Any web-accessible ZIP bundles.**
-
-```yaml
-Type: http
-URL: https://example.com/bundles/
-```
-
-Bundles must:
-- Be ZIP files
-- Contain `deployment-manifest.yml`
-- Be accessible via HTTPS (recommended)
-
-### Local Directory
-
-**File system directories.**
-
-```yaml
-Type: local
-Path: /path/to/prompts
-```
-
-Useful for:
-- Private prompt libraries
-- Offline development
-- Testing custom bundles
-
----
 
 ## 🏗️ Architecture
 
@@ -656,31 +684,6 @@ Sources are stored in `~/.vscode/extensions/.../registry.json`:
 }
 ```
 
-### Bundle Manifest
-
-Bundles must include `deployment-manifest.yml`:
-
-```yaml
-version: "1.0"
-id: "testing-automation"
-name: "Testing & Test Automation"
-version: "1.0.0"
-description: "Comprehensive prompts for testing"
-author: "github"
-tags:
-  - testing
-  - automation
-  - qa
-
-prompts:
-  - id: "unit-tests"
-    name: "Unit Test Generator"
-    type: "prompt"
-    file: "prompts/unit-tests.prompt.md"
-    tags:
-      - unit-testing
-      - tdd
-```
 
 ---
 
@@ -725,7 +728,7 @@ prompts:
 **Solution**: Update to latest version (2.0.0+) with proper macOS support.
 
 ### Debug Mode
-
+>
 Enable debug logging:
 
 ```json

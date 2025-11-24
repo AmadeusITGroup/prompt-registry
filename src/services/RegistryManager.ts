@@ -43,6 +43,9 @@ export class RegistryManager {
     private _onBundleUninstalled = new vscode.EventEmitter<string>();
     private _onBundleUpdated = new vscode.EventEmitter<InstalledBundle>();
     private _onProfileActivated = new vscode.EventEmitter<Profile>();
+    private _onProfileCreated = new vscode.EventEmitter<Profile>();
+    private _onProfileUpdated = new vscode.EventEmitter<Profile>();
+    private _onProfileDeleted = new vscode.EventEmitter<string>();
     private _onSourceAdded = new vscode.EventEmitter<RegistrySource>();
     private _onSourceRemoved = new vscode.EventEmitter<string>();
 
@@ -51,6 +54,9 @@ export class RegistryManager {
     readonly onBundleUninstalled = this._onBundleUninstalled.event;
     readonly onBundleUpdated = this._onBundleUpdated.event;
     readonly onProfileActivated = this._onProfileActivated.event;
+    readonly onProfileCreated = this._onProfileCreated.event;
+    readonly onProfileUpdated = this._onProfileUpdated.event;
+    readonly onProfileDeleted = this._onProfileDeleted.event;
     readonly onSourceAdded = this._onSourceAdded.event;
     readonly onSourceRemoved = this._onSourceRemoved.event;
 
@@ -232,6 +238,8 @@ export class RegistryManager {
         const sourcesToSearch = query.sourceId
             ? sources.filter(s => s.id === query.sourceId)
             : sources.filter(s => s.enabled);
+        
+        this.logger.info(`Searching in ${sourcesToSearch.length} sources`);
 
         for (const source of sourcesToSearch) {
             try {
@@ -257,6 +265,7 @@ export class RegistryManager {
         if (query.text) {
             const searchText = query.text.toLowerCase();
             results = results.filter(b =>
+                b.id === query.text ||
                 b.name.toLowerCase().includes(searchText) ||
                 b.description.toLowerCase().includes(searchText)
             );
@@ -486,6 +495,7 @@ export class RegistryManager {
         };
         
         await this.storage.addProfile(fullProfile);
+        this._onProfileCreated.fire(fullProfile);
         this.logger.info(`Profile '${profile.name}' created successfully`);
         
         return fullProfile;
@@ -502,6 +512,13 @@ export class RegistryManager {
             updatedAt: new Date().toISOString(),
         });
         
+        // Get the updated profile and fire event
+        const profiles = await this.storage.getProfiles();
+        const updatedProfile = profiles.find(p => p.id === profileId);
+        if (updatedProfile) {
+            this._onProfileUpdated.fire(updatedProfile);
+        }
+        
         this.logger.info(`Profile '${profileId}' updated successfully`);
     }
 
@@ -512,6 +529,7 @@ export class RegistryManager {
         this.logger.info(`Deleting profile: ${profileId}`);
         
         await this.storage.removeProfile(profileId);
+        this._onProfileDeleted.fire(profileId);
         
         this.logger.info(`Profile '${profileId}' deleted successfully`);
     }
@@ -527,26 +545,186 @@ export class RegistryManager {
      * Activate a profile
      */
     async activateProfile(profileId: string): Promise<void> {
-        this.logger.info(`Activating profile: ${profileId}`);
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Activating Profile",
+            cancellable: false
+        }, async (progress) => {
+            progress.report({ message: "Preparing..." });
+
+            // Handle case where profile object is passed instead of ID
+            if (typeof profileId !== 'string') {
+                const profileObj = profileId as any;
+                if (profileObj && typeof profileObj === 'object' && profileObj.id) {
+                    this.logger.warn('Profile object passed to activateProfile, extracting ID');
+                    profileId = profileObj.id;
+                } else {
+                    throw new Error(`Invalid profile identifier: expected string, got ${typeof profileId}`);
+                }
+            }
+        
+            this.logger.info(`Activating profile: ${profileId}`);
+        
+            const profiles = await this.storage.getProfiles();
+            progress.report({ message: "Checking for active profiles..." });
+        
+            // Deactivate all active profiles and uninstall their bundles
+            for (const profile of profiles) {
+                if (profile.active && profile.id !== profileId) {
+                    this.logger.info(`Deactivating previous profile: ${profile.id}`);
+                    try {
+                        await this.deactivateProfile(profile.id);
+                    } catch (error) {
+                        this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
+                    }
+                }
+            }
+        
+            // Get all sources to find adapters
+            const allSources = await this.storage.getSources();
+        
+            const profile = profiles.find(p => p.id === profileId);
+            if (profile) {
+                this._onProfileActivated.fire(profile);
+            
+                // Install bundles associated with this profile
+                if (profile.bundles && profile.bundles.length > 0) {
+                progress.report({ message: `Installing ${profile.bundles.length} bundle(s)...` });
+                    this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
+                
+                    for (const bundleRef of profile.bundles) {
+                    progress.report({ message: `Installing ${bundleRef.id}...` });
+                        try {
+                            // Check if bundle is already installed
+                            const installedBundles = await this.storage.getInstalledBundles();
+                            const alreadyInstalled = installedBundles.find(b => b.bundleId === bundleRef.id);
+                        
+                            if (alreadyInstalled) {
+                                this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
+                                continue;
+                            }
+                        
+                            // Search for the bundle in sources
+                            this.logger.info(`Searching for bundle: ${bundleRef.id} v${bundleRef.version}`);
+                            const queryBySourceAndBundleId = { text: bundleRef.id, tags: [], sourceId: bundleRef.sourceId };
+                            const searchResults = await this.searchBundles(queryBySourceAndBundleId);
+                            this.logger.info(`Found ${searchResults.length} matching bundles.`,searchResults);
+                        
+                            // If sourceId is specified, prefer bundles from that source
+                            const matchingBundle = searchResults.find(b => {
+                                const idMatch = b.id === bundleRef.id || b.name.toLowerCase().includes(bundleRef.id.toLowerCase());
+                                if (bundleRef.sourceId) {
+                                    return idMatch && b.sourceId === bundleRef.sourceId;
+                                }
+                                return idMatch;
+                            });
+                        
+                            if (!matchingBundle) {
+                                this.logger.warn(`Bundle not found: ${bundleRef.id}`);
+                                continue;
+                            }
+                        
+                            const source = allSources.find(s => s.id === matchingBundle.sourceId);
+                            if (!source) {
+                                this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
+                                continue;
+                            }
+
+                            const adapter = this.getAdapter(source);
+                        
+                            const options: InstallOptions = {
+                                scope: 'user',
+                                force: false,
+                                profileId: profileId,
+                            };
+
+                            this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
+                        
+
+                            // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
+                            // For other adapters, use the downloadUrl
+                            let installation: InstalledBundle;
+                            if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
+                                this.logger.debug('Downloading bundle from awesome-copilot adapter');
+                                const bundleBuffer = await adapter.downloadBundle(matchingBundle);
+                                this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+                            
+                                // Install from buffer
+                                installation = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
+                            } else {
+                                const downloadUrl = adapter.getDownloadUrl(matchingBundle.id, matchingBundle.version);
+                                // Install bundle using BundleInstaller
+                                installation = await this.installer.install(matchingBundle, downloadUrl, options);
+                            }
+
+                            // Record installation in storage
+                            await this.storage.recordInstallation(installation);
+
+                            // Fire bundle installed event
+                            this._onBundleInstalled.fire(installation);
+                        
+                            this.logger.info(`Successfully installed: ${matchingBundle.id}`);
+                        } catch (error) {
+                            this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
+                        }
+                    }
+                
+                    this.logger.info(`Profile bundle installation complete`);
+                }
+            
+            
+            // Activate target profile
+            await this.storage.updateProfile(profileId, { active: true });
+
+            this.logger.info(`Profile '${profileId}' activated successfully`);
+            progress.report({ message: "Profile activated successfully" });
+            
+            } else {
+                throw new Error(`Profile not found: ${profileId}`);
+            }
+
+
+            
+        });
+    }
+
+    /**
+     * Deactivate a profile and uninstall its bundles
+     */
+    async deactivateProfile(profileId: string): Promise<void> {
+        this.logger.info(`Deactivating profile: ${profileId}`);
         
         const profiles = await this.storage.getProfiles();
+        const profile = profiles.find(p => p.id === profileId);
         
-        // Deactivate all profiles
-        for (const profile of profiles) {
-            if (profile.active && profile.id !== profileId) {
-                await this.storage.updateProfile(profile.id, { active: false });
+        if (!profile) {
+            throw new Error(`Profile not found: ${profileId}`);
+        }
+        
+        // if (!profile.active) {
+        //     this.logger.warn(`Profile ${profileId} is not active`);
+        //     return;
+        // }
+        
+        // Uninstall bundles associated with this profile
+        const installedBundles = await this.storage.getInstalledBundles();
+        const profileBundles = installedBundles.filter(b => b.profileId === profileId);
+        
+        this.logger.info(`Uninstalling ${profileBundles.length} bundles from profile '${profileId}'`);
+        
+        for (const bundle of profileBundles) {
+            try {
+                this.logger.info(`Uninstalling bundle: ${bundle.bundleId}`);
+                await this.uninstallBundle(bundle.bundleId);
+            } catch (error) {
+                this.logger.error(`Failed to uninstall bundle ${bundle.bundleId}`, error as Error);
             }
         }
         
-        // Activate target profile
-        await this.storage.updateProfile(profileId, { active: true });
+        // Mark profile as inactive
+        await this.storage.updateProfile(profileId, { active: false });
         
-        const profile = profiles.find(p => p.id === profileId);
-        if (profile) {
-            this._onProfileActivated.fire(profile);
-        }
-        
-        this.logger.info(`Profile '${profileId}' activated successfully`);
+        this.logger.info(`Profile '${profileId}' deactivated successfully`);
     }
 
     /**
@@ -733,6 +911,9 @@ export class RegistryManager {
         this._onBundleUninstalled.dispose();
         this._onBundleUpdated.dispose();
         this._onProfileActivated.dispose();
+        this._onProfileCreated.dispose();
+        this._onProfileUpdated.dispose();
+        this._onProfileDeleted.dispose();
         this._onSourceAdded.dispose();
         this._onSourceRemoved.dispose();
     }

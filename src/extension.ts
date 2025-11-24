@@ -5,6 +5,12 @@ import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
 import { ProfileCommands } from './commands/ProfileCommands';
 import { SourceCommands } from './commands/SourceCommands';
 import { BundleCommands } from './commands/BundleCommands';
+import { HubCommands } from './commands/HubCommands';
+import { HubProfileCommands } from './commands/HubProfileCommands';
+import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
+import { HubManager } from './services/HubManager';
+import { HubStorage } from './storage/HubStorage';
+import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
 import { ScaffoldCommand } from './commands/ScaffoldCommand';
 import { AddResourceCommand } from './commands/AddResourceCommand';
@@ -41,6 +47,10 @@ export class PromptRegistryExtension {
     private sourceCommands: SourceCommands | undefined;
     private bundleCommands: BundleCommands | undefined;
     private settingsCommands: SettingsCommands | undefined;
+    private hubCommands: HubCommands | undefined;
+    private hubIntegrationCommands: HubIntegrationCommands | undefined;
+    private hubProfileCommands: HubProfileCommands | undefined;
+    private hubManager: HubManager | undefined;
     private validateCollectionsCommand: ValidateCollectionsCommand | undefined;
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
@@ -161,6 +171,18 @@ export class PromptRegistryExtension {
         this.sourceCommands = new SourceCommands(this.registryManager);
         this.settingsCommands = new SettingsCommands(this.registryManager);
         this.bundleCommands = new BundleCommands(this.registryManager);
+        
+        // Initialize hub infrastructure
+        const hubStoragePath = this.context.globalStorageUri.fsPath;
+        const hubStorage = new HubStorage(hubStoragePath);
+        const hubValidator = new SchemaValidator(this.context.extensionPath);
+        // Pass BundleInstaller from RegistryManager to enable bundle installation during profile activation
+        const bundleInstaller = (this.registryManager as any).installer;
+        this.hubManager = new HubManager(hubStorage, hubValidator, this.context.extensionPath, bundleInstaller, this.registryManager);
+        
+        this.hubCommands = new HubCommands(this.hubManager, this.registryManager, this.context);
+        this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
+        this.hubProfileCommands = new HubProfileCommands(this.context);
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
@@ -180,6 +202,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.createProfile', () => this.profileCommands!.createProfile()),
             vscode.commands.registerCommand('promptRegistry.editProfile', (profileId?) => this.profileCommands!.editProfile(profileId)),
             vscode.commands.registerCommand('promptRegistry.activateProfile', (profileId?) => this.profileCommands!.activateProfile(profileId)),
+            vscode.commands.registerCommand('promptRegistry.deactivateProfile', (profileId?) => this.profileCommands!.deactivateProfile(profileId)),
             vscode.commands.registerCommand('promptRegistry.deleteProfile', (profileId?) => this.profileCommands!.deleteProfile(profileId)),
             vscode.commands.registerCommand('promptRegistry.exportProfile', (profileId?) => this.profileCommands!.exportProfile(profileId)),
             vscode.commands.registerCommand('promptRegistry.importProfile', () => this.profileCommands!.importProfile()),
@@ -293,7 +316,7 @@ export class PromptRegistryExtension {
                                 cancellable: false
                             },
                             async () => {
-                                await scaffoldCommand.execute(targetPath[0].fsPath, { projectName });
+                                await scaffoldCommand.execute(targetPath[0].fsPath, { projectName, githubRunner });
                             }
                         );
 
@@ -347,6 +370,13 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.openSettings', () => {
                 vscode.commands.executeCommand('workbench.action.openSettings', 'promptregistry');
             }),
+
+            // Reset First Run Command
+            vscode.commands.registerCommand('promptRegistry.resetFirstRun', async () => {
+                await this.context.globalState.update('promptregistry.firstRun', true);
+                vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
+            }),
+
             
             // Legacy commands (to be migrated)
             vscode.commands.registerCommand('promptregistry.selectVersion', () => selectVersionCommand()),
@@ -355,14 +385,11 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptregistry.showVersion', () => statusCommand.showVersion()),
             vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
             vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
-            vscode.commands.registerCommand('promptRegistry.resetFirstRun', async () => {
-                await this.context.globalState.update('promptregistry.firstRun', true);
-                vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
-            }),
             vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
-            vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
-            vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
-            vscode.commands.registerCommand('promptregistry.enhancedUninstall', () => refactoredUninstallCommand.execute()),
+
+            // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
+            // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
+            // vscode.commands.registerCommand('promptregistry.enhancedUninstall', () => refactoredUninstallCommand.execute()),
         ];
 
         // Add to disposables
@@ -381,7 +408,7 @@ export class PromptRegistryExtension {
         this.logger.info('Registering Registry Explorer TreeView...');
         
         // Create tree provider
-        this.treeProvider = new RegistryTreeProvider(this.registryManager);
+        this.treeProvider = new RegistryTreeProvider(this.registryManager, this.hubManager!);
         
         // Register tree view
         const treeView = vscode.window.createTreeView('promptRegistryExplorer', {
