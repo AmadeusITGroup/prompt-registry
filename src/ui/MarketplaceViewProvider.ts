@@ -22,6 +22,28 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         private readonly registryManager: RegistryManager
     ) {
         this.logger = Logger.getInstance();
+
+        // Listen to bundle installation events to refresh marketplace
+        this.registryManager.onBundleInstalled(() => {
+            this.logger.debug('Bundle installed event received, refreshing marketplace');
+            this.loadBundles();
+        });
+
+        this.registryManager.onBundleUninstalled(() => {
+            this.logger.debug('Bundle uninstalled event received, refreshing marketplace');
+            this.loadBundles();
+        });
+
+        // Listen to bundle installation events to refresh marketplace
+        this.registryManager.onBundleInstalled(() => {
+            this.logger.debug('Bundle installed event received, refreshing marketplace');
+            this.loadBundles();
+        });
+
+        this.registryManager.onBundleUninstalled(() => {
+            this.logger.debug('Bundle uninstalled event received, refreshing marketplace');
+            this.loadBundles();
+        });
     }
 
     public resolveWebviewView(
@@ -64,11 +86,19 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 // Use manifest from installed bundle if available
                 const contentBreakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
+                // Check if bundle is from a curated hub
+                const source = sources.find(s => s.id === bundle.sourceId);
+                const isCurated = source?.hubId !== undefined;
+                const hubName = isCurated && source?.hubId ? source.metadata?.description || source.name : undefined;
+
+
                 return {
                     ...bundle,
                     installed: !!installed,
                     installedVersion: installed?.version,
-                    contentBreakdown
+                    isCurated,
+                    hubName,
+                    contentBreakdown,
                 };
             });
 
@@ -1015,7 +1045,73 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             border-color: var(--vscode-gitDecoration-addedResourceForeground);
         }
 
+        .curated-badge {\
+            position: absolute;\
+            top: 12px;\
+            right: 12px;\
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\
+            color: white;\
+            padding: 4px 10px;\
+            border-radius: 12px;\
+            font-size: 11px;\
+            font-weight: 600;\
+            display: flex;\
+            align-items: center;\
+            gap: 4px;\
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);\
+            z-index: 2;\
+        }\
+\
+        .curated-badge::before {\
+            content: "✨";\
+            font-size: 12px;\
+        }\
+\
+        .curated-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            z-index: 2;
+        }
+
+        .curated-badge::before {
+            content: "✨";
+            font-size: 12px;
+        }
+
         .installed-badge {
+        .curated-badge {\
+            position: absolute;\
+            top: 12px;\
+            right: 12px;\
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\
+            color: white;\
+            padding: 4px 10px;\
+            border-radius: 12px;\
+            font-size: 11px;\
+            font-weight: 600;\
+            display: flex;\
+            align-items: center;\
+            gap: 4px;\
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);\
+            z-index: 2;\
+        }\
+\
+        .curated-badge::before {\
+            content: "✨";\
+            font-size: 12px;\
+        }\
+\
             position: absolute;
             top: 12px;
             right: 12px;
@@ -1571,6 +1667,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             marketplace.innerHTML = filteredBundles.map(bundle => \`
                 <div class="bundle-card \${bundle.installed ? 'installed' : ''}" data-bundle-id="\${bundle.id}" onclick="openDetails('\${bundle.id}')">
                     \${bundle.installed ? '<div class="installed-badge">✓ Installed</div>' : ''}
+                    \${bundle.isCurated ? '<div class="curated-badge" title="From curated hub: ' + (bundle.hubName || 'Unknown') + '">' + (bundle.hubName || 'Curated') + '</div>' : ''}
                     
                     <div class="bundle-header">
                         <div class="bundle-title">\${bundle.name}</div>

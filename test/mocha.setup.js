@@ -72,7 +72,24 @@ const vscode = {
       fragment: ''
     })
   },
-  ConfigurationTarget: {
+  EventEmitter: class EventEmitter {
+    constructor() {
+      this.listeners = [];
+    }
+    get event() {
+      return (listener) => {
+        this.listeners.push(listener);
+        return { dispose: () => {} };
+      };
+    }
+    fire(data) {
+      this.listeners.forEach(listener => listener(data));
+    }
+    dispose() {
+      this.listeners = [];
+    }
+  },
+    ConfigurationTarget: {
     Global: 1,
     Workspace: 2,
     WorkspaceFolder: 3

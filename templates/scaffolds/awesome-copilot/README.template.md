@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}}
+# {{projectName}}
 
 Welcome to your awesome-copilot prompt collection! This repository contains prompts, instructions, chat modes, and collections to enhance your GitHub Copilot experience.
 

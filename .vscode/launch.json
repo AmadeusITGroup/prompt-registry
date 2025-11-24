@@ -25,7 +25,7 @@
         "${workspaceFolder}/out/**/*.js",
         "${workspaceFolder}/test-out/**/*.js"
       ],
-      "preLaunchTask": "tasks: watch-tests"
+      "preLaunchTask": "npm: compile"
     }
   ]
 }

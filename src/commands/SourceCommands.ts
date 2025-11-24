@@ -26,34 +26,34 @@ export class SourceCommands {
             // Step 1: Select source type
             const sourceType = await vscode.window.showQuickPick(
                 [
+                    // {
+                    //     label: '$(github) GitHub Repository',
+                    //     description: 'Public or private GitHub repository',
+                    //     value: 'github' as SourceType
+                    // },
+                    // {
+                    //     label: '$(repo) GitLab Repository',
+                    //     description: 'Public or private GitLab repository',
+                    //     value: 'gitlab' as SourceType
+                    // },
+                    // {
+                    //     label: '$(globe) HTTP Registry',
+                    //     description: 'HTTP/HTTPS registry server',
+                    //     value: 'http' as SourceType
+                    // },
+                    // {
+                    //     label: '$(folder) Local Directory',
+                    //     description: 'Local filesystem directory',
+                    //     value: 'local' as SourceType
+                    // },
                     {
-                        label: '$(github) GitHub Repository',
-                        description: 'Public or private GitHub repository',
-                        value: 'github' as SourceType
-                    },
-                    {
-                        label: '$(repo) GitLab Repository',
-                        description: 'Public or private GitLab repository',
-                        value: 'gitlab' as SourceType
-                    },
-                    {
-                        label: '$(globe) HTTP Registry',
-                        description: 'HTTP/HTTPS registry server',
-                        value: 'http' as SourceType
-                    },
-                    {
-                        label: '$(folder) Local Directory',
-                        description: 'Local filesystem directory',
-                        value: 'local' as SourceType
-                    },
-                    {
-                        label: '$(package) Awesome Copilot Collection',
-                        description: 'GitHub repository with .collection.yml files',
+                        label: '$(package) Collection from GitHub repository',
+                        description: 'GitHub repository with .collection.yml files based on Awesome Copilot specification',
                         value: 'awesome-copilot' as SourceType
                     },
                     {
-                        label: '$(folder-library) Local Awesome Copilot Collection',
-                        description: 'Local filesystem directory with .collection.yml files',
+                        label: '$(folder-library) Local Collection',
+                        description: 'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
                         value: 'local-awesome-copilot' as SourceType
                     },
                 ],

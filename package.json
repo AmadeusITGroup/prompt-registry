@@ -137,6 +137,11 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.deactivateProfile",
+        "title": "Deactivate Profile",
+        "category": "Prompt Registry"
+      },
+      {
         "command": "promptRegistry.deleteProfile",
         "title": "Delete Profile",
         "category": "Prompt Registry"
@@ -234,6 +239,113 @@
         "title": "Toggle Source Enabled/Disabled",
         "category": "Prompt Registry",
         "icon": "$(circle-slash)"
+      },
+      {
+        "command": "promptregistry.importHub",
+        "title": "Import Hub",
+        "category": "Prompt Registry",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "promptregistry.listHubs",
+        "title": "List Hubs",
+        "category": "Prompt Registry",
+        "icon": "$(server)"
+      },
+      {
+        "command": "promptregistry.syncHub",
+        "title": "Sync Hub",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptregistry.deleteHub",
+        "title": "Delete Hub",
+        "category": "Prompt Registry",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "promptregistry.listHubProfiles",
+        "title": "List Hub Profiles",
+        "category": "Prompt Registry",
+        "icon": "$(package)"
+      },
+      {
+        "command": "promptregistry.browseHubProfiles",
+        "title": "Browse Hub Profiles",
+        "category": "Prompt Registry",
+        "icon": "$(search)"
+      },
+      {
+        "command": "promptregistry.viewHubProfile",
+        "title": "View Hub Profile",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptregistry.activateHubProfile",
+        "title": "Activate Hub Profile",
+        "category": "Prompt Registry",
+        "icon": "$(check)"
+      },
+      {
+        "command": "promptregistry.deactivateHubProfile",
+        "title": "Deactivate Hub Profile",
+        "category": "Prompt Registry",
+        "icon": "$(close)"
+      },
+      {
+        "command": "promptregistry.showActiveProfiles",
+        "title": "Show Active Hub Profiles",
+        "category": "Prompt Registry",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "promptregistry.checkForUpdates",
+        "title": "Check Hub Profile for Updates",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptregistry.viewProfileChanges",
+        "title": "View Hub Profile Changes",
+        "category": "Prompt Registry",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "promptregistry.syncProfileNow",
+        "title": "Sync Hub Profile Now",
+        "category": "Prompt Registry",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "promptregistry.reviewAndSyncProfile",
+        "title": "Review and Sync Hub Profile",
+        "category": "Prompt Registry",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "promptregistry.viewSyncHistory",
+        "title": "View Hub Profile Sync History",
+        "category": "Prompt Registry",
+        "icon": "$(history)"
+      },
+      {
+        "command": "promptregistry.rollbackProfile",
+        "title": "Rollback Hub Profile",
+        "category": "Prompt Registry",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "promptregistry.clearSyncHistory",
+        "title": "Clear Hub Profile Sync History",
+        "category": "Prompt Registry",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "promptregistry.exportHubConfig",
+        "title": "Export Hub Configuration",
+        "category": "Prompt Registry",
+        "icon": "$(export)"
       }
     ],
     "viewsContainers": {
@@ -313,19 +425,24 @@
           "group": "promptRegistry@1"
         },
         {
-          "command": "promptRegistry.editProfile",
-          "when": "view == promptRegistryExplorer && viewItem == profile",
+          "command": "promptRegistry.deactivateProfile",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
           "group": "promptRegistry@2"
         },
         {
-          "command": "promptRegistry.exportProfile",
-          "when": "view == promptRegistryExplorer && viewItem == profile",
+          "command": "promptRegistry.editProfile",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
           "group": "promptRegistry@3"
         },
         {
-          "command": "promptRegistry.deleteProfile",
-          "when": "view == promptRegistryExplorer && viewItem == profile",
+          "command": "promptRegistry.exportProfile",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
           "group": "promptRegistry@4"
+        },
+        {
+          "command": "promptRegistry.deleteProfile",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
+          "group": "promptRegistry@5"
         },
         {
           "command": "promptRegistry.viewBundle",
@@ -366,6 +483,16 @@
           "command": "promptRegistry.toggleSource",
           "when": "view == promptRegistryExplorer && viewItem == source",
           "group": "sourceActions@4"
+        },
+        {
+          "command": "promptregistry.syncHub",
+          "when": "view == promptRegistryExplorer && viewItem == hub",
+          "group": "hubActions@1"
+        },
+        {
+          "command": "promptregistry.deleteHub",
+          "when": "view == promptRegistryExplorer && viewItem == hub",
+          "group": "hubActions@2"
         }
       ]
     },
@@ -456,9 +583,9 @@
     "package:prepare": "node scripts/package-helpers.js prod && npm run compile",
     "package:cleanup": "node scripts/package-helpers.js dev",
     "package:full": "npm run package:prepare && npm run package:vsix && npm run package:cleanup",
-    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"📦 Production package created with optimized size\"",
-    "dev:setup": "npm run ignore:dev && echo \"🔧 Development mode activated - Copilot friendly\"",
-    "dev:package-test": "npm run package:prepare && echo \"📋 Switched to production mode - check file exclusions\" && npm run ignore:status",
+    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"\ud83d\udce6 Production package created with optimized size\"",
+    "dev:setup": "npm run ignore:dev && echo \"\ud83d\udd27 Development mode activated - Copilot friendly\"",
+    "dev:package-test": "npm run package:prepare && echo \"\ud83d\udccb Switched to production mode - check file exclusions\" && npm run ignore:status",
     "version:update": "./scripts/update-version.sh",
     "version:bump:major": "npm version major --no-git-tag-version && npm run version:update",
     "version:bump:minor": "npm version minor --no-git-tag-version && npm run version:update",
@@ -466,6 +593,7 @@
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "^1.0.0",
+    "@playwright/test": "^1.56.1",
     "@types/adm-zip": "^0.5.7",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
@@ -476,7 +604,7 @@
     "@types/yauzl": "^2.10.3",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "@vscode/test-electron": "^2.2.0",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^2.15.0",
     "adm-zip": "^0.5.16",
     "c8": "^10.1.3",
@@ -485,6 +613,7 @@
     "mocha": "^10.1.0",
     "nock": "^14.0.10",
     "nyc": "^17.1.0",
+    "playwright": "^1.56.1",
     "rimraf": "^6.0.1",
     "sinon": "^21.0.0",
     "ts-loader": "^9.4.1",
