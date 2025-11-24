@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { RegistryManager } from '../services/RegistryManager';
 import { RegistrySource, SourceType } from '../types/registry';
 import { Logger } from '../utils/logger';
+import { extractSourceId } from '../utils/commandUtils';
 
 /**
  * Source Commands Handler
@@ -230,8 +231,11 @@ export class SourceCommands {
     /**
      * Edit an existing source
      */
-    async editSource(sourceId?: string): Promise<void> {
+    async editSource(param?: unknown): Promise<void> {
         try {
+            // Extract source ID from parameter (handles tree item, string, or undefined)
+            let sourceId = extractSourceId(param);
+            
             // If no sourceId, let user select
             if (!sourceId) {
                 const sources = await this.registryManager.listSources();
@@ -315,8 +319,11 @@ export class SourceCommands {
     /**
      * Remove a source
      */
-    async removeSource(sourceId?: string): Promise<void> {
+    async removeSource(param?: unknown): Promise<void> {
         try {
+            // Extract source ID from parameter (handles tree item, string, or undefined)
+            let sourceId = extractSourceId(param);
+            
             // If no sourceId, let user select
             if (!sourceId) {
                 const sources = await this.registryManager.listSources();
@@ -379,8 +386,11 @@ export class SourceCommands {
     /**
      * Sync a source (refresh bundle list)
      */
-    async syncSource(sourceId?: string): Promise<void> {
+    async syncSource(param?: unknown): Promise<void> {
         try {
+            // Extract source ID from parameter (handles tree item, string, or undefined)
+            let sourceId = extractSourceId(param);
+            
             // If no sourceId, let user select
             if (!sourceId) {
                 const sources = await this.registryManager.listSources();
@@ -740,8 +750,11 @@ export class SourceCommands {
     /**
      * Toggle source enabled/disabled
      */
-    async toggleSource(sourceId?: string): Promise<void> {
+    async toggleSource(param?: unknown): Promise<void> {
         try {
+            // Extract source ID from parameter (handles tree item, string, or undefined)
+            let sourceId = extractSourceId(param);
+            
             // If no sourceId, let user select
             if (!sourceId) {
                 const sources = await this.registryManager.listSources();

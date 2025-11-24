@@ -38,6 +38,7 @@ function run() {
     const testDir = __dirname;
     // Add all test files to the mocha instance  
     mocha.addFile(path.join(testDir, 'integration-scenarios.test.js'));
+    mocha.addFile(path.join(testDir, 'contextual-menu-commands.test.js'));
     return new Promise((resolve, reject) => {
         mocha.run(failures => {
             if (failures > 0) {
