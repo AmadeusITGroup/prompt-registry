@@ -358,7 +358,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -376,7 +376,7 @@ export class SourceCommands {
                 return;
             }
 
-            await this.registryManager.removeSource(sourceId);
+            await this.registryManager.removeSource(finalId);
 
             vscode.window.showInformationMessage(
                 `Source "${source.name}" removed successfully`
@@ -428,7 +428,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -442,7 +442,7 @@ export class SourceCommands {
                     cancellable: false
                 },
                 async () => {
-                    await this.registryManager.syncSource(sourceId!);
+                    await this.registryManager.syncSource(finalId!);
                 }
             );
 
@@ -796,14 +796,14 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
                 return;
             }
 
-            await this.registryManager.updateSource(sourceId, { enabled: !source.enabled });
+            await this.registryManager.updateSource(finalId, { enabled: !source.enabled });
             vscode.window.showInformationMessage(
                 `Source "${source.name}" ${source.enabled ? 'disabled' : 'enabled'}`
             );

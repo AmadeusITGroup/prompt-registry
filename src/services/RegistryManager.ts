@@ -48,6 +48,8 @@ export class RegistryManager {
     private _onProfileDeleted = new vscode.EventEmitter<string>();
     private _onSourceAdded = new vscode.EventEmitter<RegistrySource>();
     private _onSourceRemoved = new vscode.EventEmitter<string>();
+    private _onSourceUpdated = new vscode.EventEmitter<string>();
+
 
     // Public event accessors
     readonly onBundleInstalled = this._onBundleInstalled.event;
@@ -59,6 +61,7 @@ export class RegistryManager {
     readonly onProfileDeleted = this._onProfileDeleted.event;
     readonly onSourceAdded = this._onSourceAdded.event;
     readonly onSourceRemoved = this._onSourceRemoved.event;
+    readonly onSourceUpdated = this._onSourceUpdated.event;
 
     private constructor(private context: vscode.ExtensionContext) {
         this.storage = new RegistryStorage(context);
@@ -182,7 +185,8 @@ export class RegistryManager {
             const adapter = RepositoryAdapterFactory.create(updatedSource);
             this.adapters.set(sourceId, adapter);
         }
-        
+
+        this._onSourceUpdated.fire(sourceId);
         this.logger.info(`Source '${sourceId}' updated successfully`);
     }
 

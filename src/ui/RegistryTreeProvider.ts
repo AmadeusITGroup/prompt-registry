@@ -242,17 +242,23 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
         registryManager.onBundleInstalled(() => this.refresh());
         registryManager.onBundleUninstalled(() => this.refresh());
         registryManager.onBundleUpdated(() => this.refresh());
+
+        // Listen to profile events
         registryManager.onProfileActivated(() => this.refresh());
         registryManager.onProfileCreated(() => this.refresh());
         registryManager.onProfileUpdated(() => this.refresh());
         registryManager.onProfileDeleted(() => this.refresh());
+
+        // Listen to source events
         registryManager.onSourceAdded(() => this.refresh());
+        registryManager.onSourceRemoved(() => this.refresh());
+        registryManager.onSourceUpdated(() => this.refresh());
         
         // Listen to hub events
         hubManager.onHubImported(() => this.refresh());
         hubManager.onHubDeleted(() => this.refresh());
         hubManager.onHubSynced(() => this.refresh());
-        registryManager.onSourceRemoved(() => this.refresh());
+        
     }
 
     /**
