@@ -26,11 +26,11 @@ export class SourceCommands {
             // Step 1: Select source type
             const sourceType = await vscode.window.showQuickPick(
                 [
-                    // {
-                    //     label: '$(github) GitHub Repository',
-                    //     description: 'Public or private GitHub repository',
-                    //     value: 'github' as SourceType
-                    // },
+                    {
+                        label: '$(github) GitHub Repository',
+                        description: 'Public or private GitHub repository',
+                        value: 'github' as SourceType
+                    },
                     // {
                     //     label: '$(repo) GitLab Repository',
                     //     description: 'Public or private GitLab repository',
