@@ -101,6 +101,31 @@ export class RegistryManager {
     }
 
     /**
+     * Enrich source with global token if applicable
+     * Applies global GitHub token to GitHub sources that don't have their own token
+     */
+    private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
+        // If source already has a token, don't override it
+        if (source.token && source.token.trim().length > 0) {
+            return source;
+        }
+
+        // Get global token from VS Code configuration
+        const config = vscode.workspace.getConfiguration('promptregistry');
+        const globalToken = config.get<string>('githubToken', '');
+
+        if (globalToken && globalToken.trim().length > 0) {
+            this.logger.debug(`[RegistryManager] Applying global GitHub token to source '${source.id}'`);
+            return {
+                ...source,
+                token: globalToken.trim()
+            };
+        }
+
+        return source;
+    }
+
+    /**
      * Load adapters for all sources
      */
     private async loadAdapters(): Promise<void> {
@@ -109,7 +134,8 @@ export class RegistryManager {
         for (const source of sources) {
             if (source.enabled) {
                 try {
-                    const adapter = RepositoryAdapterFactory.create(source);
+                    const enrichedSource = this.enrichSourceWithGlobalToken(source);
+                    const adapter = RepositoryAdapterFactory.create(enrichedSource);
                     this.adapters.set(source.id, adapter);
                 } catch (error) {
                     this.logger.error(`Failed to create adapter for source '${source.id}'`, error as Error);
@@ -125,7 +151,8 @@ export class RegistryManager {
         let adapter = this.adapters.get(source.id);
         
         if (!adapter) {
-            adapter = RepositoryAdapterFactory.create(source);
+            const enrichedSource = this.enrichSourceWithGlobalToken(source);
+            adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(source.id, adapter);
         }
         
@@ -140,8 +167,9 @@ export class RegistryManager {
     async addSource(source: RegistrySource): Promise<void> {
         this.logger.info(`Adding source: ${source.name}`);
         
-        // Validate source
-        const adapter = RepositoryAdapterFactory.create(source);
+        // Validate source (with global token if applicable)
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         const validation = await adapter.validate();
         
         if (!validation.valid) {
@@ -182,7 +210,8 @@ export class RegistryManager {
         const updatedSource = sources.find(s => s.id === sourceId);
         
         if (updatedSource && updatedSource.enabled) {
-            const adapter = RepositoryAdapterFactory.create(updatedSource);
+            const enrichedSource = this.enrichSourceWithGlobalToken(updatedSource);
+            const adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(sourceId, adapter);
         }
 
@@ -223,7 +252,8 @@ export class RegistryManager {
      * Validate a source
      */
     async validateSource(source: RegistrySource): Promise<ValidationResult> {
-        const adapter = RepositoryAdapterFactory.create(source);
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         return await adapter.validate();
     }
 
