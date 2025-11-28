@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import * as yaml from 'js-yaml';
+import archiver from 'archiver';
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 
@@ -387,17 +388,87 @@ export class LocalAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Download a bundle (for local bundles, no actual download needed)
-     * Local bundles are accessed directly from the filesystem, so this returns an empty buffer.
-     * The installer can work directly with the local directory path.
+     * Download a bundle by creating a ZIP archive from the local directory
+     * Reads all files from the local bundle directory and creates a ZIP buffer.
      * 
      * @param bundle - Bundle object with local file:// path
-     * @returns Promise resolving to empty Buffer (local bundles don't need downloading)
+     * @returns Promise resolving to Buffer containing ZIP archive
+     * @throws Error if directory doesn't exist, is not accessible, or ZIP creation fails
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
-        // For local bundles, we don't actually need to download
-        // The installer can work directly with the local directory
-        // Return empty buffer as the download URL already points to the local path
-        return Buffer.alloc(0);
+        console.log(`[LocalAdapter] Creating ZIP archive for bundle: ${bundle.id}`);
+        
+        // Extract local path from file:// URL
+        let bundlePath = bundle.downloadUrl;
+        if (bundlePath.startsWith('file://')) {
+            bundlePath = bundlePath.substring(7);
+        }
+        bundlePath = path.normalize(bundlePath);
+        
+        console.log(`[LocalAdapter] Bundle path: ${bundlePath}`);
+        
+        // Verify directory exists and is accessible
+        try {
+            await access(bundlePath, fs.constants.R_OK);
+            const stats = await stat(bundlePath);
+            if (!stats.isDirectory()) {
+                throw new Error(`Path is not a directory: ${bundlePath}`);
+            }
+        } catch (error) {
+            console.error(`[LocalAdapter] ✗ Cannot access bundle directory: ${error}`);
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+                throw new Error(`Bundle directory not found: ${bundlePath}`);
+            } else if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+                throw new Error(`Permission denied accessing bundle directory: ${bundlePath}`);
+            }
+            throw error;
+        }
+        
+        // Create ZIP archive from directory
+        return new Promise<Buffer>((resolve, reject) => {
+            (async () => {
+                try {
+                    const archive = archiver('zip', { zlib: { level: 9 } });
+                    const chunks: Buffer[] = [];
+                    let totalSize = 0;
+                    
+                    // Collect data chunks
+                    archive.on('data', (chunk: Buffer) => {
+                        chunks.push(chunk);
+                        totalSize += chunk.length;
+                    });
+                    
+                    // Resolve when archive is finalized
+                    archive.on('finish', () => {
+                        const buffer = Buffer.concat(chunks);
+                        console.log(`[LocalAdapter] ✓ Archive created: ${buffer.length} bytes (${chunks.length} chunks)`);
+                        resolve(buffer);
+                    });
+                    
+                    // Handle errors
+                    archive.on('error', (err: Error) => {
+                        console.error(`[LocalAdapter] ✗ Archive error: ${err.message}`);
+                        reject(new Error(`Failed to create ZIP archive: ${err.message}`));
+                    });
+                    
+                    // Log warnings
+                    archive.on('warning', (warning: Error) => {
+                        console.warn(`[LocalAdapter] Archive warning: ${warning.message}`);
+                    });
+                    
+                    // Add all files from the directory
+                    console.log(`[LocalAdapter] Adding directory contents to archive...`);
+                    archive.directory(bundlePath, false);
+                    
+                    // Finalize the archive
+                    console.log(`[LocalAdapter] Finalizing archive...`);
+                    await archive.finalize();
+                    
+                } catch (error) {
+                    console.error(`[LocalAdapter] ✗ Failed to create bundle archive: ${error}`);
+                    reject(error);
+                }
+            })();
+        });
     }
 }

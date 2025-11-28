@@ -130,6 +130,29 @@ E2E Tests:            20% of coverage
   - Tag validation
   - Error aggregation
 
+#### **Property-Based Tests**
+- ✅ `GitHubAdapter.property.test.ts` - 1250+ lines
+  - Authentication priority order (15 properties)
+  - Auth error cache invalidation
+  - Exhaustion summary and method listing
+  - Content-Type validation
+  - HTML error recognition and extraction
+  - Graceful JSON parsing
+  - Comprehensive error logging
+  - Token sanitization in logs
+  - Error-specific suggestions
+  - Uses shared helpers from `test/helpers/propertyTestHelpers.ts`
+
+#### **Test Helpers**
+- ✅ `test/helpers/propertyTestHelpers.ts` - Shared utilities
+  - `ErrorCheckers` - Error message validation patterns
+  - `LoggerHelpers` - Logger interaction utilities
+  - `PropertyTestConfig` - Centralized test configuration
+  - `createMockHttpResponse` - HTTP response mocking
+  - `stubHttpsWithResponse` - HTTPS module stubbing
+  - `TestGenerators` - Fast-check data generators
+  - Reusable across all adapter property tests
+
 ---
 
 ### **2. Integration Tests** (~/src/test/integration/)
@@ -181,6 +204,66 @@ E2E Tests:            20% of coverage
 | **nock** | HTTP mocking | ✅ Installed |
 | **c8** | Coverage reporting | ✅ Installed |
 | **@vscode/test-electron** | VSCode testing | ✅ Installed |
+| **fast-check** | Property-based testing | ✅ Installed |
+| **sinon** | Test mocking and stubbing | ✅ Installed |
+
+### **Shared Test Helpers**
+
+The project includes reusable test utilities in `test/helpers/`:
+
+- **`propertyTestHelpers.ts`** - Property-based test utilities
+  - `ErrorCheckers` - Validates error message patterns (HTML detection, auth issues, parsing errors)
+  - `LoggerHelpers` - Manages logger stub interactions (reset, collect calls, search logs)
+  - `PropertyTestConfig` - Centralized configuration (run counts, timeouts, fast-check options)
+  - `createMockHttpResponse` - Creates mock HTTP responses with proper event handling
+  - `stubHttpsWithResponse` - Stubs HTTPS module for isolated testing
+  - `TestGenerators` - Fast-check generators (tokens, URLs, status codes, content types)
+
+**Usage Example**:
+```typescript
+import { ErrorCheckers, LoggerHelpers, PropertyTestConfig } from '../helpers/propertyTestHelpers';
+
+// Use shared error checkers
+if (ErrorCheckers.indicatesAuthIssue(error)) { ... }
+
+// Use logger helpers
+const loggerHelpers = new LoggerHelpers(loggerStub);
+loggerHelpers.resetHistory();
+if (loggerHelpers.hasLogContaining('authentication')) { ... }
+
+// Use shared configuration
+test('My Property Test', async function() {
+    this.timeout(PropertyTestConfig.TIMEOUT);
+    await fc.assert(
+        fc.asyncProperty(...),
+        { numRuns: PropertyTestConfig.RUNS.STANDARD, ...PropertyTestConfig.FAST_CHECK_OPTIONS }
+    );
+});
+```
+
+### **Logging in Tests**
+
+The Logger supports configurable log levels via the `LOG_LEVEL` environment variable:
+
+- **Environment Variable**: `LOG_LEVEL=ERROR` (must be set when running tests)
+- **Suppressed Levels**: `DEBUG`, `INFO`, `WARN` are suppressed when `LOG_LEVEL=ERROR`
+- **Rationale**: Keeps test output clean and focused on test results
+- **Error Logs**: Only ERROR level logs appear, which helps identify actual issues
+- **Override**: Can be changed by setting `LOG_LEVEL` to `DEBUG`, `INFO`, `WARN`, or `NONE`
+
+**Running Tests with Suppressed Logging**:
+```bash
+# Always prefix test commands with LOG_LEVEL=ERROR
+LOG_LEVEL=ERROR npm test
+LOG_LEVEL=ERROR npm run test:unit
+LOG_LEVEL=ERROR npm run test:integration
+LOG_LEVEL=ERROR npm run test:coverage
+```
+
+**Property-Based Tests**:
+- Use `verbose: false` in fast-check options to minimize output
+- Only log meaningful information when tests fail
+- Avoid logging during successful test iterations
 
 ### **Test Scripts**
 

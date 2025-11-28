@@ -1,18 +1,39 @@
 import * as vscode from 'vscode';
 
 /**
+ * Log levels for filtering
+ */
+export enum LogLevel {
+    DEBUG = 0,
+    INFO = 1,
+    WARN = 2,
+    ERROR = 3,
+    NONE = 4
+}
+
+/**
  * Logger utility for Prompt Registry extension
  */
 export class Logger {
     private static instance: Logger;
     private outputChannel: any;
     private isTestEnvironment: boolean;
+    private logLevel: LogLevel;
 
     private constructor() {
         // Detect test environment
         this.isTestEnvironment = process.env.NODE_ENV === 'test' || 
                                  process.argv.some(arg => arg.includes('mocha')) ||
                                  process.argv.some(arg => arg.includes('test'));
+
+        // Check for LOG_LEVEL environment variable
+        const envLogLevel = process.env.LOG_LEVEL?.toUpperCase();
+        if (envLogLevel && envLogLevel in LogLevel) {
+            this.logLevel = LogLevel[envLogLevel as keyof typeof LogLevel] as LogLevel;
+        } else {
+            // Default to DEBUG for normal operation, ERROR for tests if LOG_LEVEL not set
+            this.logLevel = this.isTestEnvironment ? LogLevel.ERROR : LogLevel.DEBUG;
+        }
 
         if (this.isTestEnvironment) {
             // Use console logging in test environment to avoid channel disposal errors
@@ -39,7 +60,25 @@ export class Logger {
         Logger.instance = undefined as any;
     }
 
+    /**
+     * Set the minimum log level
+     */
+    public setLogLevel(level: LogLevel): void {
+        this.logLevel = level;
+    }
+
+    /**
+     * Get the current log level
+     */
+    public getLogLevel(): LogLevel {
+        return this.logLevel;
+    }
+
     public info(message: string, ...args: any[]): void {
+        if (this.logLevel > LogLevel.INFO) {
+            return;
+        }
+        
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] INFO: ${message}`;
         this.outputChannel.appendLine(logMessage);
@@ -50,6 +89,10 @@ export class Logger {
     }
 
     public warn(message: string, ...args: any[]): void {
+        if (this.logLevel > LogLevel.WARN) {
+            return;
+        }
+        
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] WARN: ${message}`;
         this.outputChannel.appendLine(logMessage);
@@ -60,6 +103,10 @@ export class Logger {
     }
 
     public error(message: string, error?: Error, ...args: any[]): void {
+        if (this.logLevel > LogLevel.ERROR) {
+            return;
+        }
+        
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] ERROR: ${message}`;
         this.outputChannel.appendLine(logMessage);
@@ -75,6 +122,10 @@ export class Logger {
     }
 
     public debug(message: string, ...args: any[]): void {
+        if (this.logLevel > LogLevel.DEBUG) {
+            return;
+        }
+        
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] DEBUG: ${message}`;
         this.outputChannel.appendLine(logMessage);

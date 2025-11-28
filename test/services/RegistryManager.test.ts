@@ -101,3 +101,217 @@ configuration:
         });
     });
 });
+
+suite('RegistryManager Unified Download Path', () => {
+    const fs = require('fs');
+    const path = require('path');
+    
+    test('installBundle() should use unified download path for all source types', () => {
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it calls adapter.downloadBundle()
+        assert.ok(
+            installBundleCode.includes('adapter.downloadBundle(bundle)'),
+            'installBundle should call adapter.downloadBundle(bundle)'
+        );
+        
+        // Verify it calls installer.installFromBuffer()
+        assert.ok(
+            installBundleCode.includes('installer.installFromBuffer(bundle, bundleBuffer'),
+            'installBundle should call installer.installFromBuffer(bundle, bundleBuffer, options)'
+        );
+    });
+    
+    test('installBundle() should NOT have branching logic for source types', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT have if/else branching for awesome-copilot
+        assert.ok(
+            !installBundleCode.includes("source.type === 'awesome-copilot'"),
+            'installBundle should NOT have branching logic for awesome-copilot'
+        );
+        
+        assert.ok(
+            !installBundleCode.includes("source.type === 'local-awesome-copilot'"),
+            'installBundle should NOT have branching logic for local-awesome-copilot'
+        );
+    });
+    
+    test('installBundle() should NOT call adapter.getDownloadUrl()', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT call getDownloadUrl
+        assert.ok(
+            !installBundleCode.includes('adapter.getDownloadUrl('),
+            'installBundle should NOT call adapter.getDownloadUrl()'
+        );
+    });
+    
+    test('installBundle() should NOT call installer.install()', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT call installer.install (the old method)
+        assert.ok(
+            !installBundleCode.includes('installer.install(bundle, downloadUrl'),
+            'installBundle should NOT call installer.install() with downloadUrl'
+        );
+    });
+    
+    test('All adapter interfaces should have downloadBundle method', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RepositoryAdapter interface
+        const adapterPath = path.join(__dirname, '../../../src/adapters/RepositoryAdapter.ts');
+        const sourceCode = fs.readFileSync(adapterPath, 'utf8');
+        
+        // Verify downloadBundle is in the interface
+        assert.ok(
+            sourceCode.includes('downloadBundle(bundle: Bundle): Promise<Buffer>'),
+            'IRepositoryAdapter interface should define downloadBundle method'
+        );
+    });
+});
+
+suite('RegistryManager Version Consolidation', () => {
+    test('searchBundles() should call consolidateBundles for GitHub sources', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // Verify it calls versionConsolidator.consolidateBundles()
+        assert.ok(
+            searchBundlesCode.includes('versionConsolidator.consolidateBundles') ||
+            searchBundlesCode.includes('this.versionConsolidator.consolidateBundles'),
+            'searchBundles should call versionConsolidator.consolidateBundles()'
+        );
+    });
+    
+    test('RegistryManager should have versionConsolidator instance', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Verify versionConsolidator is declared as a private field
+        assert.ok(
+            sourceCode.includes('private versionConsolidator') ||
+            sourceCode.includes('versionConsolidator:'),
+            'RegistryManager should have versionConsolidator field'
+        );
+        
+        // Verify VersionConsolidator is imported
+        assert.ok(
+            sourceCode.includes("from './VersionConsolidator'") ||
+            sourceCode.includes('import { VersionConsolidator }'),
+            'RegistryManager should import VersionConsolidator'
+        );
+    });
+    
+    test('searchBundles() should have error handling with fallback', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // Verify it has try-catch around consolidation
+        const hasTryCatch = searchBundlesCode.includes('try') && searchBundlesCode.includes('catch');
+        
+        // If consolidation is called, it should have error handling
+        if (searchBundlesCode.includes('consolidateBundles')) {
+            assert.ok(
+                hasTryCatch,
+                'searchBundles should have try-catch around consolidation with fallback'
+            );
+        }
+    });
+    
+    test('searchBundles() should apply consolidation before filters', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // If consolidation is present, verify it comes before filtering
+        if (searchBundlesCode.includes('consolidateBundles')) {
+            const consolidateIndex = searchBundlesCode.indexOf('consolidateBundles');
+            const filterIndex = searchBundlesCode.indexOf('query.text');
+            
+            // Consolidation should come before text filtering
+            if (filterIndex > -1) {
+                assert.ok(
+                    consolidateIndex < filterIndex,
+                    'Consolidation should be applied before filters'
+                );
+            }
+        }
+    });
+});

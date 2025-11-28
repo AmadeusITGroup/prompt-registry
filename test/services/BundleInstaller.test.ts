@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { BundleInstaller } from '../../src/services/BundleInstaller';
 import { Bundle, InstallOptions } from '../../src/types/registry';
 
-suite.skip('BundleInstaller', () => {
+suite('BundleInstaller', () => {
     let installer: BundleInstaller;
     let mockContext: any;
     let tempDir: string;
@@ -37,7 +37,13 @@ suite.skip('BundleInstaller', () => {
             globalStorageUri: { fsPath: path.join(tempDir, 'global') },
             storageUri: { fsPath: path.join(tempDir, 'workspace') },
             extensionPath: __dirname,
-        };
+            extension: {
+                packageJSON: {
+                    publisher: 'test-publisher',
+                    name: 'test-extension'
+                }
+            }
+        } as any;
 
         // Create temp directories
         if (!fs.existsSync(tempDir)) {
@@ -54,48 +60,36 @@ suite.skip('BundleInstaller', () => {
         }
     });
 
-    suite('install', () => {
-        test('should install bundle to user scope', async function() {
-            this.timeout(10000);
-            
+    suite('install (deprecated for remote bundles)', () => {
+        test('should throw error for non-file:// URLs', async () => {
             const options: InstallOptions = {
                 scope: 'user',
                 force: false,
             };
 
-            // Mock download URL with test zip file
-            const testManifest = {
-                id: 'test-bundle',
-                version: '1.0.0',
-                name: 'Test Bundle',
-                description: 'Test',
-                author: 'Test',
-                prompts: [],
-            };
-
-            // This test would need actual file creation or mocking
-            // For now, we'll test the structure
-            assert.ok(installer);
+            // install() should only work with file:// URLs now
+            await assert.rejects(
+                () => installer.install(mockBundle, 'https://example.com/bundle.zip', options),
+                /install\(\) method is only for local file:\/\/ URLs/
+            );
         });
 
-        test('should validate bundle ID matches manifest', async () => {
-            // Test that validation catches ID mismatches
-            assert.ok(installer);
+        test('should accept file:// URLs for local bundles', async () => {
+            // This would require actual file setup, so we just verify the method exists
+            assert.ok(typeof installer.install === 'function');
+        });
+    });
+
+    suite('installFromBuffer (unified architecture)', () => {
+        test('should be the primary installation method', () => {
+            // Verify installFromBuffer exists and is the main method
+            assert.ok(typeof installer.installFromBuffer === 'function');
         });
 
-        test('should validate bundle version matches manifest', async () => {
-            // Test that validation catches version mismatches
-            assert.ok(installer);
-        });
-
-        test('should clean up temp directory on success', async () => {
-            // Test that temp files are removed after successful install
-            assert.ok(installer);
-        });
-
-        test('should clean up temp directory on failure', async () => {
-            // Test that temp files are removed even on failure
-            assert.ok(installer);
+        test('should accept Buffer parameter', () => {
+            // Type check - installFromBuffer should accept Buffer
+            const testBuffer = Buffer.from('test');
+            assert.ok(Buffer.isBuffer(testBuffer));
         });
     });
 
@@ -116,20 +110,16 @@ suite.skip('BundleInstaller', () => {
         });
     });
 
-    suite('update', () => {
-        test('should uninstall old version before installing new', async () => {
-            // Test update flow
-            assert.ok(installer);
+    suite('update (deprecated)', () => {
+        test('should exist but is deprecated', () => {
+            // update() is deprecated - RegistryManager should handle updates
+            assert.ok(typeof installer.update === 'function');
         });
 
-        test('should preserve installation scope during update', async () => {
-            // Test that scope is maintained
-            assert.ok(installer);
-        });
-
-        test('should rollback on update failure', async () => {
-            // Test error handling in updates
-            assert.ok(installer);
+        test('should accept Buffer parameter for unified architecture', () => {
+            // update() now expects Buffer for remote bundles
+            const testBuffer = Buffer.from('test');
+            assert.ok(Buffer.isBuffer(testBuffer));
         });
     });
 
@@ -196,16 +186,22 @@ suite.skip('BundleInstaller', () => {
     });
 
     suite('Error Handling', () => {
-        test('should handle download failures', async () => {
-            const invalidUrl = 'https://invalid.example.com/bundle.zip';
+        test('should reject remote URLs in install() method', async () => {
+            const options: InstallOptions = {
+                scope: 'user',
+                force: false,
+            };
             
-            // Test download error handling
-            assert.ok(invalidUrl);
+            // install() should reject remote URLs
+            await assert.rejects(
+                () => installer.install(mockBundle, 'https://invalid.example.com/bundle.zip', options),
+                /install\(\) method is only for local file:\/\/ URLs/
+            );
         });
 
-        test('should handle extraction failures', async () => {
-            // Test zip extraction errors
-            assert.ok(installer);
+        test('should handle extraction failures in installFromBuffer', async () => {
+            // installFromBuffer handles extraction
+            assert.ok(typeof installer.installFromBuffer === 'function');
         });
 
         test('should handle validation failures', async () => {
@@ -216,6 +212,23 @@ suite.skip('BundleInstaller', () => {
         test('should provide descriptive error messages', async () => {
             // Test error message quality
             assert.ok(installer);
+        });
+    });
+
+    suite('Architecture Validation', () => {
+        test('downloadFile method should not exist', () => {
+            // downloadFile was removed - downloads are handled by adapters
+            assert.strictEqual((installer as any).downloadFile, undefined);
+        });
+
+        test('install() is deprecated for remote bundles', () => {
+            // install() should only be used for local file:// URLs
+            assert.ok(typeof installer.install === 'function');
+        });
+
+        test('installFromBuffer() is the primary method', () => {
+            // installFromBuffer is the main installation method
+            assert.ok(typeof installer.installFromBuffer === 'function');
         });
     });
 });

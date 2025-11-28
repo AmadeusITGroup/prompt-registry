@@ -109,12 +109,16 @@ export class HttpAdapter extends RepositoryAdapter {
             
             if (this.getAuthToken()) {
                 headers['Authorization'] = `Bearer ${this.getAuthToken()}`;
+                console.log(`[HttpAdapter] Downloading with authentication: ${url}`);
+            } else {
+                console.log(`[HttpAdapter] Downloading without authentication: ${url}`);
             }
 
             protocol.get(url, { headers }, (res) => {
                 // Handle redirects
                 if (res.statusCode === 301 || res.statusCode === 302) {
                     if (res.headers.location) {
+                        console.log(`[HttpAdapter] Following redirect: ${res.statusCode} -> ${res.headers.location}`);
                         this.downloadBinary(res.headers.location)
                             .then(resolve)
                             .catch(reject);
@@ -130,12 +134,16 @@ export class HttpAdapter extends RepositoryAdapter {
 
                 res.on('end', () => {
                     if (res.statusCode !== 200) {
+                        console.error(`[HttpAdapter] Download failed with status ${res.statusCode}`);
                         reject(new Error(`Failed to download: ${res.statusCode}`));
                         return;
                     }
-                    resolve(Buffer.concat(chunks));
+                    const buffer = Buffer.concat(chunks);
+                    console.log(`[HttpAdapter] Download complete: ${buffer.length} bytes received`);
+                    resolve(buffer);
                 });
             }).on('error', (error) => {
+                console.error(`[HttpAdapter] Download error: ${error.message}`);
                 reject(new Error(`Download failed: ${error.message}`));
             });
         });
