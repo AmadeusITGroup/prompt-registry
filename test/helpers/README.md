@@ -37,6 +37,32 @@ Reusable mock data generators for unit tests.
 - Mock VSCode context
 - Mock GitHub API responses
 
+### `bundleTestHelpers.ts`
+Shared utilities for creating test bundles with consistent structure.
+
+**Exports**:
+- `BundleBuilder` - Fluent API for building test bundles
+- `TEST_SOURCE_IDS` - Constants for source identifiers
+- `TEST_DEFAULTS` - Default values for bundle properties
+- `createGitHubBundle()` - Legacy helper (deprecated)
+- `createNonGitHubBundle()` - Legacy helper (deprecated)
+
+**Usage**:
+```typescript
+import { BundleBuilder, TEST_SOURCE_IDS } from '../helpers/bundleTestHelpers';
+
+// Create a GitHub bundle
+const bundle = BundleBuilder.github('owner', 'repo')
+    .withVersion('1.0.0')
+    .withDescription('Custom description')
+    .build();
+
+// Create a non-GitHub bundle
+const bundle = BundleBuilder.fromSource('my-bundle', 'GITLAB')
+    .withVersion('2.0.0')
+    .build();
+```
+
 ### `PROPERTY_TEST_GUIDE.md`
 Comprehensive guide for writing property-based tests using the shared helpers.
 
@@ -94,6 +120,29 @@ TestGenerators.httpUrl()
 TestGenerators.githubRepoUrl()
 TestGenerators.httpStatusCode('success' | 'client-error' | 'server-error')
 TestGenerators.contentType()
+```
+
+### Bundle Builder
+```typescript
+// GitHub bundle with fluent API
+BundleBuilder.github('owner', 'repo')
+    .withVersion('1.0.0')
+    .withDescription('Custom description')
+    .withAuthor('author')
+    .withTags(['tag1', 'tag2'])
+    .build()
+
+// Non-GitHub bundle
+BundleBuilder.fromSource('bundle-id', 'GITLAB')
+    .withVersion('2.0.0')
+    .build()
+
+// Constants
+TEST_SOURCE_IDS.GITHUB           // 'github-source'
+TEST_SOURCE_IDS.GITLAB           // 'gitlab-source'
+TEST_SOURCE_IDS.HTTP             // 'http-source'
+TEST_SOURCE_IDS.LOCAL            // 'local-source'
+TEST_SOURCE_IDS.AWESOME_COPILOT  // 'awesome-copilot-source'
 ```
 
 ## Adding New Helpers

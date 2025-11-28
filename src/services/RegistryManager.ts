@@ -13,6 +13,7 @@ import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
+import { VersionConsolidator } from './VersionConsolidator';
 import {
     RegistrySource,
     Bundle,
@@ -37,6 +38,7 @@ export class RegistryManager {
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
+    private versionConsolidator: VersionConsolidator;
 
     // Event emitters
     private _onBundleInstalled = new vscode.EventEmitter<InstalledBundle>();
@@ -67,6 +69,7 @@ export class RegistryManager {
         this.storage = new RegistryStorage(context);
         this.installer = new BundleInstaller(context);
         this.logger = Logger.getInstance();
+        this.versionConsolidator = new VersionConsolidator();
         
         // Register default adapters
         RepositoryAdapterFactory.register('github', GitHubAdapter);
@@ -293,9 +296,25 @@ export class RegistryManager {
             }
         }
 
-        // Apply filters
+        // Apply version consolidation for GitHub sources
         let results = allBundles;
+        try {
+            // Set up source type resolver for accurate consolidation
+            this.versionConsolidator.setSourceTypeResolver((sourceId: string) => {
+                const source = sources.find(s => s.id === sourceId);
+                return source?.type || 'local';
+            });
+            
+            // Consolidate bundles (only GitHub bundles will be consolidated)
+            results = this.versionConsolidator.consolidateBundles(allBundles);
+            this.logger.debug(`Consolidated ${allBundles.length} bundles into ${results.length} entries`);
+        } catch (error) {
+            this.logger.error('Version consolidation failed, using unconsolidated bundles', error as Error);
+            // Fall back to unconsolidated bundles on error
+            results = allBundles;
+        }
 
+        // Apply filters
         if (query.text) {
             const searchText = query.text.toLowerCase();
             results = results.filter(b =>
