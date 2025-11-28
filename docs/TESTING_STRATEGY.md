@@ -182,6 +182,30 @@ E2E Tests:            20% of coverage
 | **c8** | Coverage reporting | ✅ Installed |
 | **@vscode/test-electron** | VSCode testing | ✅ Installed |
 
+### **Logging in Tests**
+
+The Logger supports configurable log levels via the `LOG_LEVEL` environment variable:
+
+- **Environment Variable**: `LOG_LEVEL=ERROR` (must be set when running tests)
+- **Suppressed Levels**: `DEBUG`, `INFO`, `WARN` are suppressed when `LOG_LEVEL=ERROR`
+- **Rationale**: Keeps test output clean and focused on test results
+- **Error Logs**: Only ERROR level logs appear, which helps identify actual issues
+- **Override**: Can be changed by setting `LOG_LEVEL` to `DEBUG`, `INFO`, `WARN`, or `NONE`
+
+**Running Tests with Suppressed Logging**:
+```bash
+# Always prefix test commands with LOG_LEVEL=ERROR
+LOG_LEVEL=ERROR npm test
+LOG_LEVEL=ERROR npm run test:unit
+LOG_LEVEL=ERROR npm run test:integration
+LOG_LEVEL=ERROR npm run test:coverage
+```
+
+**Property-Based Tests**:
+- Use `verbose: false` in fast-check options to minimize output
+- Only log meaningful information when tests fail
+- Avoid logging during successful test iterations
+
 ### **Test Scripts**
 
 ```json

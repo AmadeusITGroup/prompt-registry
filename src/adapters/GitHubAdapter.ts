@@ -45,6 +45,8 @@ export class GitHubAdapter extends RepositoryAdapter {
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
     private logger: Logger;
+    private attemptedMethods: Set<string> = new Set();
+    private maxAuthAttempts = 3;
 
     constructor(source: RegistrySource) {
         super(source);
@@ -89,9 +91,10 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Get authentication token using fallback chain:
-     * 1. VSCode GitHub API (if user is logged in)
-     * 2. gh CLI (if installed and authenticated)
-     * 3. Explicit token from source configuration
+     * 1. Explicit token from source configuration
+     * 2. VSCode GitHub API (if user is logged in)
+     * 3. gh CLI (if installed and authenticated)
+     * 4. No authentication
      */
     private async getAuthenticationToken(): Promise<string | undefined> {
         // Return cached token if already resolved
@@ -100,68 +103,93 @@ export class GitHubAdapter extends RepositoryAdapter {
             return this.authToken;
         }
 
+        // Check if we've exceeded max attempts
+        if (this.attemptedMethods.size >= this.maxAuthAttempts) {
+            this.logger.error(`[GitHubAdapter] Maximum authentication attempts (${this.maxAuthAttempts}) exceeded`);
+            this.logger.error(`[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`);
+            return undefined;
+        }
+
         this.logger.info('[GitHubAdapter] Attempting authentication...');
 
-        // Try VSCode GitHub authentication first
-        try {
-            this.logger.debug('[GitHubAdapter] Trying VSCode GitHub authentication...');
-            const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-            if (session) {
-                this.authToken = session.accessToken;
-                this.authMethod = 'vscode';
-                this.logger.info('[GitHubAdapter] ✓ Using VSCode GitHub authentication');
+        // Try explicit token from source configuration first
+        if (!this.attemptedMethods.has('explicit')) {
+            const explicitToken = this.getAuthToken();
+            if (explicitToken && explicitToken.trim().length > 0) {
+                this.authToken = explicitToken.trim();
+                this.authMethod = 'explicit';
+                this.logger.info('[GitHubAdapter] ✓ Using explicit token from configuration');
                 this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
                 return this.authToken;
             }
-            this.logger.debug('[GitHubAdapter] VSCode auth session not found');
-        } catch (error) {
-            this.logger.warn(`[GitHubAdapter] VSCode auth failed: ${error}`);
+            this.logger.debug('[GitHubAdapter] No explicit token configured');
+        } else {
+            this.logger.debug('[GitHubAdapter] Skipping explicit token (already attempted)');
         }
 
-        // Try gh CLI authentication
-        try {
-            this.logger.debug('[GitHubAdapter] Trying gh CLI authentication...');
-            const { stdout } = await execAsync('gh auth token');
-            const token = stdout.trim();
-            if (token && token.length > 0) {
-                this.authToken = token;
-                this.authMethod = 'gh-cli';
-                this.logger.info('[GitHubAdapter] ✓ Using gh CLI authentication');
-                this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
-                return this.authToken;
+        // Try VSCode GitHub authentication second
+        if (!this.attemptedMethods.has('vscode')) {
+            try {
+                this.logger.debug('[GitHubAdapter] Trying VSCode GitHub authentication...');
+                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+                if (session) {
+                    this.authToken = session.accessToken;
+                    this.authMethod = 'vscode';
+                    this.logger.info('[GitHubAdapter] ✓ Using VSCode GitHub authentication');
+                    this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                    return this.authToken;
+                }
+                this.logger.debug('[GitHubAdapter] VSCode auth session not found');
+            } catch (error) {
+                this.logger.warn(`[GitHubAdapter] VSCode auth failed: ${error}`);
             }
-            this.logger.debug('[GitHubAdapter] gh CLI returned empty token');
-        } catch (error) {
-            this.logger.warn(`[GitHubAdapter] gh CLI auth failed: ${error}`);
+        } else {
+            this.logger.debug('[GitHubAdapter] Skipping VSCode auth (already attempted)');
         }
 
-        // Fall back to explicit token from source configuration
-        const explicitToken = this.getAuthToken();
-        if (explicitToken) {
-            this.authToken = explicitToken;
-            this.authMethod = 'explicit';
-            this.logger.info('[GitHubAdapter] ✓ Using explicit token from configuration');
-            this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
-            return this.authToken;
+        // Try gh CLI authentication third
+        if (!this.attemptedMethods.has('gh-cli')) {
+            try {
+                this.logger.debug('[GitHubAdapter] Trying gh CLI authentication...');
+                const { stdout } = await execAsync('gh auth token');
+                const token = stdout.trim();
+                if (token && token.length > 0) {
+                    this.authToken = token;
+                    this.authMethod = 'gh-cli';
+                    this.logger.info('[GitHubAdapter] ✓ Using gh CLI authentication');
+                    this.logger.debug(`[GitHubAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                    return this.authToken;
+                }
+                this.logger.debug('[GitHubAdapter] gh CLI returned empty token');
+            } catch (error) {
+                this.logger.warn(`[GitHubAdapter] gh CLI auth failed: ${error}`);
+            }
+        } else {
+            this.logger.debug('[GitHubAdapter] Skipping gh CLI (already attempted)');
         }
 
         // No authentication available
         this.authMethod = 'none';
-        this.logger.warn('[GitHubAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        if (this.attemptedMethods.size > 0) {
+            this.logger.error('[GitHubAdapter] ✗ All authentication methods exhausted');
+            this.logger.error(`[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`);
+        } else {
+            this.logger.warn('[GitHubAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        }
         return undefined;
     }
 
     /**
-     * Make HTTP request to GitHub API with authentication
+     * Make HTTP request to GitHub API with authentication and automatic retry on auth failures
      */
-    private async makeRequest(url: string): Promise<any> {
+    private async makeRequest(url: string, retryCount: number = 0): Promise<any> {
         const headers = this.getHeaders();
         
         // Get authentication token using fallback chain
         const token = await this.getAuthenticationToken();
         if (token) {
-            // Use Bearer token format for OAuth tokens (recommended)
-            headers['Authorization'] = `Bearer ${token}`;
+            // Use token format for GitHub API
+            headers['Authorization'] = `token ${token}`;
             this.logger.debug(`[GitHubAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
         } else {
             this.logger.debug(`[GitHubAdapter] Request to ${url} WITHOUT auth`);
@@ -182,12 +210,33 @@ export class GitHubAdapter extends RepositoryAdapter {
                     data += chunk;
                 });
 
-                res.on('end', () => {
+                res.on('end', async () => {
                     if (res.statusCode && res.statusCode >= 400) {
                         this.logger.error(`[GitHubAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`);
                         this.logger.error(`[GitHubAdapter] URL: ${url}`);
                         this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
                         this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
+                        
+                        // Check if this is an authentication error that should trigger retry
+                        const isAuthError = res.statusCode === 401 || res.statusCode === 403;
+                        const canRetry = retryCount < this.maxAuthAttempts && this.attemptedMethods.size < this.maxAuthAttempts;
+                        
+                        if (isAuthError && canRetry) {
+                            // Invalidate cache and retry with next auth method
+                            const reason = `${res.statusCode} ${res.statusMessage}`;
+                            this.logger.warn(`[GitHubAdapter] Authentication error detected, invalidating cache and retrying...`);
+                            this.invalidateAuthCache(reason);
+                            
+                            try {
+                                // Retry the request with next authentication method
+                                const result = await this.makeRequest(url, retryCount + 1);
+                                resolve(result);
+                                return;
+                            } catch (retryError) {
+                                // If retry also fails, fall through to error handling below
+                                this.logger.error(`[GitHubAdapter] Retry failed: ${retryError}`);
+                            }
+                        }
                         
                         // Provide helpful error messages
                         let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
@@ -195,8 +244,14 @@ export class GitHubAdapter extends RepositoryAdapter {
                             errorMsg += ' - Repository not found or not accessible. Check authentication.';
                         } else if (res.statusCode === 401) {
                             errorMsg += ' - Authentication failed. Token may be invalid or expired.';
+                            if (this.attemptedMethods.size > 0) {
+                                errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
+                            }
                         } else if (res.statusCode === 403) {
                             errorMsg += ' - Access forbidden. Token may lack required scopes (repo).';
+                            if (this.attemptedMethods.size > 0) {
+                                errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
+                            }
                         }
                         reject(new Error(errorMsg));
                         return;
@@ -258,7 +313,7 @@ export class GitHubAdapter extends RepositoryAdapter {
         
         // Only add auth headers for GitHub domains
         if (token && isGitHubDomain(url)) {
-            headers['Authorization'] = `Bearer ${token}`;
+            headers['Authorization'] = `token ${token}`;
             this.logger.debug(`[GitHubAdapter] Downloading ${url} with auth (method: ${this.authMethod})`);
         } else if (token && !isGitHubDomain(url)) {
             this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth (non-GitHub domain)`);
@@ -480,6 +535,23 @@ export class GitHubAdapter extends RepositoryAdapter {
      */
     public getAuthenticationMethod(): string {
         return this.authMethod;
+    }
+
+    /**
+     * Invalidate the cached authentication token
+     * This forces the adapter to re-authenticate on the next request
+     * 
+     * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
+     */
+    public invalidateAuthCache(reason?: string): void {
+        const previousMethod = this.authMethod;
+        this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
+        if (previousMethod !== 'none') {
+            this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
+            this.attemptedMethods.add(previousMethod);
+        }
+        this.authToken = undefined;
+        this.authMethod = 'none';
     }
 
     /**

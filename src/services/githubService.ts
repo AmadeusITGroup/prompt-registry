@@ -88,7 +88,7 @@ export class GitHubService {
             }
             
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers['Authorization'] = `token ${token}`;
                 this.logger.debug('Using authenticated GitHub API requests');
             } else if (this.usePrivateRepo) {
                 throw new Error('No GitHub token available for private repository access');
