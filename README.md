@@ -71,7 +71,9 @@ Connect to various prompt sources:
 ### 📦 Bundle Management
 
 - **Install/Uninstall**: Manage bundles through UI or commands
-- **Version Control**: Track installed versions
+- **Version Tracking**: Track installed versions with semantic versioning
+- **Version Consolidation**: Multiple versions of the same bundle are grouped, showing only the latest
+- **Update Detection**: Automatically detect when newer versions are available
 - **Auto-Sync**: Automatic synchronization with GitHub Copilot
 - **Conflict Resolution**: Handle duplicate bundles gracefully
 
@@ -205,8 +207,10 @@ Click filter buttons to show only:
 ```
 Click on any bundle tile to see:
 - Full description
+- Current version and available versions
 - Content breakdown (prompts, instructions, etc.)
 - Installation information
+- Update availability status
 - Tags and metadata
 - List of included files
 ```
@@ -216,9 +220,9 @@ Click on any bundle tile to see:
 #### From Marketplace
 
 1. **Browse** - Find a bundle in the marketplace
-2. **Review** - Click the tile to view details
-3. **Install** - Click the **Install** button
-4. **Verify** - Check the installed badge appears
+2. **Review** - Click the tile to view details and version information
+3. **Install** - Click the **Install** button (or **Update** if a newer version is available)
+4. **Verify** - Check the installed badge appears with version number
 
 #### From Tree View
 
@@ -310,6 +314,35 @@ Learn more in the [Scaffolding and Validation Guide](./docs/SCAFFOLDING_AND_VALI
 ```bash
 Right-click source in tree view → "Remove Source"
 ```
+
+### Managing Bundle Versions
+
+Prompt Registry uses semantic versioning to track and manage bundle versions.
+
+#### Version Consolidation
+
+When multiple versions of the same bundle exist (e.g., from GitHub releases), they are automatically consolidated:
+
+- **Latest Version Shown**: The marketplace displays only the latest version of each bundle
+- **Version History**: All available versions are tracked and accessible
+- **Smart Grouping**: Bundles from the same repository are grouped by owner/repo identity
+
+#### Update Detection
+
+The extension automatically detects when updates are available:
+
+```bash
+# Check for updates
+Right-click installed bundle → "Check for Updates"
+
+# Update to latest version
+Click "Update" button in marketplace or tree view
+```
+
+**Update Indicators:**
+- 🔄 **Update Available** - Newer version detected
+- ✅ **Up to Date** - Latest version installed
+- 📦 **Not Installed** - Bundle not yet installed
 
 ### Working with Profiles
 
@@ -431,6 +464,7 @@ Ctrl+Shift+P → "View: Show Prompt Registry Explorer"
 - View all installed bundles by scope (User/Workspace)
 - Right-click for actions: View Details, Update, Uninstall, Check Updates
 - See installation status and version information
+- Visual indicators for available updates
 
 **👥 My Profiles**
 - Manage profile-based installations
@@ -628,6 +662,8 @@ graph TB
 ### Key Components
 
 - **Registry Manager**: Orchestrates sources, bundles, and installations
+- **Version Consolidator**: Groups multiple bundle versions and selects latest
+- **Version Manager**: Semantic versioning operations and comparisons
 - **Bundle Installer**: Handles extraction, validation, and installation
 - **Copilot Sync**: Syncs bundles to GitHub Copilot directories
 - **Adapters**: Source-specific implementations (GitHub, GitLab, etc.)
@@ -821,8 +857,11 @@ prompt-registry/
 
 ### Upcoming (2.1.0)
 
+- ✅ Bundle versioning with semantic version support
+- ✅ Version consolidation (group multiple versions)
+- ✅ Update detection and notifications
 - 🔄 Automatic bundle updates
-- 🔄 Bundle versioning and rollback
+- 🔄 Version rollback
 - 🔄 Dependency management
 - 🔄 Bundle analytics
 

@@ -27,8 +27,8 @@ export class SourceCommands {
             const sourceType = await vscode.window.showQuickPick(
                 [
                     {
-                        label: '$(github) GitHub Repository',
-                        description: 'Public or private GitHub repository',
+                        label: '$(github) GitHub Releases',
+                        description: 'Versioned releases with zip file in the assets for both public or private GitHub repository',
                         value: 'github' as SourceType
                     },
                     // {

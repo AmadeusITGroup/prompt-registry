@@ -13,6 +13,8 @@ import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
+import { VersionConsolidator } from './VersionConsolidator';
+import { VersionManager } from '../utils/versionManager';
 import {
     RegistrySource,
     Bundle,
@@ -37,6 +39,7 @@ export class RegistryManager {
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
+    private versionConsolidator: VersionConsolidator;
 
     // Event emitters
     private _onBundleInstalled = new vscode.EventEmitter<InstalledBundle>();
@@ -67,6 +70,7 @@ export class RegistryManager {
         this.storage = new RegistryStorage(context);
         this.installer = new BundleInstaller(context);
         this.logger = Logger.getInstance();
+        this.versionConsolidator = new VersionConsolidator();
         
         // Register default adapters
         RepositoryAdapterFactory.register('github', GitHubAdapter);
@@ -101,6 +105,31 @@ export class RegistryManager {
     }
 
     /**
+     * Enrich source with global token if applicable
+     * Applies global GitHub token to GitHub sources that don't have their own token
+     */
+    private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
+        // If source already has a token, don't override it
+        if (source.token && source.token.trim().length > 0) {
+            return source;
+        }
+
+        // Get global token from VS Code configuration
+        const config = vscode.workspace.getConfiguration('promptregistry');
+        const globalToken = config.get<string>('githubToken', '');
+
+        if (globalToken && globalToken.trim().length > 0) {
+            this.logger.debug(`[RegistryManager] Applying global GitHub token to source '${source.id}'`);
+            return {
+                ...source,
+                token: globalToken.trim()
+            };
+        }
+
+        return source;
+    }
+
+    /**
      * Load adapters for all sources
      */
     private async loadAdapters(): Promise<void> {
@@ -109,7 +138,8 @@ export class RegistryManager {
         for (const source of sources) {
             if (source.enabled) {
                 try {
-                    const adapter = RepositoryAdapterFactory.create(source);
+                    const enrichedSource = this.enrichSourceWithGlobalToken(source);
+                    const adapter = RepositoryAdapterFactory.create(enrichedSource);
                     this.adapters.set(source.id, adapter);
                 } catch (error) {
                     this.logger.error(`Failed to create adapter for source '${source.id}'`, error as Error);
@@ -125,7 +155,8 @@ export class RegistryManager {
         let adapter = this.adapters.get(source.id);
         
         if (!adapter) {
-            adapter = RepositoryAdapterFactory.create(source);
+            const enrichedSource = this.enrichSourceWithGlobalToken(source);
+            adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(source.id, adapter);
         }
         
@@ -140,8 +171,9 @@ export class RegistryManager {
     async addSource(source: RegistrySource): Promise<void> {
         this.logger.info(`Adding source: ${source.name}`);
         
-        // Validate source
-        const adapter = RepositoryAdapterFactory.create(source);
+        // Validate source (with global token if applicable)
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         const validation = await adapter.validate();
         
         if (!validation.valid) {
@@ -182,7 +214,8 @@ export class RegistryManager {
         const updatedSource = sources.find(s => s.id === sourceId);
         
         if (updatedSource && updatedSource.enabled) {
-            const adapter = RepositoryAdapterFactory.create(updatedSource);
+            const enrichedSource = this.enrichSourceWithGlobalToken(updatedSource);
+            const adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(sourceId, adapter);
         }
 
@@ -223,7 +256,8 @@ export class RegistryManager {
      * Validate a source
      */
     async validateSource(source: RegistrySource): Promise<ValidationResult> {
-        const adapter = RepositoryAdapterFactory.create(source);
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         return await adapter.validate();
     }
 
@@ -263,9 +297,25 @@ export class RegistryManager {
             }
         }
 
-        // Apply filters
+        // Apply version consolidation for GitHub sources
         let results = allBundles;
+        try {
+            // Set up source type resolver for accurate consolidation
+            this.versionConsolidator.setSourceTypeResolver((sourceId: string) => {
+                const source = sources.find(s => s.id === sourceId);
+                return source?.type || 'local';
+            });
+            
+            // Consolidate bundles (only GitHub bundles will be consolidated)
+            results = this.versionConsolidator.consolidateBundles(allBundles);
+            this.logger.debug(`Consolidated ${allBundles.length} bundles into ${results.length} entries`);
+        } catch (error) {
+            this.logger.error('Version consolidation failed, using unconsolidated bundles', error as Error);
+            // Fall back to unconsolidated bundles on error
+            results = allBundles;
+        }
 
+        // Apply filters
         if (query.text) {
             const searchText = query.text.toLowerCase();
             results = results.filter(b =>
@@ -333,7 +383,7 @@ export class RegistryManager {
         this.logger.info(`Installing bundle: ${bundleId}`, options);
         
         // Get bundle details
-        const bundle = await this.getBundleDetails(bundleId);
+        let bundle = await this.getBundleDetails(bundleId);
         
         // Check if already installed
         const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
@@ -342,12 +392,32 @@ export class RegistryManager {
             throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
         }
 
-        // Get download URL from adapter
+        // Get source
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
         if (!source) {
             throw new Error(`Source '${bundle.sourceId}' not found`);
+        }
+
+        // Handle version-specific installation for consolidated bundles
+        if (options.version && (bundle as any).isConsolidated) {
+            const identity = VersionManager.extractBundleIdentity(bundleId, source.type);
+            const specificVersion = this.versionConsolidator.getBundleVersion(identity, options.version);
+            
+            if (specificVersion) {
+                this.logger.info(`Installing specific version ${options.version} instead of latest ${bundle.version}`);
+                // Update bundle with specific version URLs
+                bundle = {
+                    ...bundle,
+                    version: specificVersion.version,
+                    downloadUrl: specificVersion.downloadUrl,
+                    manifestUrl: specificVersion.manifestUrl,
+                    lastUpdated: specificVersion.publishedAt
+                };
+            } else {
+                this.logger.warn(`Requested version ${options.version} not found in available versions, using latest`);
+            }
         }
 
         const adapter = this.getAdapter(source);
@@ -640,22 +710,13 @@ export class RegistryManager {
 
                             this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
                         
-
-                            // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
-                            // For other adapters, use the downloadUrl
-                            let installation: InstalledBundle;
-                            if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
-                                this.logger.debug('Downloading bundle from awesome-copilot adapter');
-                                const bundleBuffer = await adapter.downloadBundle(matchingBundle);
-                                this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+                            // Unified download path: all adapters use downloadBundle()
+                            this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+                            const bundleBuffer = await adapter.downloadBundle(matchingBundle);
+                            this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
                             
-                                // Install from buffer
-                                installation = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
-                            } else {
-                                const downloadUrl = adapter.getDownloadUrl(matchingBundle.id, matchingBundle.version);
-                                // Install bundle using BundleInstaller
-                                installation = await this.installer.install(matchingBundle, downloadUrl, options);
-                            }
+                            // Install from buffer
+                            const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
 
                             // Record installation in storage
                             await this.storage.recordInstallation(installation);

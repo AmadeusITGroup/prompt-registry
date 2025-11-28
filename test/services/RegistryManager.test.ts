@@ -213,3 +213,105 @@ suite('RegistryManager Unified Download Path', () => {
         );
     });
 });
+
+suite('RegistryManager Version Consolidation', () => {
+    test('searchBundles() should call consolidateBundles for GitHub sources', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // Verify it calls versionConsolidator.consolidateBundles()
+        assert.ok(
+            searchBundlesCode.includes('versionConsolidator.consolidateBundles') ||
+            searchBundlesCode.includes('this.versionConsolidator.consolidateBundles'),
+            'searchBundles should call versionConsolidator.consolidateBundles()'
+        );
+    });
+    
+    test('RegistryManager should have versionConsolidator instance', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Verify versionConsolidator is declared as a private field
+        assert.ok(
+            sourceCode.includes('private versionConsolidator') ||
+            sourceCode.includes('versionConsolidator:'),
+            'RegistryManager should have versionConsolidator field'
+        );
+        
+        // Verify VersionConsolidator is imported
+        assert.ok(
+            sourceCode.includes("from './VersionConsolidator'") ||
+            sourceCode.includes('import { VersionConsolidator }'),
+            'RegistryManager should import VersionConsolidator'
+        );
+    });
+    
+    test('searchBundles() should have error handling with fallback', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // Verify it has try-catch around consolidation
+        const hasTryCatch = searchBundlesCode.includes('try') && searchBundlesCode.includes('catch');
+        
+        // If consolidation is called, it should have error handling
+        if (searchBundlesCode.includes('consolidateBundles')) {
+            assert.ok(
+                hasTryCatch,
+                'searchBundles should have try-catch around consolidation with fallback'
+            );
+        }
+    });
+    
+    test('searchBundles() should apply consolidation before filters', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the searchBundles method
+        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
+        
+        const searchBundlesCode = searchBundlesMatch[1];
+        
+        // If consolidation is present, verify it comes before filtering
+        if (searchBundlesCode.includes('consolidateBundles')) {
+            const consolidateIndex = searchBundlesCode.indexOf('consolidateBundles');
+            const filterIndex = searchBundlesCode.indexOf('query.text');
+            
+            // Consolidation should come before text filtering
+            if (filterIndex > -1) {
+                assert.ok(
+                    consolidateIndex < filterIndex,
+                    'Consolidation should be applied before filters'
+                );
+            }
+        }
+    });
+});

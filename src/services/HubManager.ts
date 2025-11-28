@@ -435,7 +435,7 @@ export class HubManager {
         const token = await this.getAuthenticationToken();
         if (token) {
             // Use Bearer token format for OAuth tokens (recommended)
-            headers['Authorization'] = `Bearer ${token}`;
+            headers['Authorization'] = `token ${token}`;
             this.logger.debug(`[HubManager] Request to ${url} with auth (method: ${this.authMethod})`);
         } else {
             this.logger.debug(`[HubManager] Request to ${url} WITHOUT auth`);

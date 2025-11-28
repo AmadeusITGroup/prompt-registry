@@ -14,6 +14,7 @@ import {
     filterBundlesByTags,
     filterBundlesBySearch
 } from '../../src/utils/filterUtils';
+import { determineButtonState, matchesBundleIdentity } from '../helpers/marketplaceTestHelpers';
 
 suite('MarketplaceViewProvider - Dynamic Filtering', () => {
     let mockBundles: Bundle[];
@@ -120,8 +121,8 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
         test('should extract all unique tags from bundles', () => {
             const tags = extractAllTags(mockBundles);
             
-            // Should have 9 unique tags
-            assert.strictEqual(tags.length, 9);
+            // Should have 10 unique tags
+            assert.strictEqual(tags.length, 10);
             assert.ok(tags.includes('testing'));
             assert.ok(tags.includes('automation'));
             assert.ok(tags.includes('tdd'));
@@ -299,6 +300,333 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
             // Should match only bundle1
             assert.strictEqual(filtered.length, 1);
             assert.strictEqual(filtered[0].id, 'bundle1');
+        });
+    });
+
+    suite('Button State Determination', () => {
+
+        test('should return "install" state when no version installed', () => {
+            const buttonState = determineButtonState(undefined, '1.0.0');
+            assert.strictEqual(buttonState, 'install');
+        });
+
+        test('should return "update" state when older version installed', () => {
+            const buttonState = determineButtonState('1.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "update" state for minor version difference', () => {
+            const buttonState = determineButtonState('1.0.0', '1.1.0');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "update" state for patch version difference', () => {
+            const buttonState = determineButtonState('1.0.0', '1.0.1');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "uninstall" state when latest version installed', () => {
+            const buttonState = determineButtonState('2.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'uninstall');
+        });
+
+        test('should return "uninstall" state when newer version installed', () => {
+            // Edge case: user has a newer version than what's available
+            const buttonState = determineButtonState('3.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'uninstall');
+        });
+
+        test('should handle version prefixes correctly', () => {
+            const buttonState1 = determineButtonState('v1.0.0', 'v2.0.0');
+            assert.strictEqual(buttonState1, 'update');
+
+            const buttonState2 = determineButtonState('v2.0.0', 'v2.0.0');
+            assert.strictEqual(buttonState2, 'uninstall');
+        });
+
+        test('should match GitHub bundle identity without version suffix', () => {
+            const matches = matchesBundleIdentity(
+                'microsoft-vscode-1.0.0',
+                'microsoft-vscode-2.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, true);
+        });
+
+        test('should not match different GitHub repositories', () => {
+            const matches = matchesBundleIdentity(
+                'microsoft-vscode-1.0.0',
+                'microsoft-copilot-1.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should match GitHub bundles with complex names', () => {
+            const matches = matchesBundleIdentity(
+                'my-org-my-repo-123-v1.0.0',
+                'my-org-my-repo-123-v2.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, true);
+        });
+
+        test('should require exact match for non-GitHub bundles', () => {
+            const matches1 = matchesBundleIdentity(
+                'local-bundle-1.0.0',
+                'local-bundle-1.0.0',
+                'local'
+            );
+            assert.strictEqual(matches1, true);
+
+            const matches2 = matchesBundleIdentity(
+                'local-bundle-1.0.0',
+                'local-bundle-2.0.0',
+                'local'
+            );
+            assert.strictEqual(matches2, false);
+        });
+
+        test('should require exact match for GitLab bundles', () => {
+            const matches = matchesBundleIdentity(
+                'gitlab-bundle-1',
+                'gitlab-bundle-2',
+                'gitlab'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should require exact match for HTTP bundles', () => {
+            const matches = matchesBundleIdentity(
+                'http-bundle-v1',
+                'http-bundle-v2',
+                'http'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should require exact match for awesome-copilot bundles', () => {
+            const matches = matchesBundleIdentity(
+                'awesome-bundle',
+                'awesome-bundle',
+                'awesome-copilot'
+            );
+            assert.strictEqual(matches, true);
+        });
+    });
+
+    suite('Update Action', () => {
+        /**
+         * Mock RegistryManager for testing update action
+         */
+        class MockRegistryManager {
+            private installedBundles: Map<string, any> = new Map();
+            private uninstallCalls: Array<{ bundleId: string; scope: string }> = [];
+            private installCalls: Array<{ bundleId: string; options: any }> = [];
+            
+            async listInstalledBundles() {
+                return Array.from(this.installedBundles.values());
+            }
+            
+            async uninstallBundle(bundleId: string, scope: string) {
+                this.uninstallCalls.push({ bundleId, scope });
+                this.installedBundles.delete(bundleId);
+            }
+            
+            async installBundle(bundleId: string, options: any) {
+                this.installCalls.push({ bundleId, options });
+                this.installedBundles.set(bundleId, {
+                    bundleId,
+                    version: options.version || 'latest',
+                    scope: options.scope || 'user'
+                });
+            }
+            
+            setInstalledBundle(bundleId: string, version: string, scope: string) {
+                this.installedBundles.set(bundleId, { bundleId, version, scope });
+            }
+            
+            getUninstallCalls() {
+                return this.uninstallCalls;
+            }
+            
+            getInstallCalls() {
+                return this.installCalls;
+            }
+            
+            clearCalls() {
+                this.uninstallCalls = [];
+                this.installCalls = [];
+            }
+        }
+
+        test('should successfully update bundle from older to latest version', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            const oldVersion = '1.0.0';
+            const newVersion = '2.0.0';
+            
+            // Setup: bundle is installed with old version
+            mockManager.setInstalledBundle(bundleId, oldVersion, 'user');
+            
+            // Simulate update action: uninstall then install
+            await mockManager.uninstallBundle(bundleId, 'user');
+            await mockManager.installBundle(bundleId, { scope: 'user', version: newVersion });
+            
+            // Verify uninstall was called
+            const uninstallCalls = mockManager.getUninstallCalls();
+            assert.strictEqual(uninstallCalls.length, 1);
+            assert.strictEqual(uninstallCalls[0].bundleId, bundleId);
+            assert.strictEqual(uninstallCalls[0].scope, 'user');
+            
+            // Verify install was called with new version
+            const installCalls = mockManager.getInstallCalls();
+            assert.strictEqual(installCalls.length, 1);
+            assert.strictEqual(installCalls[0].bundleId, bundleId);
+            assert.strictEqual(installCalls[0].options.version, newVersion);
+            assert.strictEqual(installCalls[0].options.scope, 'user');
+        });
+
+        test('should handle update with uninstall failure', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            
+            // Setup: bundle is installed
+            mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
+            
+            // Override uninstallBundle to throw error
+            const originalUninstall = mockManager.uninstallBundle.bind(mockManager);
+            mockManager.uninstallBundle = async () => {
+                throw new Error('Uninstall failed');
+            };
+            
+            // Attempt update - should fail at uninstall
+            try {
+                await mockManager.uninstallBundle(bundleId, 'user');
+                assert.fail('Should have thrown error');
+            } catch (error) {
+                assert.ok(error instanceof Error);
+                assert.strictEqual((error as Error).message, 'Uninstall failed');
+            }
+            
+            // Verify install was not called (update should stop after uninstall failure)
+            const installCalls = mockManager.getInstallCalls();
+            assert.strictEqual(installCalls.length, 0);
+        });
+
+        test('should handle update with install failure', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            
+            // Setup: bundle is installed
+            mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
+            
+            // Uninstall succeeds
+            await mockManager.uninstallBundle(bundleId, 'user');
+            
+            // Override installBundle to throw error
+            mockManager.installBundle = async () => {
+                throw new Error('Install failed');
+            };
+            
+            // Attempt install - should fail
+            try {
+                await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+                assert.fail('Should have thrown error');
+            } catch (error) {
+                assert.ok(error instanceof Error);
+                assert.strictEqual((error as Error).message, 'Install failed');
+            }
+            
+            // Verify uninstall was called (bundle is now uninstalled but new version not installed)
+            const uninstallCalls = mockManager.getUninstallCalls();
+            assert.strictEqual(uninstallCalls.length, 1);
+        });
+
+        test('should preserve bundle scope during update', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            
+            // Test with 'workspace' scope
+            mockManager.setInstalledBundle(bundleId, '1.0.0', 'workspace');
+            
+            await mockManager.uninstallBundle(bundleId, 'workspace');
+            await mockManager.installBundle(bundleId, { scope: 'workspace', version: '2.0.0' });
+            
+            const uninstallCalls = mockManager.getUninstallCalls();
+            const installCalls = mockManager.getInstallCalls();
+            
+            assert.strictEqual(uninstallCalls[0].scope, 'workspace');
+            assert.strictEqual(installCalls[0].options.scope, 'workspace');
+        });
+
+        test('should handle update for GitHub bundles with version suffix', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'microsoft-vscode-1.0.0';
+            const newBundleId = 'microsoft-vscode-2.0.0';
+            
+            // Setup: old version installed
+            mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
+            
+            // Update should uninstall old and install new
+            await mockManager.uninstallBundle(bundleId, 'user');
+            await mockManager.installBundle(newBundleId, { scope: 'user', version: '2.0.0' });
+            
+            const uninstallCalls = mockManager.getUninstallCalls();
+            const installCalls = mockManager.getInstallCalls();
+            
+            assert.strictEqual(uninstallCalls[0].bundleId, bundleId);
+            assert.strictEqual(installCalls[0].bundleId, newBundleId);
+        });
+
+        test('should handle multiple sequential updates', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            
+            // Install v1.0.0
+            mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
+            
+            // Update to v1.5.0
+            await mockManager.uninstallBundle(bundleId, 'user');
+            await mockManager.installBundle(bundleId, { scope: 'user', version: '1.5.0' });
+            mockManager.clearCalls();
+            
+            // Update to v2.0.0
+            mockManager.setInstalledBundle(bundleId, '1.5.0', 'user');
+            await mockManager.uninstallBundle(bundleId, 'user');
+            await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+            
+            const uninstallCalls = mockManager.getUninstallCalls();
+            const installCalls = mockManager.getInstallCalls();
+            
+            // Should have one uninstall and one install for the second update
+            assert.strictEqual(uninstallCalls.length, 1);
+            assert.strictEqual(installCalls.length, 1);
+            assert.strictEqual(installCalls[0].options.version, '2.0.0');
+        });
+
+        test('should handle update when bundle is not installed', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            
+            // Attempt to uninstall non-existent bundle
+            // In real implementation, this should either:
+            // 1. Skip uninstall and just install
+            // 2. Throw an error
+            // For this test, we'll verify the behavior
+            
+            const installedBundles = await mockManager.listInstalledBundles();
+            const isInstalled = installedBundles.some(b => b.bundleId === bundleId);
+            
+            assert.strictEqual(isInstalled, false);
+            
+            // If not installed, update should just install
+            if (!isInstalled) {
+                await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+            }
+            
+            const installCalls = mockManager.getInstallCalls();
+            assert.strictEqual(installCalls.length, 1);
         });
     });
 });

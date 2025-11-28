@@ -33,13 +33,6 @@ suite('BundleInstaller', () => {
     setup(() => {
         tempDir = path.join(__dirname, '..', '..', '..', 'test-temp');
         
-        // Mock vscode.env for CopilotSyncService
-        const vscode = require('vscode');
-        if (!vscode.env) {
-            vscode.env = {};
-        }
-        vscode.env.appName = 'Visual Studio Code';
-        
         mockContext = {
             globalStorageUri: { fsPath: path.join(tempDir, 'global') },
             storageUri: { fsPath: path.join(tempDir, 'workspace') },
@@ -50,7 +43,7 @@ suite('BundleInstaller', () => {
                     name: 'test-extension'
                 }
             }
-        };
+        } as any;
 
         // Create temp directories
         if (!fs.existsSync(tempDir)) {
