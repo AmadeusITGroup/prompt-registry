@@ -159,21 +159,13 @@ export class BundleInstaller {
                 manifest: manifest,
             };
 
-            
-            // Step 10: Install MCP servers if defined
+            // Step 9: Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
             
-            // Step 9: Sync to GitHub Copilot native directory
+            // Step 10: Sync to GitHub Copilot native directory
             await this.copilotSync.syncBundle(bundle.id, installDir);
-
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
             this.logger.debug('Synced to GitHub Copilot');
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;

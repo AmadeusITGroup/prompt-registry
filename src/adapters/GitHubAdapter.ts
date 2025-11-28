@@ -180,6 +180,53 @@ export class GitHubAdapter extends RepositoryAdapter {
     }
 
     /**
+     * Validate response Content-Type and detect HTML error pages
+     */
+    private validateResponse(res: any, data: string): { isValid: boolean; error?: string } {
+        const contentType = res.headers['content-type'] || '';
+        
+        // Check if response is HTML (common for authentication errors)
+        if (contentType.includes('text/html')) {
+            this.logger.warn(`[GitHubAdapter] Received HTML response instead of JSON (Content-Type: ${contentType})`);
+            
+            // Try to extract error information from HTML
+            let htmlError = 'HTML error page received';
+            
+            // Simple HTML parsing to extract text content
+            const bodyMatch = data.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyMatch) {
+                // Remove HTML tags and get text content
+                const bodyText = bodyMatch[1]
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                
+                if (bodyText.length > 0) {
+                    htmlError = bodyText.substring(0, 200);
+                }
+            }
+            
+            return {
+                isValid: false,
+                error: `Received HTML error page instead of JSON response. This typically indicates an authentication or access issue. Error: ${htmlError}`
+            };
+        }
+        
+        // Check if response is JSON
+        if (!contentType.includes('application/json') && !contentType.includes('application/octet-stream')) {
+            this.logger.warn(`[GitHubAdapter] Unexpected Content-Type: ${contentType}`);
+            return {
+                isValid: false,
+                error: `Unexpected Content-Type: ${contentType}. Expected application/json.`
+            };
+        }
+        
+        return { isValid: true };
+    }
+
+    /**
      * Make HTTP request to GitHub API with authentication and automatic retry on auth failures
      */
     private async makeRequest(url: string, retryCount: number = 0): Promise<any> {
@@ -217,6 +264,12 @@ export class GitHubAdapter extends RepositoryAdapter {
                         this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
                         this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
                         
+                        // Validate response format before processing error
+                        const validation = this.validateResponse(res, data);
+                        if (!validation.isValid) {
+                            this.logger.error(`[GitHubAdapter] ${validation.error}`);
+                        }
+                        
                         // Check if this is an authentication error that should trigger retry
                         const isAuthError = res.statusCode === 401 || res.statusCode === 403;
                         const canRetry = retryCount < this.maxAuthAttempts && this.attemptedMethods.size < this.maxAuthAttempts;
@@ -240,7 +293,11 @@ export class GitHubAdapter extends RepositoryAdapter {
                         
                         // Provide helpful error messages
                         let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
-                        if (res.statusCode === 404) {
+                        
+                        // Include HTML error information if present
+                        if (!validation.isValid && validation.error) {
+                            errorMsg = validation.error;
+                        } else if (res.statusCode === 404) {
                             errorMsg += ' - Repository not found or not accessible. Check authentication.';
                         } else if (res.statusCode === 401) {
                             errorMsg += ' - Authentication failed. Token may be invalid or expired.';
@@ -257,12 +314,21 @@ export class GitHubAdapter extends RepositoryAdapter {
                         return;
                     }
 
+                    // Validate response format for successful responses
+                    const validation = this.validateResponse(res, data);
+                    if (!validation.isValid) {
+                        this.logger.error(`[GitHubAdapter] ${validation.error}`);
+                        reject(new Error(validation.error));
+                        return;
+                    }
+
                     this.logger.debug(`[GitHubAdapter] Response OK (${res.statusCode})`);
                     try {
                         resolve(JSON.parse(data));
                     } catch (error) {
                         this.logger.error(`[GitHubAdapter] Failed to parse response: ${error}`);
-                        reject(new Error(`Failed to parse GitHub response: ${error}`));
+                        this.logger.error(`[GitHubAdapter] Response preview: ${data.substring(0, 200)}`);
+                        reject(new Error(`Failed to parse GitHub response as JSON: ${error}`));
                     }
                 });
             }).on('error', (error) => {
