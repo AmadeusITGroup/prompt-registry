@@ -150,6 +150,60 @@ suite('VersionConsolidator Unit Tests', () => {
         });
     });
     
+    suite('getBundleVersion', () => {
+        test('should return specific version when it exists', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('1.5.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const version = consolidator.getBundleVersion('owner-repo', '1.5.0');
+            
+            assert.ok(version);
+            assert.strictEqual(version.version, '1.5.0');
+            assert.ok(version.downloadUrl);
+            assert.ok(version.manifestUrl);
+        });
+        
+        test('should return undefined when version does not exist', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const version = consolidator.getBundleVersion('owner-repo', '3.0.0');
+            
+            assert.strictEqual(version, undefined);
+        });
+        
+        test('should return undefined for non-existent bundle', () => {
+            const version = consolidator.getBundleVersion('non-existent', '1.0.0');
+            
+            assert.strictEqual(version, undefined);
+        });
+        
+        test('should return correct version metadata', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const version = consolidator.getBundleVersion('owner-repo', '1.0.0');
+            
+            assert.ok(version);
+            assert.strictEqual(version.version, '1.0.0');
+            assert.ok(version.downloadUrl.includes('1.0.0'));
+            assert.ok(version.manifestUrl.includes('1.0.0'));
+            assert.ok(version.publishedAt);
+        });
+    });
+    
     suite('clearCache', () => {
         test('should clear version cache', () => {
             const bundles = [

@@ -10,6 +10,7 @@ import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle } from '../types/registry';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
+import { VersionManager } from '../utils/versionManager';
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'promptregistry.marketplace';
@@ -70,6 +71,64 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Determine button state based on installation status and version comparison
+     * 
+     * @param bundle - The bundle to check
+     * @param installed - The installed bundle info (if installed)
+     * @returns Button state: 'install', 'update', or 'uninstall'
+     */
+    private determineButtonState(
+        bundle: Bundle,
+        installed: InstalledBundle | undefined
+    ): 'install' | 'update' | 'uninstall' {
+        if (!installed) {
+            return 'install';
+        }
+
+        try {
+            // Check if an update is available
+            if (VersionManager.isUpdateAvailable(installed.version, bundle.version)) {
+                return 'update';
+            }
+        } catch (error) {
+            // If version comparison fails, fall back to string comparison
+            this.logger.warn(`Version comparison failed for ${bundle.id}: ${(error as Error).message}`);
+            if (installed.version !== bundle.version) {
+                return 'update';
+            }
+        }
+
+        return 'uninstall';
+    }
+
+    /**
+     * Check if installed bundle matches the marketplace bundle identity
+     * 
+     * For GitHub bundles, compares without version suffix (owner-repo)
+     * For other sources, requires exact match
+     * 
+     * @param installedId - Bundle ID from installed bundle
+     * @param bundleId - Bundle ID from marketplace
+     * @param sourceType - Source type of the bundle
+     * @returns True if the bundles match
+     */
+    private matchesBundleIdentity(
+        installedId: string,
+        bundleId: string,
+        sourceType: string
+    ): boolean {
+        if (sourceType === 'github') {
+            // For GitHub, extract identity without version suffix
+            const installedIdentity = VersionManager.extractBundleIdentity(installedId, 'github');
+            const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, 'github');
+            return installedIdentity === bundleIdentity;
+        }
+
+        // For non-GitHub sources, exact match required
+        return installedId === bundleId;
+    }
+
+    /**
      * Load bundles from registries and send to webview
      */
     private async loadBundles(): Promise<void> {
@@ -82,20 +141,27 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const sources = await this.registryManager.listSources();
             
             const enhancedBundles = bundles.map(bundle => {
-                const installed = installedBundles.find(ib => ib.bundleId === bundle.id);
+                // Find matching installed bundle using identity matching
+                const source = sources.find(s => s.id === bundle.sourceId);
+                const installed = installedBundles.find(ib => 
+                    this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+                );
+                
                 // Use manifest from installed bundle if available
                 const contentBreakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
                 // Check if bundle is from a curated hub
-                const source = sources.find(s => s.id === bundle.sourceId);
                 const isCurated = source?.hubId !== undefined;
                 const hubName = isCurated && source?.hubId ? source.metadata?.description || source.name : undefined;
 
+                // Determine button state based on installation status and version
+                const buttonState = this.determineButtonState(bundle, installed);
 
                 return {
                     ...bundle,
                     installed: !!installed,
                     installedVersion: installed?.version,
+                    buttonState,
                     isCurated,
                     hubName,
                     contentBreakdown,

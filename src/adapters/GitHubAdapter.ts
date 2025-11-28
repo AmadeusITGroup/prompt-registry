@@ -463,21 +463,41 @@ export class GitHubAdapter extends RepositoryAdapter {
                     continue; // Skip releases without bundle archive
                 }
 
+                // Fetch deployment manifest to get accurate bundle metadata
+                let manifest: any = null;
+                try {
+                    const manifestContent = await this.downloadFile(manifestAsset.url);
+                    const manifestText = manifestContent.toString('utf-8');
+                    
+                    // Parse YAML or JSON based on file extension
+                    if (manifestAsset.name.endsWith('.json')) {
+                        manifest = JSON.parse(manifestText);
+                    } else {
+                        // Assume YAML for .yml or .yaml
+                        const yaml = require('js-yaml');
+                        manifest = yaml.load(manifestText);
+                    }
+                } catch (manifestError) {
+                    this.logger.warn(`Failed to fetch manifest for ${release.tag_name}: ${manifestError}`);
+                    // Continue without manifest data - use fallback values
+                }
+
                 // Create bundle metadata
+                // Use manifest data if available, otherwise fall back to release data
                 // Use API URL instead of browser_download_url for proper authentication
                 const bundle: Bundle = {
                     id: `${owner}-${repo}-${release.tag_name}`,
-                    name: release.name || `${repo} ${release.tag_name}`,
-                    version: release.tag_name.replace(/^v/, ''),
-                    description: this.extractDescription(release.body),
-                    author: owner,
+                    name: manifest?.name || release.name || `${repo} ${release.tag_name}`,
+                    version: manifest?.version || release.tag_name.replace(/^v/, ''),
+                    description: manifest?.description || this.extractDescription(release.body),
+                    author: manifest?.author || owner,
                     sourceId: this.source.id,
-                    environments: this.extractEnvironments(release.body),
-                    tags: this.extractTags(release.body),
+                    environments: manifest?.environments || this.extractEnvironments(release.body),
+                    tags: manifest?.tags || this.extractTags(release.body),
                     lastUpdated: release.published_at,
                     size: this.formatSize(bundleAsset.size),
-                    dependencies: [],
-                    license: 'Unknown', // Would need to fetch from repo
+                    dependencies: manifest?.dependencies || [],
+                    license: manifest?.license || 'Unknown',
                     manifestUrl: manifestAsset.url,
                     downloadUrl: bundleAsset.url,
                     repository: this.source.url,

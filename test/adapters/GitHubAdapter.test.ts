@@ -112,17 +112,30 @@ suite('GitHubAdapter', () => {
                         assets: [
                             {
                                 name: 'deployment-manifest.json',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
                                 browser_download_url: 'https://github.com/.../deployment-manifest.json',
                                 size: 1024,
                             },
                             {
                                 name: 'bundle.zip',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
                                 browser_download_url: 'https://github.com/.../bundle.zip',
                                 size: 2048,
                             },
                         ],
                     },
                 ]);
+
+            // Mock the manifest download
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(200, JSON.stringify({
+                    id: 'test-bundle',
+                    name: 'Test Bundle Name',
+                    version: '1.0.0',
+                    description: 'Test bundle description',
+                    author: 'Test Author'
+                }));
 
             const adapter = new GitHubAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
@@ -131,6 +144,107 @@ suite('GitHubAdapter', () => {
             assert.strictEqual(bundles[0].id, 'test-owner-test-repo-v1.0.0');
             assert.strictEqual(bundles[0].version, '1.0.0');
             assert.strictEqual(bundles[0].sourceId, 'test-source');
+        });
+
+        test('should use bundle name from deployment manifest, not version number', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    {
+                        tag_name: 'v1.0.12',
+                        name: '1.0.12', // GitHub release name is just the version
+                        body: 'Release notes',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            {
+                                name: 'deployment-manifest.yml',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
+                                browser_download_url: 'https://github.com/.../deployment-manifest.yml',
+                                size: 1024,
+                            },
+                            {
+                                name: 'bundle.zip',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
+                                browser_download_url: 'https://github.com/.../bundle.zip',
+                                size: 2048,
+                            },
+                        ],
+                    },
+                ]);
+
+            // Mock the manifest download with proper bundle name
+            const manifestContent = `
+id: amadeus-airlines-solutions
+name: Amadeus Airlines Solutions
+version: 1.0.12
+description: Comprehensive airline management system
+author: amadeus-airlines-solutions
+tags:
+  - airlines
+  - travel
+  - booking
+`;
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(200, manifestContent);
+
+            const adapter = new GitHubAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 1);
+            
+            // The bundle name should be from the manifest, NOT the GitHub release name
+            assert.strictEqual(bundles[0].name, 'Amadeus Airlines Solutions', 
+                'Bundle name should come from deployment manifest');
+            assert.notStrictEqual(bundles[0].name, '1.0.12', 
+                'Bundle name should NOT be the version number');
+            assert.notStrictEqual(bundles[0].name, 'Release 1.0.12', 
+                'Bundle name should NOT be the GitHub release name');
+            
+            // Other fields should also come from manifest
+            assert.strictEqual(bundles[0].version, '1.0.12');
+            assert.strictEqual(bundles[0].description, 'Comprehensive airline management system');
+            assert.strictEqual(bundles[0].author, 'amadeus-airlines-solutions');
+            assert.deepStrictEqual(bundles[0].tags, ['airlines', 'travel', 'booking']);
+        });
+
+        test('should fallback to GitHub release name when manifest fetch fails', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    {
+                        tag_name: 'v1.0.0',
+                        name: 'Fallback Release Name',
+                        body: 'Release notes',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            {
+                                name: 'deployment-manifest.json',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
+                                browser_download_url: 'https://github.com/.../deployment-manifest.json',
+                                size: 1024,
+                            },
+                            {
+                                name: 'bundle.zip',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
+                                browser_download_url: 'https://github.com/.../bundle.zip',
+                                size: 2048,
+                            },
+                        ],
+                    },
+                ]);
+
+            // Mock manifest download failure
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(404, 'Not Found');
+
+            const adapter = new GitHubAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 1);
+            // Should fallback to GitHub release name when manifest fetch fails
+            assert.strictEqual(bundles[0].name, 'Fallback Release Name');
         });
 
         test('should skip releases without manifest', async () => {

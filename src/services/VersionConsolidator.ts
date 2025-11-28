@@ -86,10 +86,13 @@ export class VersionConsolidator {
             const bundles = items.map(item => item.bundle);
             
             if (bundles.length === 1) {
-                // Single version - no consolidation needed
+                // Single version - no consolidation needed, but still cache for consistency
+                const version = this.toBundleVersion(bundles[0]);
+                this.addToCache(identity, [version]);
+                
                 consolidated.push({
                     ...bundles[0],
-                    availableVersions: [this.toBundleVersion(bundles[0])],
+                    availableVersions: [version],
                     isConsolidated: false
                 });
                 continue;
@@ -123,6 +126,21 @@ export class VersionConsolidator {
      */
     getAvailableVersions(bundleIdentity: string): BundleVersion[] {
         return this.versionCache.get(bundleIdentity) || [];
+    }
+    
+    /**
+     * Get a specific version of a bundle
+     * 
+     * This is useful when a user wants to install a specific version
+     * instead of the latest version.
+     * 
+     * @param bundleIdentity - Unique identifier for the bundle
+     * @param version - Specific version to retrieve
+     * @returns Bundle version metadata, or undefined if not found
+     */
+    getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
+        const versions = this.versionCache.get(bundleIdentity);
+        return versions?.find(v => v.version === version);
     }
     
     /**

@@ -80,21 +80,19 @@ export class BundleBuilder {
     withVersion(version: string): BundleBuilder {
         this.bundle.version = version;
         
-        // Update ID to include version for GitHub bundles
-        if (this.bundle.sourceId === TEST_SOURCE_IDS.GITHUB && this.bundle.id) {
-            // Remove existing version if present
+        // Update ID to include version
+        if (this.bundle.id) {
+            // Remove existing version suffix (handles both GitHub and non-GitHub)
             const baseId = this.bundle.id.replace(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/, '');
             this.bundle.id = `${baseId}-${version}`;
-        } else if (this.bundle.id) {
-            this.bundle.id = `${this.bundle.id}-${version}`;
         }
         
-        // Update URLs with actual version
+        // Update URLs with actual version (handles both 'VERSION' placeholder and existing versions)
         if (this.bundle.manifestUrl) {
-            this.bundle.manifestUrl = this.bundle.manifestUrl.replace('VERSION', version);
+            this.bundle.manifestUrl = this.bundle.manifestUrl.replace(/VERSION|v?\d+\.\d+\.\d+(-[\w.]+)?/, version);
         }
         if (this.bundle.downloadUrl) {
-            this.bundle.downloadUrl = this.bundle.downloadUrl.replace('VERSION', version);
+            this.bundle.downloadUrl = this.bundle.downloadUrl.replace(/VERSION|v?\d+\.\d+\.\d+(-[\w.]+)?/, version);
         }
         
         return this;
@@ -153,4 +151,55 @@ export function createNonGitHubBundle(bundleId: string, version: string, sourceT
     
     const mappedType = sourceTypeMap[sourceType] || 'LOCAL';
     return BundleBuilder.fromSource(bundleId, mappedType).withVersion(version).build();
+}
+
+/**
+ * Test suite for BundleBuilder (can be imported and run in test files)
+ */
+export function testBundleBuilder() {
+    const assert = require('assert');
+    
+    suite('BundleBuilder', () => {
+        suite('withVersion', () => {
+            test('should handle multiple version updates correctly', () => {
+                const builder = BundleBuilder.github('owner', 'repo');
+                
+                // Set version 1.0.0
+                const bundle1 = builder.withVersion('1.0.0').build();
+                assert.strictEqual(bundle1.version, '1.0.0');
+                assert.strictEqual(bundle1.id, 'owner-repo-1.0.0');
+                assert.ok(bundle1.downloadUrl.includes('1.0.0'));
+                
+                // Update to version 2.0.0 (should replace, not append)
+                const bundle2 = BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build();
+                assert.strictEqual(bundle2.version, '2.0.0');
+                assert.strictEqual(bundle2.id, 'owner-repo-2.0.0');
+                assert.ok(bundle2.downloadUrl.includes('2.0.0'));
+                assert.ok(!bundle2.downloadUrl.includes('1.0.0'));
+            });
+            
+            test('should handle version updates for non-GitHub bundles', () => {
+                const builder = BundleBuilder.fromSource('my-bundle', 'LOCAL');
+                
+                const bundle1 = builder.withVersion('1.0.0').build();
+                assert.strictEqual(bundle1.id, 'my-bundle-1.0.0');
+                
+                // Create new builder and update version
+                const bundle2 = BundleBuilder.fromSource('my-bundle', 'LOCAL').withVersion('2.0.0').build();
+                assert.strictEqual(bundle2.id, 'my-bundle-2.0.0');
+                assert.ok(!bundle2.id.includes('1.0.0'));
+            });
+            
+            test('should update URLs with version', () => {
+                const bundle = BundleBuilder.github('owner', 'repo')
+                    .withVersion('1.5.0')
+                    .build();
+                
+                assert.ok(bundle.downloadUrl.includes('1.5.0'));
+                assert.ok(bundle.manifestUrl.includes('1.5.0'));
+                assert.ok(!bundle.downloadUrl.includes('VERSION'));
+                assert.ok(!bundle.manifestUrl.includes('VERSION'));
+            });
+        });
+    });
 }

@@ -14,6 +14,7 @@ import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
+import { VersionManager } from '../utils/versionManager';
 import {
     RegistrySource,
     Bundle,
@@ -382,7 +383,7 @@ export class RegistryManager {
         this.logger.info(`Installing bundle: ${bundleId}`, options);
         
         // Get bundle details
-        const bundle = await this.getBundleDetails(bundleId);
+        let bundle = await this.getBundleDetails(bundleId);
         
         // Check if already installed
         const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
@@ -391,12 +392,32 @@ export class RegistryManager {
             throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
         }
 
-        // Get download URL from adapter
+        // Get source
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
         if (!source) {
             throw new Error(`Source '${bundle.sourceId}' not found`);
+        }
+
+        // Handle version-specific installation for consolidated bundles
+        if (options.version && (bundle as any).isConsolidated) {
+            const identity = VersionManager.extractBundleIdentity(bundleId, source.type);
+            const specificVersion = this.versionConsolidator.getBundleVersion(identity, options.version);
+            
+            if (specificVersion) {
+                this.logger.info(`Installing specific version ${options.version} instead of latest ${bundle.version}`);
+                // Update bundle with specific version URLs
+                bundle = {
+                    ...bundle,
+                    version: specificVersion.version,
+                    downloadUrl: specificVersion.downloadUrl,
+                    manifestUrl: specificVersion.manifestUrl,
+                    lastUpdated: specificVersion.publishedAt
+                };
+            } else {
+                this.logger.warn(`Requested version ${options.version} not found in available versions, using latest`);
+            }
         }
 
         const adapter = this.getAdapter(source);
@@ -689,22 +710,13 @@ export class RegistryManager {
 
                             this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
                         
-
-                            // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
-                            // For other adapters, use the downloadUrl
-                            let installation: InstalledBundle;
-                            if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
-                                this.logger.debug('Downloading bundle from awesome-copilot adapter');
-                                const bundleBuffer = await adapter.downloadBundle(matchingBundle);
-                                this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+                            // Unified download path: all adapters use downloadBundle()
+                            this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+                            const bundleBuffer = await adapter.downloadBundle(matchingBundle);
+                            this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
                             
-                                // Install from buffer
-                                installation = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
-                            } else {
-                                const downloadUrl = adapter.getDownloadUrl(matchingBundle.id, matchingBundle.version);
-                                // Install bundle using BundleInstaller
-                                installation = await this.installer.install(matchingBundle, downloadUrl, options);
-                            }
+                            // Install from buffer
+                            const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
 
                             // Record installation in storage
                             await this.storage.recordInstallation(installation);

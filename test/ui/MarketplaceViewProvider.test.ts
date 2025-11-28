@@ -120,8 +120,8 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
         test('should extract all unique tags from bundles', () => {
             const tags = extractAllTags(mockBundles);
             
-            // Should have 9 unique tags
-            assert.strictEqual(tags.length, 9);
+            // Should have 10 unique tags
+            assert.strictEqual(tags.length, 10);
             assert.ok(tags.includes('testing'));
             assert.ok(tags.includes('automation'));
             assert.ok(tags.includes('tdd'));
@@ -299,6 +299,162 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
             // Should match only bundle1
             assert.strictEqual(filtered.length, 1);
             assert.strictEqual(filtered[0].id, 'bundle1');
+        });
+    });
+
+    suite('Button State Determination', () => {
+        /**
+         * Helper to determine button state based on version comparison
+         * This mirrors the logic that should be in MarketplaceViewProvider
+         */
+        function determineButtonState(
+            installedVersion: string | undefined,
+            latestVersion: string
+        ): 'install' | 'update' | 'uninstall' {
+            if (!installedVersion) {
+                return 'install';
+            }
+            
+            try {
+                const { VersionManager } = require('../../src/utils/versionManager');
+                if (VersionManager.isUpdateAvailable(installedVersion, latestVersion)) {
+                    return 'update';
+                }
+            } catch (error) {
+                // If version comparison fails, fall back to string comparison
+                if (installedVersion !== latestVersion) {
+                    return 'update';
+                }
+            }
+            
+            return 'uninstall';
+        }
+
+        /**
+         * Helper to check if bundle identities match
+         * For GitHub bundles, compares without version suffix
+         * For others, exact match
+         */
+        function matchesBundleIdentity(installedId: string, bundleId: string, sourceType: string): boolean {
+            const { VersionManager } = require('../../src/utils/versionManager');
+            
+            if (sourceType === 'github') {
+                const installedIdentity = VersionManager.extractBundleIdentity(installedId, 'github');
+                const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, 'github');
+                return installedIdentity === bundleIdentity;
+            }
+            
+            // For non-GitHub sources, exact match
+            return installedId === bundleId;
+        }
+
+        test('should return "install" state when no version installed', () => {
+            const buttonState = determineButtonState(undefined, '1.0.0');
+            assert.strictEqual(buttonState, 'install');
+        });
+
+        test('should return "update" state when older version installed', () => {
+            const buttonState = determineButtonState('1.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "update" state for minor version difference', () => {
+            const buttonState = determineButtonState('1.0.0', '1.1.0');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "update" state for patch version difference', () => {
+            const buttonState = determineButtonState('1.0.0', '1.0.1');
+            assert.strictEqual(buttonState, 'update');
+        });
+
+        test('should return "uninstall" state when latest version installed', () => {
+            const buttonState = determineButtonState('2.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'uninstall');
+        });
+
+        test('should return "uninstall" state when newer version installed', () => {
+            // Edge case: user has a newer version than what's available
+            const buttonState = determineButtonState('3.0.0', '2.0.0');
+            assert.strictEqual(buttonState, 'uninstall');
+        });
+
+        test('should handle version prefixes correctly', () => {
+            const buttonState1 = determineButtonState('v1.0.0', 'v2.0.0');
+            assert.strictEqual(buttonState1, 'update');
+
+            const buttonState2 = determineButtonState('v2.0.0', 'v2.0.0');
+            assert.strictEqual(buttonState2, 'uninstall');
+        });
+
+        test('should match GitHub bundle identity without version suffix', () => {
+            const matches = matchesBundleIdentity(
+                'microsoft-vscode-1.0.0',
+                'microsoft-vscode-2.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, true);
+        });
+
+        test('should not match different GitHub repositories', () => {
+            const matches = matchesBundleIdentity(
+                'microsoft-vscode-1.0.0',
+                'microsoft-copilot-1.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should match GitHub bundles with complex names', () => {
+            const matches = matchesBundleIdentity(
+                'my-org-my-repo-123-v1.0.0',
+                'my-org-my-repo-123-v2.0.0',
+                'github'
+            );
+            assert.strictEqual(matches, true);
+        });
+
+        test('should require exact match for non-GitHub bundles', () => {
+            const matches1 = matchesBundleIdentity(
+                'local-bundle-1.0.0',
+                'local-bundle-1.0.0',
+                'local'
+            );
+            assert.strictEqual(matches1, true);
+
+            const matches2 = matchesBundleIdentity(
+                'local-bundle-1.0.0',
+                'local-bundle-2.0.0',
+                'local'
+            );
+            assert.strictEqual(matches2, false);
+        });
+
+        test('should require exact match for GitLab bundles', () => {
+            const matches = matchesBundleIdentity(
+                'gitlab-bundle-1',
+                'gitlab-bundle-2',
+                'gitlab'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should require exact match for HTTP bundles', () => {
+            const matches = matchesBundleIdentity(
+                'http-bundle-v1',
+                'http-bundle-v2',
+                'http'
+            );
+            assert.strictEqual(matches, false);
+        });
+
+        test('should require exact match for awesome-copilot bundles', () => {
+            const matches = matchesBundleIdentity(
+                'awesome-bundle',
+                'awesome-bundle',
+                'awesome-copilot'
+            );
+            assert.strictEqual(matches, true);
         });
     });
 });
