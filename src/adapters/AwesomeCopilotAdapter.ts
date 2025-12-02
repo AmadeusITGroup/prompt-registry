@@ -638,7 +638,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         };
         
         if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+            headers['Authorization'] = `token ${token}`;
             this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
         } else {
             this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} WITHOUT auth`);

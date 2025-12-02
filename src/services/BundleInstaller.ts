@@ -1,19 +1,24 @@
 /**
  * Bundle Installer Service
- * Handles downloading, extracting, and installing bundle files
+ * Handles extracting and installing bundle files
+ * 
+ * Architecture Note:
+ * - Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
+ * - Each adapter (GitHub, HTTP, Local, etc.) handles its own download logic and authentication
+ * - This service focuses on extraction, validation, and installation from Buffer
+ * - The install() method is only used for local file:// URLs
+ * - The downloadFile() method has been removed as downloads are now handled by adapters
  */
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import * as https from 'https';
 import * as yaml from 'js-yaml';
 import AdmZip = require('adm-zip');
 import { Logger } from '../utils/logger';
 import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest } from '../types/registry';
 import { CopilotSyncService } from './CopilotSyncService';
-
 import { McpServerManager } from './McpServerManager';
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
@@ -38,7 +43,9 @@ export class BundleInstaller {
     }
 
     /**
-     * Install a bundle
+     * Install a bundle from a local file:// URL
+     * Note: Remote bundles should use installFromBuffer() via the unified adapter architecture
+     * @deprecated for remote bundles - use installFromBuffer() instead
      */
     async install(
         bundle: Bundle,
@@ -48,70 +55,30 @@ export class BundleInstaller {
         this.logger.info(`Installing bundle: ${bundle.name} v${bundle.version}`);
 
         try {
-            // Check if this is a local bundle (file:// URL)
-            const isLocalBundle = downloadUrl.startsWith('file://');
-            // Check if this is an awesome-copilot YAML collection (not a zip)
-            const isAwesomeCopilotCollection = bundle.sourceId?.includes('awesome-copilot');
-            this.logger.debug(`Bundle type: ${isLocalBundle ? 'local' : isAwesomeCopilotCollection ? 'awesome-copilot-collection' : 'remote'}`);
-            
-            let extractDir: string;
-            let tempDir: string | null = null;
-
-            if (isLocalBundle) {
-                // Local bundle: use the directory directly
-                extractDir = downloadUrl.replace('file://', '');
-                this.logger.debug(`Using local bundle directory: ${extractDir}`);
-            } else if (isAwesomeCopilotCollection) {
-                // Awesome Copilot collection: download YAML and create structure
-                // Step 1: Create temp directory
-                tempDir = await this.createTempDir();
-                this.logger.debug(`Created temp directory for collection: ${tempDir}`);
-
-                // Step 2: Download collection YAML file
-                const collectionFile = path.join(tempDir, `${bundle.id}.collection.yml`);
-                await this.downloadFile(downloadUrl, collectionFile);
-                this.logger.debug(`Downloaded collection to: ${collectionFile}`);
-
-                // Step 3: Use temp directory as extract dir (no extraction needed)
-                extractDir = tempDir;
-                this.logger.debug(`Using collection directory: ${extractDir}`);
-            } else {
-                // Remote bundle: download and extract
-                // Step 1: Create temp directory
-                tempDir = await this.createTempDir();
-                this.logger.debug(`Created temp directory: ${tempDir}`);
-
-                // Step 2: Download bundle
-                const bundleFile = path.join(tempDir, `${bundle.id}.zip`);
-                await this.downloadFile(downloadUrl, bundleFile);
-                this.logger.debug(`Downloaded bundle to: ${bundleFile}`);
-
-                // Step 3: Extract bundle
-                extractDir = path.join(tempDir, 'extracted');
-                await this.extractBundle(bundleFile, extractDir);
-                this.logger.debug(`Extracted bundle to: ${extractDir}`);
+            // This method is now only used for local file:// URLs
+            // Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
+            if (!downloadUrl.startsWith('file://')) {
+                throw new Error('install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.');
             }
 
-            // Step 4: Validate bundle structure
+            // Local bundle: use the directory directly
+            const extractDir = downloadUrl.replace('file://', '');
+            this.logger.debug(`Using local bundle directory: ${extractDir}`);
+
+            // Validate bundle structure
             const manifest = await this.validateBundle(extractDir, bundle);
             this.logger.debug('Bundle validation passed');
 
-            // Step 5: Get installation directory
+            // Get installation directory
             const installDir = this.getInstallDirectory(bundle.id, options.scope);
             await this.ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
-            // Step 6: Copy files to installation directory
+            // Copy files to installation directory
             await this.copyBundleFiles(extractDir, installDir);
             this.logger.debug('Files copied to installation directory');
 
-            // Step 7: Clean up temp directory (only for remote bundles)
-            if (tempDir) {
-                await this.cleanupTempDir(tempDir);
-                this.logger.debug('Temp directory cleaned up');
-            }
-
-            // Step 8: Create installation record
+            // Create installation record
             const installed: InstalledBundle = {
                 bundleId: bundle.id,
                 version: bundle.version,
@@ -120,20 +87,17 @@ export class BundleInstaller {
                 profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
+                sourceId: bundle.sourceId,
+                sourceType: undefined,  // Will be set by RegistryManager
             };
 
-            // Step 9: Sync to GitHub Copilot native directory
-            // Step 10: Install MCP servers if defined
+            // Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
+            
+            // Sync to GitHub Copilot native directory
             await this.copilotSync.syncBundle(bundle.id, installDir);
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
             this.logger.debug('Synced to GitHub Copilot');
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
 
             this.logger.info(`Bundle installed successfully: ${bundle.name}`);
             return installed;
@@ -195,23 +159,17 @@ export class BundleInstaller {
                 profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
+                sourceId: bundle.sourceId,
+                sourceType: undefined,  // Will be set by RegistryManager
             };
 
-            
-            // Step 10: Install MCP servers if defined
+            // Step 9: Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
             
-            // Step 9: Sync to GitHub Copilot native directory
+            // Step 10: Sync to GitHub Copilot native directory
             await this.copilotSync.syncBundle(bundle.id, installDir);
-
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
             this.logger.debug('Synced to GitHub Copilot');
-            // Step 10: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;
@@ -252,11 +210,13 @@ export class BundleInstaller {
 
     /**
      * Update a bundle
+     * Note: This method expects a Buffer for remote bundles via the unified architecture
+     * @deprecated - RegistryManager should handle updates directly using downloadBundle() + installFromBuffer()
      */
     async update(
         installed: InstalledBundle,
         bundle: Bundle,
-        downloadUrl: string
+        bundleBuffer: Buffer
     ): Promise<InstalledBundle> {
         this.logger.info(`Updating bundle: ${installed.bundleId} to v${bundle.version}`);
 
@@ -264,8 +224,8 @@ export class BundleInstaller {
             // Uninstall old version
             await this.uninstall(installed);
 
-            // Install new version
-            const newInstalled = await this.install(bundle, downloadUrl, {
+            // Install new version using the unified architecture
+            const newInstalled = await this.installFromBuffer(bundle, bundleBuffer, {
                 scope: installed.scope,
                 version: bundle.version
             });
@@ -294,44 +254,7 @@ export class BundleInstaller {
         return tempDir;
     }
 
-    /**
-     * Download file from URL
-     */
-    private async downloadFile(url: string, destination: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(destination);
 
-            https.get(url, (response) => {
-                // Handle redirects
-                if (response.statusCode === 301 || response.statusCode === 302) {
-                    const redirectUrl = response.headers.location;
-                    if (redirectUrl) {
-                        file.close();
-                        this.downloadFile(redirectUrl, destination).then(resolve).catch(reject);
-                        return;
-                    }
-                }
-
-                if (response.statusCode !== 200) {
-                    file.close();
-                    reject(new Error(`Download failed with status ${response.statusCode}`));
-                    return;
-                }
-
-                response.pipe(file);
-
-                file.on('finish', () => {
-                    file.close();
-                    resolve();
-                });
-
-            }).on('error', (error) => {
-                fs.unlink(destination, () => {
-                    reject(error);
-                });
-            });
-        });
-    }
 
     /**
      * Extract bundle archive

@@ -13,6 +13,8 @@ import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
+import { VersionConsolidator } from './VersionConsolidator';
+import { VersionManager } from '../utils/versionManager';
 import {
     RegistrySource,
     Bundle,
@@ -37,6 +39,7 @@ export class RegistryManager {
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
+    private versionConsolidator: VersionConsolidator;
 
     // Event emitters
     private _onBundleInstalled = new vscode.EventEmitter<InstalledBundle>();
@@ -67,6 +70,7 @@ export class RegistryManager {
         this.storage = new RegistryStorage(context);
         this.installer = new BundleInstaller(context);
         this.logger = Logger.getInstance();
+        this.versionConsolidator = new VersionConsolidator();
         
         // Register default adapters
         RepositoryAdapterFactory.register('github', GitHubAdapter);
@@ -101,6 +105,31 @@ export class RegistryManager {
     }
 
     /**
+     * Enrich source with global token if applicable
+     * Applies global GitHub token to GitHub sources that don't have their own token
+     */
+    private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
+        // If source already has a token, don't override it
+        if (source.token && source.token.trim().length > 0) {
+            return source;
+        }
+
+        // Get global token from VS Code configuration
+        const config = vscode.workspace.getConfiguration('promptregistry');
+        const globalToken = config.get<string>('githubToken', '');
+
+        if (globalToken && globalToken.trim().length > 0) {
+            this.logger.debug(`[RegistryManager] Applying global GitHub token to source '${source.id}'`);
+            return {
+                ...source,
+                token: globalToken.trim()
+            };
+        }
+
+        return source;
+    }
+
+    /**
      * Load adapters for all sources
      */
     private async loadAdapters(): Promise<void> {
@@ -109,7 +138,8 @@ export class RegistryManager {
         for (const source of sources) {
             if (source.enabled) {
                 try {
-                    const adapter = RepositoryAdapterFactory.create(source);
+                    const enrichedSource = this.enrichSourceWithGlobalToken(source);
+                    const adapter = RepositoryAdapterFactory.create(enrichedSource);
                     this.adapters.set(source.id, adapter);
                 } catch (error) {
                     this.logger.error(`Failed to create adapter for source '${source.id}'`, error as Error);
@@ -125,7 +155,8 @@ export class RegistryManager {
         let adapter = this.adapters.get(source.id);
         
         if (!adapter) {
-            adapter = RepositoryAdapterFactory.create(source);
+            const enrichedSource = this.enrichSourceWithGlobalToken(source);
+            adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(source.id, adapter);
         }
         
@@ -140,8 +171,9 @@ export class RegistryManager {
     async addSource(source: RegistrySource): Promise<void> {
         this.logger.info(`Adding source: ${source.name}`);
         
-        // Validate source
-        const adapter = RepositoryAdapterFactory.create(source);
+        // Validate source (with global token if applicable)
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         const validation = await adapter.validate();
         
         if (!validation.valid) {
@@ -182,7 +214,8 @@ export class RegistryManager {
         const updatedSource = sources.find(s => s.id === sourceId);
         
         if (updatedSource && updatedSource.enabled) {
-            const adapter = RepositoryAdapterFactory.create(updatedSource);
+            const enrichedSource = this.enrichSourceWithGlobalToken(updatedSource);
+            const adapter = RepositoryAdapterFactory.create(enrichedSource);
             this.adapters.set(sourceId, adapter);
         }
 
@@ -199,6 +232,10 @@ export class RegistryManager {
 
     /**
      * Sync a source (refresh bundle list)
+     * Behavior varies by source type:
+     * - GitHub: Update cache only, no auto-installation
+     * - Awesome Copilot: Update cache and auto-update installed bundles
+     * - Others: Default to cache-only behavior
      */
     async syncSource(sourceId: string): Promise<void> {
         this.logger.info(`Syncing source: ${sourceId}`);
@@ -217,13 +254,146 @@ export class RegistryManager {
         await this.storage.cacheSourceBundles(sourceId, bundles);
         
         this.logger.info(`Source '${sourceId}' synced. Found ${bundles.length} bundles.`);
+        
+        // Apply source-type-specific sync behavior
+        if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
+            // Awesome Copilot sources: Auto-update installed bundles
+            this.logger.info(`[${source.type}] Auto-updating installed bundles from source '${sourceId}'`);
+            await this.autoUpdateInstalledBundles(sourceId, bundles);
+        } else if (source.type === 'github') {
+            // GitHub sources: Cache-only, no auto-installation
+            this.logger.info(`[github] Cache updated for source '${sourceId}'. No auto-installation performed.`);
+        } else {
+            // Other sources: Default to cache-only behavior
+            this.logger.info(`[${source.type}] Cache updated for source '${sourceId}'. Using cache-only behavior.`);
+        }
+    }
+
+    /**
+     * Auto-update installed bundles from a source
+     * Used for Awesome Copilot sources that should auto-update
+     */
+    private async autoUpdateInstalledBundles(sourceId: string, latestBundles: Bundle[]): Promise<void> {
+        const installed = await this.storage.getInstalledBundles();
+        const bundlesFromSource = this.filterBundlesBySource(installed, sourceId, latestBundles);
+        
+        this.logger.info(`Found ${bundlesFromSource.length} installed bundles from source '${sourceId}'`);
+        
+        const results = {
+            succeeded: [] as string[],
+            failed: [] as Array<{ bundleId: string; error: string }>,
+            skipped: [] as string[]
+        };
+        
+        for (const installedBundle of bundlesFromSource) {
+            try {
+                const latestBundle = this.findMatchingLatestBundle(installedBundle, latestBundles);
+                
+                if (!latestBundle) {
+                    this.logger.warn(`Bundle '${installedBundle.bundleId}' no longer available in source '${sourceId}'`);
+                    results.skipped.push(installedBundle.bundleId);
+                    continue;
+                }
+                
+                // Check if update is needed
+                if (latestBundle.version !== installedBundle.version) {
+                    this.logger.info(`Auto-updating bundle '${installedBundle.bundleId}' from v${installedBundle.version} to v${latestBundle.version}`);
+                    
+                    await this.updateBundle(installedBundle.bundleId, latestBundle.version);
+                    results.succeeded.push(installedBundle.bundleId);
+                    this.logger.info(`Successfully auto-updated bundle '${installedBundle.bundleId}'`);
+                } else {
+                    this.logger.debug(`Bundle '${installedBundle.bundleId}' is already at latest version ${latestBundle.version}`);
+                }
+            } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                results.failed.push({ bundleId: installedBundle.bundleId, error: errorMsg });
+                this.logger.error(`Failed to auto-update bundle '${installedBundle.bundleId}'`, error as Error);
+            }
+        }
+        
+        // Report summary
+        if (results.failed.length > 0) {
+            this.logger.warn(`Auto-update completed: ${results.succeeded.length} succeeded, ${results.failed.length} failed, ${results.skipped.length} skipped`);
+        } else if (results.succeeded.length > 0) {
+            this.logger.info(`Auto-update completed successfully: ${results.succeeded.length} bundles updated`);
+        }
+    }
+
+    /**
+     * Filter installed bundles by source ID
+     */
+    private filterBundlesBySource(
+        installed: InstalledBundle[], 
+        sourceId: string, 
+        latestBundles: Bundle[]
+    ): InstalledBundle[] {
+        return installed.filter(b => this.belongsToSource(b, sourceId, latestBundles));
+    }
+
+    /**
+     * Check if an installed bundle belongs to a specific source
+     */
+    private belongsToSource(
+        bundle: InstalledBundle, 
+        sourceId: string, 
+        latestBundles: Bundle[]
+    ): boolean {
+        // Direct source ID match
+        if (bundle.sourceId === sourceId) {
+            return true;
+        }
+        
+        // Manifest URL match
+        if (bundle.manifest?.metadata?.repository?.url?.includes(sourceId)) {
+            return true;
+        }
+        
+        // Identity-based match
+        return latestBundles.some(lb => this.bundlesMatch(bundle, lb, sourceId));
+    }
+
+    /**
+     * Check if installed bundle matches a latest bundle from a source
+     */
+    private bundlesMatch(installed: InstalledBundle, latest: Bundle, sourceId: string): boolean {
+        if (latest.sourceId !== sourceId) {
+            return false;
+        }
+        
+        if (installed.sourceType === 'github') {
+            const installedIdentity = VersionManager.extractBundleIdentity(installed.bundleId, 'github');
+            const latestIdentity = VersionManager.extractBundleIdentity(latest.id, 'github');
+            return installedIdentity === latestIdentity;
+        }
+        
+        return latest.id === installed.bundleId;
+    }
+
+    /**
+     * Find matching latest bundle for an installed bundle
+     */
+    private findMatchingLatestBundle(installedBundle: InstalledBundle, latestBundles: Bundle[]): Bundle | undefined {
+        return latestBundles.find(lb => {
+            if (installedBundle.sourceType === 'github') {
+                const installedIdentity = VersionManager.extractBundleIdentity(installedBundle.bundleId, 'github');
+                const latestIdentity = VersionManager.extractBundleIdentity(lb.id, 'github');
+                return installedIdentity === latestIdentity;
+            } else {
+                // For non-GitHub bundles, match by base ID (without version)
+                const installedBaseId = installedBundle.bundleId.replace(/-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[\w.]+)?$/, '');
+                const latestBaseId = lb.id.replace(/-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[\w.]+)?$/, '');
+                return installedBaseId === latestBaseId;
+            }
+        });
     }
 
     /**
      * Validate a source
      */
     async validateSource(source: RegistrySource): Promise<ValidationResult> {
-        const adapter = RepositoryAdapterFactory.create(source);
+        const enrichedSource = this.enrichSourceWithGlobalToken(source);
+        const adapter = RepositoryAdapterFactory.create(enrichedSource);
         return await adapter.validate();
     }
 
@@ -263,9 +433,25 @@ export class RegistryManager {
             }
         }
 
-        // Apply filters
+        // Apply version consolidation for GitHub sources
         let results = allBundles;
+        try {
+            // Set up source type resolver for accurate consolidation
+            this.versionConsolidator.setSourceTypeResolver((sourceId: string) => {
+                const source = sources.find(s => s.id === sourceId);
+                return source?.type || 'local';
+            });
+            
+            // Consolidate bundles (only GitHub bundles will be consolidated)
+            results = this.versionConsolidator.consolidateBundles(allBundles);
+            this.logger.debug(`Consolidated ${allBundles.length} bundles into ${results.length} entries`);
+        } catch (error) {
+            this.logger.error('Version consolidation failed, using unconsolidated bundles', error as Error);
+            // Fall back to unconsolidated bundles on error
+            results = allBundles;
+        }
 
+        // Apply filters
         if (query.text) {
             const searchText = query.text.toLowerCase();
             results = results.filter(b =>
@@ -317,7 +503,23 @@ export class RegistryManager {
 
         // Search all sources
         const bundles = await this.searchBundles({});
-        const bundle = bundles.find(b => b.id === bundleId);
+        
+        // Try exact match first
+        let bundle = bundles.find(b => b.id === bundleId);
+        
+        // If not found and bundleId looks like an identity (no version), try identity matching for GitHub bundles
+        if (!bundle && !bundleId.match(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/)) {
+            // This might be a bundle identity, try to find a matching GitHub bundle
+            const sources = await this.storage.getSources();
+            bundle = bundles.find(b => {
+                const source = sources.find(s => s.id === b.sourceId);
+                if (source?.type === 'github') {
+                    const identity = VersionManager.extractBundleIdentity(b.id, 'github');
+                    return identity === bundleId;
+                }
+                return false;
+            });
+        }
         
         if (!bundle) {
             throw new Error(`Bundle '${bundleId}' not found`);
@@ -333,7 +535,25 @@ export class RegistryManager {
         this.logger.info(`Installing bundle: ${bundleId}`, options);
         
         // Get bundle details
-        const bundle = await this.getBundleDetails(bundleId);
+        // For versioned bundles, we need to extract the identity first to find the consolidated bundle
+        let searchId = bundleId;
+        
+        // If a specific version is requested, try to find the bundle by identity
+        if (options.version) {
+            // Try to determine source type from cached bundles
+            const sources = await this.storage.getSources();
+            for (const source of sources) {
+                const cachedBundles = await this.storage.getCachedSourceBundles(source.id);
+                const matchingBundle = cachedBundles.find(b => b.id === bundleId);
+                if (matchingBundle) {
+                    // Found the bundle, extract identity for searching
+                    searchId = VersionManager.extractBundleIdentity(bundleId, source.type);
+                    break;
+                }
+            }
+        }
+        
+        let bundle = await this.getBundleDetails(searchId);
         
         // Check if already installed
         const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
@@ -342,7 +562,7 @@ export class RegistryManager {
             throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
         }
 
-        // Get download URL from adapter
+        // Get source
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
@@ -350,28 +570,47 @@ export class RegistryManager {
             throw new Error(`Source '${bundle.sourceId}' not found`);
         }
 
+        // Handle version-specific installation
+        // If a specific version is requested, retrieve it from the version consolidator
+        if (options.version) {
+            const identity = VersionManager.extractBundleIdentity(bundleId, source.type);
+            const specificVersion = this.versionConsolidator.getBundleVersion(identity, options.version);
+            
+            if (specificVersion) {
+                this.logger.info(`Installing specific version ${options.version} instead of latest ${bundle.version}`);
+                // Update bundle object with version-specific URLs and ID before installation
+                const versionedId = `${identity}-${specificVersion.version}`;
+                bundle = {
+                    ...bundle,
+                    id: versionedId,
+                    version: specificVersion.version,
+                    downloadUrl: specificVersion.downloadUrl,
+                    manifestUrl: specificVersion.manifestUrl,
+                    lastUpdated: specificVersion.publishedAt
+                };
+            } else {
+                this.logger.warn(`Requested version ${options.version} not found in available versions, falling back to latest version ${bundle.version}`);
+            }
+        }
+
         const adapter = this.getAdapter(source);
         
-        // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
-        // For other adapters, use the downloadUrl
-        let installation: InstalledBundle;
-        if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
-            this.logger.debug('Downloading bundle from awesome-copilot adapter');
-            const bundleBuffer = await adapter.downloadBundle(bundle);
-            this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
-            
-            // Install from buffer
-            installation = await this.installer.installFromBuffer(bundle, bundleBuffer, options);
-        } else {
-            const downloadUrl = adapter.getDownloadUrl(bundle.id, bundle.version);
-            // Install bundle using BundleInstaller
-            installation = await this.installer.install(bundle, downloadUrl, options);
-        }
+        // Unified download path: all adapters use downloadBundle()
+        this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+        const bundleBuffer = await adapter.downloadBundle(bundle);
+        this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+        
+        // Install from buffer
+        const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options);
         
         // Add profileId if provided
         if (options.profileId) {
             installation.profileId = options.profileId;
         }
+        
+        // Ensure sourceId and sourceType are set for identity matching
+        installation.sourceId = bundle.sourceId;
+        installation.sourceType = source.type;
         
         // Record installation
         await this.storage.recordInstallation(installation);
@@ -396,11 +635,12 @@ export class RegistryManager {
         // Uninstall using BundleInstaller
         await this.installer.uninstall(installed);
         
-        // Remove installation record
-        await this.storage.removeInstallation(bundleId, scope);
+        // Remove installation record using the stored bundle ID from the installation record
+        // This ensures we remove the correct record even for versioned bundles
+        await this.storage.removeInstallation(installed.bundleId, scope);
         
-        this._onBundleUninstalled.fire(bundleId);
-        this.logger.info(`Bundle '${bundleId}' uninstalled successfully`);
+        this._onBundleUninstalled.fire(installed.bundleId);
+        this.logger.info(`Bundle '${installed.bundleId}' uninstalled successfully`);
     }
 
     /**
@@ -418,7 +658,31 @@ export class RegistryManager {
         }
 
         // Get new bundle details
-        const bundle = await this.getBundleDetails(bundleId);
+        // If version is specified, search for bundles with that version
+        // Otherwise, get the latest version
+        let bundle: Bundle;
+        if (version) {
+            // Search for the specific version
+            // For versioned bundles, construct the versioned ID
+            const identity = current.sourceType === 'github' 
+                ? VersionManager.extractBundleIdentity(bundleId, 'github')
+                : bundleId.replace(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/, '');
+            const versionedId = `${identity}-${version}`;
+            
+            try {
+                bundle = await this.getBundleDetails(versionedId);
+            } catch (error) {
+                // If versioned ID not found, try the identity
+                this.logger.warn(`Bundle '${versionedId}' not found, trying identity '${identity}'`);
+                bundle = await this.getBundleDetails(identity);
+                // Verify the version matches
+                if (bundle.version !== version) {
+                    throw new Error(`Requested version ${version} not found for bundle '${identity}'`);
+                }
+            }
+        } else {
+            bundle = await this.getBundleDetails(bundleId);
+        }
         
         // Check if update is needed
         if (current.version === bundle.version) {
@@ -426,7 +690,7 @@ export class RegistryManager {
             return;
         }
 
-        // Get download URL
+        // Get source and adapter
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
@@ -435,10 +699,14 @@ export class RegistryManager {
         }
 
         const adapter = this.getAdapter(source);
-        const downloadUrl = adapter.getDownloadUrl(bundle.id, bundle.version);
+        
+        // Unified download path: use downloadBundle() for all sources
+        this.logger.debug(`Downloading bundle update from ${source.type} adapter`);
+        const bundleBuffer = await adapter.downloadBundle(bundle);
+        this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
         
         // Update using BundleInstaller
-        const updated = await this.installer.update(current, bundle, downloadUrl);
+        const updated = await this.installer.update(current, bundle, bundleBuffer);
         
         // Update installation record
         await this.storage.removeInstallation(bundleId, current.scope);
@@ -556,140 +824,174 @@ export class RegistryManager {
         }, async (progress) => {
             progress.report({ message: "Preparing..." });
 
-            // Handle case where profile object is passed instead of ID
-            if (typeof profileId !== 'string') {
-                const profileObj = profileId as any;
-                if (profileObj && typeof profileObj === 'object' && profileObj.id) {
-                    this.logger.warn('Profile object passed to activateProfile, extracting ID');
-                    profileId = profileObj.id;
-                } else {
-                    throw new Error(`Invalid profile identifier: expected string, got ${typeof profileId}`);
-                }
-            }
-        
-            this.logger.info(`Activating profile: ${profileId}`);
-        
-            const profiles = await this.storage.getProfiles();
-            progress.report({ message: "Checking for active profiles..." });
-        
-            // Deactivate all active profiles and uninstall their bundles
-            for (const profile of profiles) {
-                if (profile.active && profile.id !== profileId) {
-                    this.logger.info(`Deactivating previous profile: ${profile.id}`);
-                    try {
-                        await this.deactivateProfile(profile.id);
-                    } catch (error) {
-                        this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
-                    }
-                }
-            }
-        
-            // Get all sources to find adapters
-            const allSources = await this.storage.getSources();
-        
-            const profile = profiles.find(p => p.id === profileId);
-            if (profile) {
-                this._onProfileActivated.fire(profile);
+            const validatedProfileId = this.validateProfileId(profileId);
+            this.logger.info(`Activating profile: ${validatedProfileId}`);
             
-                // Install bundles associated with this profile
-                if (profile.bundles && profile.bundles.length > 0) {
-                progress.report({ message: `Installing ${profile.bundles.length} bundle(s)...` });
-                    this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
-                
-                    for (const bundleRef of profile.bundles) {
-                    progress.report({ message: `Installing ${bundleRef.id}...` });
-                        try {
-                            // Check if bundle is already installed
-                            const installedBundles = await this.storage.getInstalledBundles();
-                            const alreadyInstalled = installedBundles.find(b => b.bundleId === bundleRef.id);
-                        
-                            if (alreadyInstalled) {
-                                this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
-                                continue;
-                            }
-                        
-                            // Search for the bundle in sources
-                            this.logger.info(`Searching for bundle: ${bundleRef.id} v${bundleRef.version}`);
-                            const queryBySourceAndBundleId = { text: bundleRef.id, tags: [], sourceId: bundleRef.sourceId };
-                            const searchResults = await this.searchBundles(queryBySourceAndBundleId);
-                            this.logger.info(`Found ${searchResults.length} matching bundles.`,searchResults);
-                        
-                            // If sourceId is specified, prefer bundles from that source
-                            const matchingBundle = searchResults.find(b => {
-                                const idMatch = b.id === bundleRef.id || b.name.toLowerCase().includes(bundleRef.id.toLowerCase());
-                                if (bundleRef.sourceId) {
-                                    return idMatch && b.sourceId === bundleRef.sourceId;
-                                }
-                                return idMatch;
-                            });
-                        
-                            if (!matchingBundle) {
-                                this.logger.warn(`Bundle not found: ${bundleRef.id}`);
-                                continue;
-                            }
-                        
-                            const source = allSources.find(s => s.id === matchingBundle.sourceId);
-                            if (!source) {
-                                this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
-                                continue;
-                            }
-
-                            const adapter = this.getAdapter(source);
-                        
-                            const options: InstallOptions = {
-                                scope: 'user',
-                                force: false,
-                                profileId: profileId,
-                            };
-
-                            this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
-                        
-
-                            // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
-                            // For other adapters, use the downloadUrl
-                            let installation: InstalledBundle;
-                            if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
-                                this.logger.debug('Downloading bundle from awesome-copilot adapter');
-                                const bundleBuffer = await adapter.downloadBundle(matchingBundle);
-                                this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
-                            
-                                // Install from buffer
-                                installation = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
-                            } else {
-                                const downloadUrl = adapter.getDownloadUrl(matchingBundle.id, matchingBundle.version);
-                                // Install bundle using BundleInstaller
-                                installation = await this.installer.install(matchingBundle, downloadUrl, options);
-                            }
-
-                            // Record installation in storage
-                            await this.storage.recordInstallation(installation);
-
-                            // Fire bundle installed event
-                            this._onBundleInstalled.fire(installation);
-                        
-                            this.logger.info(`Successfully installed: ${matchingBundle.id}`);
-                        } catch (error) {
-                            this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
-                        }
-                    }
-                
-                    this.logger.info(`Profile bundle installation complete`);
-                }
+            // Deactivate other active profiles
+            await this.deactivateOtherProfiles(validatedProfileId, progress);
             
+            // Get and activate the target profile
+            const profile = await this.getProfileById(validatedProfileId);
+            this._onProfileActivated.fire(profile);
             
-            // Activate target profile
-            await this.storage.updateProfile(profileId, { active: true });
+            // Install profile bundles
+            await this.installProfileBundles(profile, validatedProfileId, progress);
+            
+            // Mark profile as active
+            await this.storage.updateProfile(validatedProfileId, { active: true });
 
-            this.logger.info(`Profile '${profileId}' activated successfully`);
+            this.logger.info(`Profile '${validatedProfileId}' activated successfully`);
             progress.report({ message: "Profile activated successfully" });
-            
-            } else {
-                throw new Error(`Profile not found: ${profileId}`);
-            }
-
-
-            
         });
+    }
+
+    /**
+     * Validate and normalize profile ID
+     */
+    private validateProfileId(profileId: any): string {
+        if (typeof profileId !== 'string') {
+            const profileObj = profileId as any;
+            if (profileObj && typeof profileObj === 'object' && profileObj.id) {
+                this.logger.warn('Profile object passed to activateProfile, extracting ID');
+                return profileObj.id;
+            }
+            throw new Error(`Invalid profile identifier: expected string, got ${typeof profileId}`);
+        }
+        return profileId;
+    }
+
+    /**
+     * Deactivate all active profiles except the target
+     */
+    private async deactivateOtherProfiles(targetProfileId: string, progress: vscode.Progress<any>): Promise<void> {
+        const profiles = await this.storage.getProfiles();
+        progress.report({ message: "Checking for active profiles..." });
+        
+        for (const profile of profiles) {
+            if (profile.active && profile.id !== targetProfileId) {
+                this.logger.info(`Deactivating previous profile: ${profile.id}`);
+                try {
+                    await this.deactivateProfile(profile.id);
+                } catch (error) {
+                    this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get profile by ID or throw error
+     */
+    private async getProfileById(profileId: string): Promise<Profile> {
+        const profiles = await this.storage.getProfiles();
+        const profile = profiles.find(p => p.id === profileId);
+        
+        if (!profile) {
+            throw new Error(`Profile not found: ${profileId}`);
+        }
+        
+        return profile;
+    }
+
+    /**
+     * Install all bundles associated with a profile
+     */
+    private async installProfileBundles(
+        profile: Profile, 
+        profileId: string, 
+        progress: vscode.Progress<any>
+    ): Promise<void> {
+        if (!profile.bundles || profile.bundles.length === 0) {
+            return;
+        }
+
+        progress.report({ message: `Installing ${profile.bundles.length} bundle(s)...` });
+        this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
+        
+        const allSources = await this.storage.getSources();
+        
+        for (const bundleRef of profile.bundles) {
+            progress.report({ message: `Installing ${bundleRef.id}...` });
+            try {
+                await this.installProfileBundle(bundleRef, profileId, allSources);
+            } catch (error) {
+                this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
+            }
+        }
+        
+        this.logger.info(`Profile bundle installation complete`);
+    }
+
+    /**
+     * Install a single bundle for a profile
+     */
+    private async installProfileBundle(
+        bundleRef: ProfileBundle,
+        profileId: string,
+        allSources: RegistrySource[]
+    ): Promise<void> {
+        // Check if bundle is already installed
+        const installedBundles = await this.storage.getInstalledBundles();
+        const alreadyInstalled = installedBundles.find(b => b.bundleId === bundleRef.id);
+        
+        if (alreadyInstalled) {
+            this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
+            return;
+        }
+        
+        // Search for the bundle
+        this.logger.info(`Searching for bundle: ${bundleRef.id} v${bundleRef.version}`);
+        const queryBySourceAndBundleId = { text: bundleRef.id, tags: [], sourceId: bundleRef.sourceId };
+        const searchResults = await this.searchBundles(queryBySourceAndBundleId);
+        this.logger.info(`Found ${searchResults.length} matching bundles.`, searchResults);
+        
+        // Find matching bundle
+        const matchingBundle = searchResults.find(b => {
+            const idMatch = b.id === bundleRef.id || b.name.toLowerCase().includes(bundleRef.id.toLowerCase());
+            if (bundleRef.sourceId) {
+                return idMatch && b.sourceId === bundleRef.sourceId;
+            }
+            return idMatch;
+        });
+        
+        if (!matchingBundle) {
+            this.logger.warn(`Bundle not found: ${bundleRef.id}`);
+            return;
+        }
+        
+        // Get source and adapter
+        const source = allSources.find(s => s.id === matchingBundle.sourceId);
+        if (!source) {
+            this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
+            return;
+        }
+
+        const adapter = this.getAdapter(source);
+        
+        // Download and install
+        this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
+        this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+        
+        const bundleBuffer = await adapter.downloadBundle(matchingBundle);
+        this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+        
+        const options: InstallOptions = {
+            scope: 'user',
+            force: false,
+            profileId: profileId,
+        };
+        
+        const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
+
+        // Ensure sourceId and sourceType are set for identity matching
+        installation.sourceId = matchingBundle.sourceId;
+        installation.sourceType = source.type;
+
+        // Record installation and fire event
+        await this.storage.recordInstallation(installation);
+        this._onBundleInstalled.fire(installation);
+        
+        this.logger.info(`Successfully installed: ${matchingBundle.id}`);
     }
 
     /**

@@ -93,7 +93,16 @@ const vscode = {
       this.listeners = [];
     }
   },
-    ConfigurationTarget: {
+  env: {
+    appName: 'Visual Studio Code',
+    appRoot: '/mock/app/root',
+    language: 'en',
+    machineId: 'mock-machine-id',
+    sessionId: 'mock-session-id',
+    remoteName: undefined,
+    shell: '/bin/bash'
+  },
+  ConfigurationTarget: {
     Global: 1,
     Workspace: 2,
     WorkspaceFolder: 3

@@ -10,6 +10,28 @@ import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle } from '../types/registry';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
+import { VersionManager } from '../utils/versionManager';
+
+/**
+ * Message types sent from webview to extension
+ */
+interface WebviewMessage {
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions';
+    bundleId?: string;
+    installPath?: string;
+    filePath?: string;
+    version?: string;
+}
+
+/**
+ * Content breakdown showing count of each resource type
+ */
+interface ContentBreakdown {
+    prompts: number;
+    instructions: number;
+    chatmodes: number;
+    agents: number;
+}
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'promptregistry.marketplace';
@@ -24,25 +46,31 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         this.logger = Logger.getInstance();
 
         // Listen to bundle installation events to refresh marketplace
-        this.registryManager.onBundleInstalled(() => {
-            this.logger.debug('Bundle installed event received, refreshing marketplace');
-            this.loadBundles();
+        this.registryManager.onBundleInstalled((installation) => {
+            try {
+                this.logger.debug(`Bundle installed event received: ${installation.bundleId} v${installation.version}, refreshing marketplace`);
+                this.loadBundles();
+            } catch (error) {
+                this.logger.error('Error handling bundle installed event', error as Error);
+            }
         });
 
-        this.registryManager.onBundleUninstalled(() => {
-            this.logger.debug('Bundle uninstalled event received, refreshing marketplace');
-            this.loadBundles();
+        this.registryManager.onBundleUninstalled((bundleId) => {
+            try {
+                this.logger.debug(`Bundle uninstalled event received: ${bundleId}, refreshing marketplace`);
+                this.loadBundles();
+            } catch (error) {
+                this.logger.error('Error handling bundle uninstalled event', error as Error);
+            }
         });
 
-        // Listen to bundle installation events to refresh marketplace
-        this.registryManager.onBundleInstalled(() => {
-            this.logger.debug('Bundle installed event received, refreshing marketplace');
-            this.loadBundles();
-        });
-
-        this.registryManager.onBundleUninstalled(() => {
-            this.logger.debug('Bundle uninstalled event received, refreshing marketplace');
-            this.loadBundles();
+        this.registryManager.onBundleUpdated((installation) => {
+            try {
+                this.logger.debug(`Bundle updated event received: ${installation.bundleId} v${installation.version}, refreshing marketplace`);
+                this.loadBundles();
+            } catch (error) {
+                this.logger.error('Error handling bundle updated event', error as Error);
+            }
         });
     }
 
@@ -70,6 +98,64 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Determine button state based on installation status and version comparison
+     * 
+     * @param bundle - The bundle to check
+     * @param installed - The installed bundle info (if installed)
+     * @returns Button state: 'install', 'update', or 'uninstall'
+     */
+    private determineButtonState(
+        bundle: Bundle,
+        installed: InstalledBundle | undefined
+    ): 'install' | 'update' | 'uninstall' {
+        if (!installed) {
+            return 'install';
+        }
+
+        try {
+            // Check if an update is available
+            if (VersionManager.isUpdateAvailable(installed.version, bundle.version)) {
+                return 'update';
+            }
+        } catch (error) {
+            // If version comparison fails, fall back to string comparison
+            this.logger.warn(`Version comparison failed for ${bundle.id}: ${(error as Error).message}`);
+            if (installed.version !== bundle.version) {
+                return 'update';
+            }
+        }
+
+        return 'uninstall';
+    }
+
+    /**
+     * Check if installed bundle matches the marketplace bundle identity
+     * 
+     * For GitHub bundles, compares without version suffix (owner-repo)
+     * For other sources, requires exact match
+     * 
+     * @param installedId - Bundle ID from installed bundle
+     * @param bundleId - Bundle ID from marketplace
+     * @param sourceType - Source type of the bundle
+     * @returns True if the bundles match
+     */
+    private matchesBundleIdentity(
+        installedId: string,
+        bundleId: string,
+        sourceType: string
+    ): boolean {
+        if (sourceType === 'github') {
+            // For GitHub, extract identity without version suffix
+            const installedIdentity = VersionManager.extractBundleIdentity(installedId, sourceType as any);
+            const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, sourceType as any);
+            return installedIdentity === bundleIdentity;
+        }
+
+        // For non-GitHub sources, exact match required
+        return installedId === bundleId;
+    }
+
+    /**
      * Load bundles from registries and send to webview
      */
     private async loadBundles(): Promise<void> {
@@ -82,23 +168,39 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const sources = await this.registryManager.listSources();
             
             const enhancedBundles = bundles.map(bundle => {
-                const installed = installedBundles.find(ib => ib.bundleId === bundle.id);
+                // Find matching installed bundle using identity matching
+                const source = sources.find(s => s.id === bundle.sourceId);
+                const installed = installedBundles.find(ib => 
+                    this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+                );
+                
                 // Use manifest from installed bundle if available
                 const contentBreakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
                 // Check if bundle is from a curated hub
-                const source = sources.find(s => s.id === bundle.sourceId);
                 const isCurated = source?.hubId !== undefined;
                 const hubName = isCurated && source?.hubId ? source.metadata?.description || source.name : undefined;
 
+                // Determine button state based on installation status and version
+                const buttonState = this.determineButtonState(bundle, installed);
+
+                // Get available versions if this is a consolidated bundle
+                let availableVersions: Array<{version: string}> | undefined;
+                if ((bundle as any).isConsolidated && (bundle as any).availableVersions) {
+                    availableVersions = (bundle as any).availableVersions.map((v: any) => ({
+                        version: v.version
+                    }));
+                }
 
                 return {
                     ...bundle,
                     installed: !!installed,
                     installedVersion: installed?.version,
+                    buttonState,
                     isCurated,
                     hubName,
                     contentBreakdown,
+                    availableVersions,
                 };
             });
 
@@ -125,73 +227,105 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Calculate content breakdown from bundle metadata
+     * Count prompts by type from an array of prompt objects
      */
-    private getContentBreakdown(bundle: Bundle, manifest?: any): {
-        prompts: number;
-        instructions: number;
-        chatmodes: number;
-        agents: number;
-    } {
-        const breakdown = {
+    private countPromptsByType(prompts: any[]): ContentBreakdown {
+        const breakdown: ContentBreakdown = {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
             agents: 0
         };
 
+        for (const prompt of prompts) {
+            const type = prompt.type || 'prompt';
+            switch (type) {
+                case 'prompt':
+                    breakdown.prompts++;
+                    break;
+                case 'instructions':
+                    breakdown.instructions++;
+                    break;
+                case 'chatmode':
+                    breakdown.chatmodes++;
+                    break;
+                case 'agent':
+                    breakdown.agents++;
+                    break;
+            }
+        }
+
+        return breakdown;
+    }
+
+    /**
+     * Calculate content breakdown from bundle metadata
+     */
+    private getContentBreakdown(bundle: Bundle, manifest?: any): ContentBreakdown {
         // First: Use manifest if provided (from installed bundle)
         if (manifest?.prompts && Array.isArray(manifest.prompts)) {
-            for (const prompt of manifest.prompts) {
-                const type = prompt.type || 'prompt';
-                if (type === 'prompt') {breakdown.prompts++;}
-                else if (type === 'instructions') {breakdown.instructions++;}
-                else if (type === 'chatmode') {breakdown.chatmodes++;}
-                else if (type === 'agent') {breakdown.agents++;}
-            }
-            return breakdown;
+            return this.countPromptsByType(manifest.prompts);
         }
 
         // Second: Try to parse from bundle data (some sources embed this)
         const bundleData = bundle as any;
         if (bundleData.prompts && Array.isArray(bundleData.prompts)) {
-            for (const prompt of bundleData.prompts) {
-                const type = prompt.type || 'prompt';
-                if (type === 'prompt') {breakdown.prompts++;}
-                else if (type === 'instructions') {breakdown.instructions++;}
-                else if (type === 'chatmode') {breakdown.chatmodes++;}
-                else if (type === 'agent') {breakdown.agents++;}
-            }
-            return breakdown;
+            return this.countPromptsByType(bundleData.prompts);
         }
 
-        // Fallback: estimate from tags (better than nothing)
         // Fallback: Don't show estimates for uninstalled bundles
         // If we don't have manifest data, return zeros instead of misleading estimates
         // Users can install the bundle to see accurate counts
-        
-        return breakdown;
+        return {
+            prompts: 0,
+            instructions: 0,
+            chatmodes: 0,
+            agents: 0
+        };
     }
 
     /**
      * Handle messages from webview
      */
-    private async handleMessage(message: any): Promise<void> {
+    private async handleMessage(message: WebviewMessage): Promise<void> {
         switch (message.type) {
             case 'refresh':
                 await this.loadBundles();
                 break;
             case 'install':
-                await this.handleInstall(message.bundleId);
+                if (message.bundleId) {
+                    await this.handleInstall(message.bundleId);
+                }
+                break;
+            case 'update':
+                if (message.bundleId) {
+                    await this.handleUpdate(message.bundleId);
+                }
                 break;
             case 'uninstall':
-                await this.handleUninstall(message.bundleId);
+                if (message.bundleId) {
+                    await this.handleUninstall(message.bundleId);
+                }
                 break;
             case 'openDetails':
-                await this.openBundleDetails(message.bundleId);
+                if (message.bundleId) {
+                    await this.openBundleDetails(message.bundleId);
+                }
                 break;
             case 'openPromptFile':
-                await this.openPromptFileInEditor(message.installPath, message.filePath);
+                if (message.installPath && message.filePath) {
+                    await this.openPromptFileInEditor(message.installPath, message.filePath);
+                }
+                break;
+            case 'installVersion':
+                if (message.bundleId && message.version) {
+                    await this.handleInstallVersion(message.bundleId, message.version);
+                }
+                break;
+            case 'getVersions':
+                if (message.bundleId) {
+                    await this.handleGetVersions(message.bundleId);
+                }
                 break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
@@ -259,7 +393,29 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Uninstalling bundle from marketplace: ${bundleId}`);
 
-            await this.registryManager.uninstallBundle(bundleId, 'user');
+            // Find the actual installed bundle using identity matching
+            const installedBundles = await this.registryManager.listInstalledBundles();
+            const sources = await this.registryManager.listSources();
+            
+            // Get the bundle to determine its source type
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            
+            if (!bundle) {
+                throw new Error('Bundle not found');
+            }
+            
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const installed = installedBundles.find(ib => 
+                this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+            );
+
+            if (!installed) {
+                throw new Error(`Bundle '${bundleId}' is not installed`);
+            }
+
+            // Use the stored bundle ID from the installation record
+            await this.registryManager.uninstallBundle(installed.bundleId, installed.scope || 'user');
 
             vscode.window.showInformationMessage(`✅ Bundle uninstalled successfully!`);
 
@@ -269,6 +425,199 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             this.logger.error('Failed to uninstall bundle from marketplace', error as Error);
             vscode.window.showErrorMessage(`Failed to uninstall bundle: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Update a bundle to the latest version
+     * 
+     * This method performs a two-step process:
+     * 1. Uninstall the current version
+     * 2. Install the latest version
+     * 
+     * If uninstall fails, the update is aborted.
+     * If install fails after successful uninstall, the bundle will be left uninstalled.
+     */
+    private async handleUpdate(bundleId: string): Promise<void> {
+        try {
+            this.logger.info(`Updating bundle from marketplace: ${bundleId}`);
+
+            // Get current installation info to preserve scope
+            const installedBundles = await this.registryManager.listInstalledBundles();
+            const sources = await this.registryManager.listSources();
+            
+            // Find the installed bundle - need to match by identity for GitHub bundles
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            
+            if (!bundle) {
+                throw new Error('Bundle not found');
+            }
+            
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const installed = installedBundles.find(ib => 
+                this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+            );
+
+            if (!installed) {
+                // Bundle not installed, just install it
+                this.logger.warn(`Bundle ${bundleId} not installed, performing fresh install`);
+                await this.handleInstall(bundleId);
+                return;
+            }
+
+            const scope = installed.scope || 'user';
+
+            // Show progress notification
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Updating bundle...`,
+                cancellable: false
+            }, async (progress) => {
+                // Step 1: Uninstall current version
+                progress.report({ message: 'Uninstalling current version...' });
+                this.logger.debug(`Uninstalling current version: ${installed.bundleId}`);
+                
+                try {
+                    await this.registryManager.uninstallBundle(installed.bundleId, scope);
+                } catch (uninstallError) {
+                    const errorMsg = uninstallError instanceof Error ? uninstallError.message : String(uninstallError);
+                    this.logger.error('Failed to uninstall current version during update', uninstallError as Error);
+                    throw new Error(`Failed to uninstall current version: ${errorMsg}`);
+                }
+
+                // Step 2: Install latest version
+                progress.report({ message: 'Installing latest version...' });
+                this.logger.debug(`Installing latest version: ${bundleId}`);
+                
+                try {
+                    await this.registryManager.installBundle(bundleId, {
+                        scope,
+                        version: 'latest'
+                    });
+                } catch (installError) {
+                    const errorMsg = installError instanceof Error ? installError.message : String(installError);
+                    this.logger.error('Failed to install latest version during update', installError as Error);
+                    throw new Error(`Failed to install latest version: ${errorMsg}`);
+                }
+            });
+
+            vscode.window.showInformationMessage(`✅ Bundle updated successfully!`);
+
+            // Refresh marketplace to show updated state
+            await this.loadBundles();
+
+        } catch (error) {
+            this.logger.error('Failed to update bundle from marketplace', error as Error);
+            vscode.window.showErrorMessage(`Failed to update bundle: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Handle installation of a specific version
+     * 
+     * @param bundleId - The bundle to install
+     * @param version - The specific version to install
+     */
+    private async handleInstallVersion(bundleId: string, version: string): Promise<void> {
+        try {
+            this.logger.info(`Installing specific version of bundle: ${bundleId} v${version}`);
+
+            // Use RegistryManager to install with specific version
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Installing bundle v${version}...`,
+                cancellable: false
+            }, async () => {
+                await this.registryManager.installBundle(bundleId, {
+                    scope: 'user',
+                    version: version
+                });
+            });
+
+            vscode.window.showInformationMessage(`✅ Bundle v${version} installed successfully!`);
+
+            // Refresh marketplace
+            await this.loadBundles();
+
+        } catch (error) {
+            this.logger.error('Failed to install specific version from marketplace', error as Error);
+            vscode.window.showErrorMessage(`Failed to install bundle v${version}: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Handle request to get available versions for a bundle
+     * 
+     * @param bundleId - The bundle to get versions for
+     */
+    private async handleGetVersions(bundleId: string): Promise<void> {
+        try {
+            this.logger.debug(`Getting available versions for bundle: ${bundleId}`);
+
+            // Get the bundle to determine its identity
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            
+            if (!bundle) {
+                this.logger.warn(`Bundle not found: ${bundleId}`);
+                return;
+            }
+
+            // Get available versions
+            const versions = await this.getAvailableVersions(bundle);
+
+            // Send versions back to webview
+            this._view?.webview.postMessage({
+                type: 'versionsLoaded',
+                bundleId: bundleId,
+                versions: versions
+            });
+
+            this.logger.debug(`Sent ${versions.length} versions for bundle ${bundleId}`);
+
+        } catch (error) {
+            this.logger.error('Failed to get available versions', error as Error);
+        }
+    }
+
+    /**
+     * Get all available versions for a bundle
+     * 
+     * @param bundle - The bundle to get versions for
+     * @returns Array of version strings in descending order
+     */
+    private async getAvailableVersions(bundle: Bundle): Promise<string[]> {
+        try {
+            // Get the version consolidator from RegistryManager
+            const versionConsolidator = (this.registryManager as any).versionConsolidator;
+            
+            if (!versionConsolidator) {
+                this.logger.warn('Version consolidator not available');
+                return [bundle.version];
+            }
+
+            // Get bundle identity
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const sourceType = source?.type || 'local';
+            
+            const identity = VersionManager.extractBundleIdentity(bundle.id, sourceType as any);
+            
+            // Get all versions from consolidator
+            const bundleVersions = versionConsolidator.getAllVersions(identity);
+            
+            if (bundleVersions.length === 0) {
+                // If no versions in cache, return current version
+                return [bundle.version];
+            }
+
+            // Extract version strings (already sorted by consolidator)
+            return bundleVersions.map((v: any) => v.version);
+
+        } catch (error) {
+            this.logger.error('Failed to get available versions', error as Error);
+            return [bundle.version];
         }
     }
 
@@ -288,9 +637,13 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Check if installed to get manifest
+            // Check if installed to get manifest - use identity matching for GitHub bundles
             const installedBundles = await this.registryManager.listInstalledBundles();
-            const installed = installedBundles.find(ib => ib.bundleId === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const installed = installedBundles.find(ib => 
+                this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+            );
             const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
             // Create webview panel
@@ -326,7 +679,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Get HTML for bundle details panel
      */
-    private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: any): string {
+    private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: ContentBreakdown): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
         // Escape backslashes and quotes for safe embedding in HTML onclick attributes
@@ -1045,28 +1398,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             border-color: var(--vscode-gitDecoration-addedResourceForeground);
         }
 
-        .curated-badge {\
-            position: absolute;\
-            top: 12px;\
-            right: 12px;\
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\
-            color: white;\
-            padding: 4px 10px;\
-            border-radius: 12px;\
-            font-size: 11px;\
-            font-weight: 600;\
-            display: flex;\
-            align-items: center;\
-            gap: 4px;\
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);\
-            z-index: 2;\
-        }\
-\
-        .curated-badge::before {\
-            content: "✨";\
-            font-size: 12px;\
-        }\
-\
         .curated-badge {
             position: absolute;
             top: 12px;
@@ -1090,28 +1421,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
 
         .installed-badge {
-        .curated-badge {\
-            position: absolute;\
-            top: 12px;\
-            right: 12px;\
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\
-            color: white;\
-            padding: 4px 10px;\
-            border-radius: 12px;\
-            font-size: 11px;\
-            font-weight: 600;\
-            display: flex;\
-            align-items: center;\
-            gap: 4px;\
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);\
-            z-index: 2;\
-        }\
-\
-        .curated-badge::before {\
-            content: "✨";\
-            font-size: 12px;\
-        }\
-\
             position: absolute;
             top: 12px;
             right: 12px;
@@ -1230,6 +1539,115 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         .btn-danger:hover {
             opacity: 0.9;
+        }
+
+        /* Version selector styles */
+        .version-selector-group {
+            display: flex;
+            gap: 0;
+            position: relative;
+        }
+
+        .version-selector-group .btn {
+            border-radius: 4px 0 0 4px;
+        }
+
+        .version-selector-arrow {
+            padding: 8px 10px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+        }
+
+        .version-selector-arrow:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        .version-selector-arrow.danger {
+            background: var(--vscode-errorForeground);
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .version-selector-arrow.danger:hover {
+            opacity: 0.9;
+        }
+
+        .version-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            margin-bottom: 4px;
+            background: var(--vscode-dropdown-background);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 220px;
+            max-width: 300px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .version-dropdown.show {
+            display: block;
+        }
+
+        .version-dropdown-header {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .version-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.15s;
+        }
+
+        .version-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .version-item.current {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .version-item.uninstall {
+            color: var(--vscode-errorForeground);
+            font-weight: 600;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+        }
+
+        .version-item.uninstall:hover {
+            background: var(--vscode-inputValidation-errorBackground);
+        }
+
+        .version-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+        }
+
+        .version-badge.latest {
+            background: var(--vscode-gitDecoration-addedResourceForeground);
+            color: white;
         }
 
         .empty-state {
@@ -1692,8 +2110,41 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     </div>
 
                     <div class="bundle-actions" onclick="event.stopPropagation()">
-                        \${bundle.installed 
-                            ? \`<button class="btn btn-danger" onclick="uninstallBundle('\${bundle.id}')">Uninstall</button>\`
+                        \${bundle.buttonState === 'update' 
+                            ? \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>\`
+                            : bundle.buttonState === 'uninstall'
+                            ? bundle.availableVersions && bundle.availableVersions.length > 1
+                                ? \`<div class="version-selector-group">
+                                        <button class="btn btn-danger" onclick="uninstallBundle('\${bundle.id}')">Uninstall</button>
+                                        <button class="version-selector-arrow danger" onclick="toggleVersionDropdown('\${bundle.id}-installed', event)">▾</button>
+                                        <div class="version-dropdown" id="version-dropdown-\${bundle.id}-installed">
+                                            <div class="version-item uninstall" onclick="uninstallBundle('\${bundle.id}', event)">
+                                                <span>Uninstall</span>
+                                            </div>
+                                            <div class="version-dropdown-header">Switch Version</div>
+                                            \${(bundle.availableVersions || []).map((versionObj, index) => \`
+                                                <div class="version-item \${versionObj.version === bundle.installedVersion ? 'current' : ''}" onclick="installBundleVersion('\${bundle.id}', '\${versionObj.version}', event)">
+                                                    <span>v\${versionObj.version}</span>
+                                                    \${versionObj.version === bundle.installedVersion ? '<span class="version-badge">Current</span>' : index === 0 ? '<span class="version-badge latest">Latest</span>' : ''}
+                                                </div>
+                                            \`).join('')}
+                                        </div>
+                                    </div>\`
+                                : \`<button class="btn btn-danger" onclick="uninstallBundle('\${bundle.id}')">Uninstall</button>\`
+                            : bundle.availableVersions && bundle.availableVersions.length > 1
+                            ? \`<div class="version-selector-group">
+                                    <button class="btn btn-primary" onclick="installBundle('\${bundle.id}')">Install</button>
+                                    <button class="version-selector-arrow" onclick="toggleVersionDropdown('\${bundle.id}', event)">▾</button>
+                                    <div class="version-dropdown" id="version-dropdown-\${bundle.id}">
+                                        <div class="version-dropdown-header">Select Version</div>
+                                        \${(bundle.availableVersions || []).map((versionObj, index) => \`
+                                            <div class="version-item" onclick="installBundleVersion('\${bundle.id}', '\${versionObj.version}', event)">
+                                                <span>v\${versionObj.version}</span>
+                                                \${index === 0 ? '<span class="version-badge latest">Latest</span>' : ''}
+                                            </div>
+                                        \`).join('')}
+                                    </div>
+                                </div>\`
                             : \`<button class="btn btn-primary" onclick="installBundle('\${bundle.id}')">Install</button>\`
                         }
                         <button class="btn btn-secondary" onclick="openDetails('\${bundle.id}')">Details</button>
@@ -1717,6 +2168,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'install', bundleId });
         }
 
+        function updateBundle(bundleId) {
+            vscode.postMessage({ type: 'update', bundleId });
+        }
+
         function uninstallBundle(bundleId) {
             vscode.postMessage({ type: 'uninstall', bundleId });
         }
@@ -1724,6 +2179,46 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         function openDetails(bundleId) {
             vscode.postMessage({ type: 'openDetails', bundleId });
         }
+
+        function toggleVersionDropdown(dropdownId, event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('version-dropdown-' + dropdownId);
+            if (!dropdown) return;
+            
+            // Close all other dropdowns
+            document.querySelectorAll('.version-dropdown').forEach(d => {
+                if (d.id !== 'version-dropdown-' + dropdownId) {
+                    d.classList.remove('show');
+                }
+            });
+            
+            // Toggle this dropdown
+            dropdown.classList.toggle('show');
+        }
+
+        function installBundleVersion(bundleId, version, event) {
+            event.stopPropagation();
+            
+            // Close dropdown
+            document.querySelectorAll('.version-dropdown').forEach(d => {
+                d.classList.remove('show');
+            });
+            
+            vscode.postMessage({ 
+                type: 'installVersion', 
+                bundleId: bundleId,
+                version: version
+            });
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.version-selector')) {
+                document.querySelectorAll('.version-dropdown').forEach(d => {
+                    d.classList.remove('show');
+                });
+            }
+        });
     </script>
 </body>
 </html>`;

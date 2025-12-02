@@ -109,7 +109,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
 
         const token = this.getAuthToken();
         if (token && this.requiresAuthentication()) {
-            headers['Authorization'] = `Bearer ${token}`;
+            headers['Authorization'] = `token ${token}`;
         }
 
         return headers;

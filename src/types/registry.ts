@@ -88,6 +88,8 @@ export interface InstalledBundle {
     profileId?: string;
     installPath: string;
     manifest: DeploymentManifest;
+    sourceId?: string;  // Source ID for identity matching
+    sourceType?: string;  // Source type for identity matching (github, local, etc.)
 }
 
 /**
