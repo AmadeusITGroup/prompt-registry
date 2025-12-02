@@ -87,6 +87,8 @@ export class BundleInstaller {
                 profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
+                sourceId: bundle.sourceId,
+                sourceType: undefined,  // Will be set by RegistryManager
             };
 
             // Install MCP servers if defined
@@ -157,6 +159,8 @@ export class BundleInstaller {
                 profileId: options.profileId,
                 installPath: installDir,
                 manifest: manifest,
+                sourceId: bundle.sourceId,
+                sourceType: undefined,  // Will be set by RegistryManager
             };
 
             // Step 9: Install MCP servers if defined

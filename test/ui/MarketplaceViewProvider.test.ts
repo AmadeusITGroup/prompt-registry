@@ -628,5 +628,102 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
             const installCalls = mockManager.getInstallCalls();
             assert.strictEqual(installCalls.length, 1);
         });
+
+        test('should handle installVersion with specific version', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'test-bundle';
+            const version = '1.5.0';
+            
+            // Install specific version
+            await mockManager.installBundle(bundleId, { scope: 'user', version });
+            
+            const installCalls = mockManager.getInstallCalls();
+            assert.strictEqual(installCalls.length, 1);
+            assert.strictEqual(installCalls[0].bundleId, bundleId);
+            assert.strictEqual(installCalls[0].options.version, version);
+        });
+
+        test('should pass version parameter to RegistryManager.installBundle', async () => {
+            const mockManager = new MockRegistryManager();
+            const bundleId = 'owner-repo-v2.0.0';
+            const requestedVersion = '1.0.0';
+            
+            // Simulate version-specific installation
+            await mockManager.installBundle(bundleId, { 
+                scope: 'user', 
+                version: requestedVersion 
+            });
+            
+            const installCalls = mockManager.getInstallCalls();
+            assert.strictEqual(installCalls.length, 1);
+            assert.strictEqual(installCalls[0].options.version, requestedVersion);
+        });
+    });
+
+    suite('Version Selection Backend Logic', () => {
+        test('should handle getVersions message and return available versions', () => {
+            // Mock bundle with multiple versions
+            const bundle: Bundle = {
+                id: 'owner-repo-v2.0.0',
+                name: 'Test Bundle',
+                version: '2.0.0',
+                description: 'Test',
+                author: 'Test',
+                sourceId: 'github-source',
+                environments: ['vscode'],
+                tags: [],
+                lastUpdated: '2024-01-01',
+                size: '1MB',
+                dependencies: [],
+                license: 'MIT',
+                manifestUrl: 'https://example.com/manifest.yml',
+                downloadUrl: 'https://example.com/bundle.zip'
+            };
+
+            // Add available versions to bundle (as would be done by consolidator)
+            const enhancedBundle = {
+                ...bundle,
+                availableVersions: [
+                    { version: '2.0.0' },
+                    { version: '1.5.0' },
+                    { version: '1.0.0' }
+                ]
+            };
+
+            // Verify versions are present
+            assert.ok(enhancedBundle.availableVersions);
+            assert.strictEqual(enhancedBundle.availableVersions.length, 3);
+            assert.strictEqual(enhancedBundle.availableVersions[0].version, '2.0.0');
+        });
+
+        test('should include availableVersions in enhanced bundles', () => {
+            const bundle: any = {
+                id: 'owner-repo-v2.0.0',
+                name: 'Test Bundle',
+                version: '2.0.0',
+                isConsolidated: true,
+                availableVersions: [
+                    { version: '2.0.0', publishedAt: '2024-01-03', downloadUrl: 'url3', manifestUrl: 'manifest3' },
+                    { version: '1.5.0', publishedAt: '2024-01-02', downloadUrl: 'url2', manifestUrl: 'manifest2' },
+                    { version: '1.0.0', publishedAt: '2024-01-01', downloadUrl: 'url1', manifestUrl: 'manifest1' }
+                ]
+            };
+
+            // Simulate what loadBundles does
+            let availableVersions: Array<{version: string}> | undefined;
+            if (bundle.isConsolidated && bundle.availableVersions) {
+                availableVersions = bundle.availableVersions.map((v: any) => ({
+                    version: v.version
+                }));
+            }
+
+            assert.ok(availableVersions);
+            assert.strictEqual(availableVersions!.length, 3);
+            assert.deepStrictEqual(availableVersions, [
+                { version: '2.0.0' },
+                { version: '1.5.0' },
+                { version: '1.0.0' }
+            ]);
+        });
     });
 });

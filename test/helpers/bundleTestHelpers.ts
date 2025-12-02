@@ -128,32 +128,6 @@ export class BundleBuilder {
 }
 
 /**
- * Quick helper for creating a GitHub bundle (legacy compatibility)
- * 
- * @deprecated Use BundleBuilder.github() for more flexibility
- */
-export function createGitHubBundle(owner: string, repo: string, version: string): Bundle {
-    return BundleBuilder.github(owner, repo).withVersion(version).build();
-}
-
-/**
- * Quick helper for creating a non-GitHub bundle (legacy compatibility)
- * 
- * @deprecated Use BundleBuilder.fromSource() for more flexibility
- */
-export function createNonGitHubBundle(bundleId: string, version: string, sourceType: string): Bundle {
-    const sourceTypeMap: Record<string, keyof typeof TEST_SOURCE_IDS> = {
-        'gitlab': 'GITLAB',
-        'http': 'HTTP',
-        'local': 'LOCAL',
-        'awesome-copilot': 'AWESOME_COPILOT'
-    };
-    
-    const mappedType = sourceTypeMap[sourceType] || 'LOCAL';
-    return BundleBuilder.fromSource(bundleId, mappedType).withVersion(version).build();
-}
-
-/**
  * Test suite for BundleBuilder (can be imported and run in test files)
  */
 export function testBundleBuilder() {

@@ -131,13 +131,15 @@ export class VersionConsolidator {
     }
     
     /**
-     * Get all available versions for a consolidated bundle
-     *  
-     * @param bundleIdentity - Unique identifier for the bundle
-     * @returns Array of all versions sorted by recency (latest first)
+     * Get all versions for a bundle identity
+     * 
+     * Returns all versions sorted in descending semantic version order.
+     * 
+     * @param identity - Unique identifier for the bundle
+     * @returns Array of version metadata sorted by version descending
      */
-    getAvailableVersions(bundleIdentity: string): BundleVersion[] {
-        const entry = this.versionCache.get(bundleIdentity);
+    getAllVersions(identity: string): BundleVersion[] {
+        const entry = this.versionCache.get(identity);
         if (entry) {
             // Update last access time for LRU tracking
             entry.lastAccess = Date.now();
@@ -184,23 +186,13 @@ export class VersionConsolidator {
      * @param versions - Array of bundle versions to cache
      */
     private addToCache(key: string, versions: BundleVersion[]): void {
-        // Check if we need to evict an entry
-        if (this.versionCache.size >= VersionConsolidator.MAX_CACHE_SIZE && !this.versionCache.has(key)) {
-            // Find least recently used entry
-            let lruKey: string | null = null;
-            let oldestTime = Infinity;
-            
-            for (const [k, entry] of this.versionCache.entries()) {
-                if (entry.lastAccess < oldestTime) {
-                    oldestTime = entry.lastAccess;
-                    lruKey = k;
-                }
+        // Check if we need to evict an entry (for new entries only)
+        if (this.versionCache.size >= VersionConsolidator.MAX_CACHE_SIZE) {
+            if (!this.versionCache.has(key)) {
+                // Need to evict for new entry
+                this.evictLRU();
             }
-            
-            if (lruKey) {
-                this.versionCache.delete(lruKey);
-                this.logger.debug(`Cache size limit reached, evicted LRU entry: ${lruKey} (last access: ${new Date(oldestTime).toISOString()})`);
-            }
+            // For updates to existing entries, no eviction needed
         }
         
         // Add or update entry with current timestamp
@@ -208,6 +200,26 @@ export class VersionConsolidator {
             versions,
             lastAccess: Date.now()
         });
+    }
+
+    /**
+     * Evict the least recently used entry from cache
+     */
+    private evictLRU(): void {
+        let lruKey: string | null = null;
+        let oldestTime = Infinity;
+        
+        for (const [k, entry] of this.versionCache.entries()) {
+            if (entry.lastAccess < oldestTime) {
+                oldestTime = entry.lastAccess;
+                lruKey = k;
+            }
+        }
+        
+        if (lruKey) {
+            this.versionCache.delete(lruKey);
+            this.logger.debug(`Cache size limit reached, evicted LRU entry: ${lruKey} (last access: ${new Date(oldestTime).toISOString()})`);
+        }
     }
     
     /**

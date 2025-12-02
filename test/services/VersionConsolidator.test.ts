@@ -136,7 +136,7 @@ suite('VersionConsolidator Unit Tests', () => {
             
             consolidator.consolidateBundles(bundles);
             
-            const versions = consolidator.getAvailableVersions('owner-repo');
+            const versions = consolidator.getAllVersions('owner-repo');
             
             assert.strictEqual(versions.length, 2);
             assert.ok(versions.some(v => v.version === '1.0.0'));
@@ -144,9 +144,66 @@ suite('VersionConsolidator Unit Tests', () => {
         });
         
         test('should return empty array for non-existent bundle', () => {
-            const versions = consolidator.getAvailableVersions('non-existent');
+            const versions = consolidator.getAllVersions('non-existent');
             
             assert.strictEqual(versions.length, 0);
+        });
+    });
+    
+    suite('getAllVersions', () => {
+        test('should return all versions for a bundle identity (alias for getAvailableVersions)', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('1.5.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const versions = consolidator.getAllVersions('owner-repo');
+            
+            assert.strictEqual(versions.length, 3);
+            assert.ok(versions.some(v => v.version === '1.0.0'));
+            assert.ok(versions.some(v => v.version === '1.5.0'));
+            assert.ok(versions.some(v => v.version === '2.0.0'));
+        });
+        
+        test('should return versions in descending semantic version order', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('10.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const versions = consolidator.getAllVersions('owner-repo');
+            
+            assert.strictEqual(versions.length, 3);
+            assert.strictEqual(versions[0].version, '10.0.0');
+            assert.strictEqual(versions[1].version, '2.0.0');
+            assert.strictEqual(versions[2].version, '1.0.0');
+        });
+        
+        test('should return empty array for non-existent bundle', () => {
+            const versions = consolidator.getAllVersions('non-existent');
+            
+            assert.strictEqual(versions.length, 0);
+        });
+        
+        test('should return same results as getAvailableVersions', () => {
+            const bundles = [
+                BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build()
+            ];
+            
+            consolidator.consolidateBundles(bundles);
+            
+            const versionsFromGetAll = consolidator.getAllVersions('owner-repo');
+            const versionsFromGetAvailable = consolidator.getAllVersions('owner-repo');
+            
+            assert.strictEqual(versionsFromGetAll.length, versionsFromGetAvailable.length);
+            assert.deepStrictEqual(versionsFromGetAll, versionsFromGetAvailable);
         });
     });
     
@@ -213,12 +270,12 @@ suite('VersionConsolidator Unit Tests', () => {
             
             consolidator.consolidateBundles(bundles);
             
-            let versions = consolidator.getAvailableVersions('owner-repo');
+            let versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 2);
             
             consolidator.clearCache();
             
-            versions = consolidator.getAvailableVersions('owner-repo');
+            versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 0);
         });
     });
@@ -263,7 +320,7 @@ suite('VersionConsolidator Unit Tests', () => {
             consolidator.consolidateBundles(bundles);
             
             // Verify cache is populated
-            const versions = consolidator.getAvailableVersions('owner-repo');
+            const versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 2, 'Cache should contain versions');
         });
         
@@ -278,12 +335,12 @@ suite('VersionConsolidator Unit Tests', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             // Access the cache
-            const versions1 = consolidator.getAvailableVersions('owner-repo');
+            const versions1 = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions1.length, 1);
             
             // The access time should be updated (we can't directly verify this,
             // but we can verify the cache still works after access)
-            const versions2 = consolidator.getAvailableVersions('owner-repo');
+            const versions2 = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions2.length, 1);
         });
         
@@ -304,7 +361,7 @@ suite('VersionConsolidator Unit Tests', () => {
             assert.strictEqual(version.version, '1.0.0');
             
             // Verify cache still works
-            const versions = consolidator.getAvailableVersions('owner-repo');
+            const versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 2);
         });
         
@@ -333,15 +390,15 @@ suite('VersionConsolidator Unit Tests', () => {
                 await new Promise(resolve => setTimeout(resolve, 10));
                 
                 // All 3 should be in cache
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner1-repo1').length, 1);
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner2-repo2').length, 1);
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner3-repo3').length, 1);
+                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 1);
+                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1);
+                assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1);
                 
                 // Access owner2 and owner3 to make them more recently used
                 await new Promise(resolve => setTimeout(resolve, 10));
-                smallConsolidator.getAvailableVersions('owner2-repo2');
+                smallConsolidator.getAllVersions('owner2-repo2');
                 await new Promise(resolve => setTimeout(resolve, 10));
-                smallConsolidator.getAvailableVersions('owner3-repo3');
+                smallConsolidator.getAllVersions('owner3-repo3');
                 
                 // Add a 4th bundle - should evict owner1 (least recently used)
                 await new Promise(resolve => setTimeout(resolve, 10));
@@ -349,12 +406,12 @@ suite('VersionConsolidator Unit Tests', () => {
                 smallConsolidator.consolidateBundles(bundle4);
                 
                 // owner1 should be evicted (LRU)
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner1-repo1').length, 0, 'LRU entry should be evicted');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 0, 'LRU entry should be evicted');
                 
                 // owner2, owner3, and owner4 should still be in cache
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner2-repo2').length, 1, 'Recently used entry should remain');
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner3-repo3').length, 1, 'Recently used entry should remain');
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner4-repo4').length, 1, 'New entry should be cached');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Recently used entry should remain');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1, 'Recently used entry should remain');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner4-repo4').length, 1, 'New entry should be cached');
             } finally {
                 // Restore original MAX_CACHE_SIZE
                 (VersionConsolidator as any).MAX_CACHE_SIZE = 1000;
@@ -382,8 +439,8 @@ suite('VersionConsolidator Unit Tests', () => {
                 smallConsolidator.consolidateBundles(bundle1Updated);
                 
                 // Both should still be in cache
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner1-repo1').length, 2, 'Updated entry should have 2 versions');
-                assert.strictEqual(smallConsolidator.getAvailableVersions('owner2-repo2').length, 1, 'Other entry should remain');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 2, 'Updated entry should have 2 versions');
+                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Other entry should remain');
             } finally {
                 (VersionConsolidator as any).MAX_CACHE_SIZE = 1000;
             }
@@ -397,7 +454,7 @@ suite('VersionConsolidator Unit Tests', () => {
             consolidator.consolidateBundles(bundles);
             
             // Single version should still be cached
-            const versions = consolidator.getAvailableVersions('owner-repo');
+            const versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 1);
             assert.strictEqual(versions[0].version, '1.0.0');
         });
@@ -410,7 +467,7 @@ suite('VersionConsolidator Unit Tests', () => {
             ];
             consolidator.consolidateBundles(bundles1);
             
-            let versions = consolidator.getAvailableVersions('owner-repo');
+            let versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 2);
             
             // Second consolidation with additional version
@@ -422,7 +479,7 @@ suite('VersionConsolidator Unit Tests', () => {
             consolidator.consolidateBundles(bundles2);
             
             // Cache should be updated with new version
-            versions = consolidator.getAvailableVersions('owner-repo');
+            versions = consolidator.getAllVersions('owner-repo');
             assert.strictEqual(versions.length, 3);
             assert.ok(versions.some(v => v.version === '3.0.0'));
         });
@@ -436,9 +493,9 @@ suite('VersionConsolidator Unit Tests', () => {
             consolidator.consolidateBundles(bundles);
             
             // Multiple accesses should return same data
-            const versions1 = consolidator.getAvailableVersions('owner-repo');
-            const versions2 = consolidator.getAvailableVersions('owner-repo');
-            const versions3 = consolidator.getAvailableVersions('owner-repo');
+            const versions1 = consolidator.getAllVersions('owner-repo');
+            const versions2 = consolidator.getAllVersions('owner-repo');
+            const versions3 = consolidator.getAllVersions('owner-repo');
             
             assert.strictEqual(versions1.length, 2);
             assert.strictEqual(versions2.length, 2);

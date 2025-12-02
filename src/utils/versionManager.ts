@@ -10,12 +10,20 @@ import { Logger } from './logger';
  */
 export class VersionManager {
     /**
-     * Maximum bundle ID length to prevent ReDoS attacks and excessive memory usage
+     * Maximum bundle ID length to prevent ReDoS attacks and excessive memory usage.
+     * 
+     * Rationale: Based on GitHub's repository name limit (100 chars) + owner (39 chars) 
+     * + version suffix (20 chars) + separators and safety margin = 200 chars total.
+     * This prevents malicious inputs from causing regex catastrophic backtracking.
      */
     private static readonly MAX_BUNDLE_ID_LENGTH = 200;
     
     /**
-     * Maximum version string length to prevent ReDoS attacks
+     * Maximum version string length to prevent ReDoS attacks.
+     * 
+     * Rationale: Semver spec allows for long pre-release/build metadata, but 100 chars 
+     * is reasonable for legitimate versions (e.g., "1.2.3-beta.1+build.20231201.sha256hash").
+     * This prevents malicious inputs from causing performance issues.
      */
     private static readonly MAX_VERSION_LENGTH = 100;
     
@@ -161,8 +169,10 @@ export class VersionManager {
         
         // Match version pattern at the end: -v1.2.3 or -1.2.3
         // This regex is more efficient than iterating through all parts
-        // Quantifier limit prevents ReDoS attacks
-        const versionPattern = /-v?\d+\.\d+\.\d+(-[\w.]{1,50})?$/;
+        // Quantifier limits prevent ReDoS attacks
+        // Pattern breakdown: -v? (optional v prefix), \d{1,3} (1-3 digits per version part),
+        // optional pre-release/build metadata with restricted character set
+        const versionPattern = /-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[a-zA-Z0-9._-]{1,50})?$/;
         const match = bundleId.match(versionPattern);
         
         if (match && match.index !== undefined) {
