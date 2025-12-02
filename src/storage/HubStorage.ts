@@ -197,6 +197,18 @@ export class HubStorage {
                 fs.unlinkSync(paths.meta);
             }
 
+            // Clean up activation state files for this hub
+            const activationsDir = path.join(this.storagePath, 'profile-activations');
+            if (fs.existsSync(activationsDir)) {
+                const files = fs.readdirSync(activationsDir);
+                for (const file of files) {
+                    if (file.startsWith(`${hubId}_`) && file.endsWith('.json')) {
+                        const filePath = path.join(activationsDir, file);
+                        fs.unlinkSync(filePath);
+                    }
+                }
+            }
+
             // Remove from cache
             this.cache.delete(hubId);
         } catch (error) {
@@ -374,5 +386,60 @@ export class HubStorage {
         profile.active = active;
 
         await this.saveHub(hubId, hubData.config, hubData.reference);
+    }
+
+    /**
+     * Get the ID of the currently active hub
+     * @returns Active hub ID or null if none set
+     */
+    async getActiveHubId(): Promise<string | null> {
+        const activeHubPath = path.join(this.storagePath, 'activeHubId.json');
+        
+        if (!fs.existsSync(activeHubPath)) {
+            return null;
+        }
+
+        try {
+            const content = await fs.promises.readFile(activeHubPath, 'utf-8');
+            const data = JSON.parse(content);
+            return data.hubId || null;
+        } catch (error) {
+            console.error('Failed to read active hub ID:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Set the currently active hub
+     * @param hubId Hub identifier to set as active (or null to clear)
+     */
+    async setActiveHubId(hubId: string | null): Promise<void> {
+        const activeHubPath = path.join(this.storagePath, 'activeHubId.json');
+
+        if (hubId === null) {
+            // Clear active hub
+            if (fs.existsSync(activeHubPath)) {
+                await fs.promises.unlink(activeHubPath);
+            }
+            return;
+        }
+
+        // Validate the hub exists
+        this.validateHubId(hubId);
+        const hubs = await this.listHubs();
+        if (!hubs.includes(hubId)) {
+            throw new Error(`Cannot set active hub: hub '${hubId}' does not exist`);
+        }
+
+        // Write active hub ID
+        const data = {
+            hubId,
+            setAt: new Date().toISOString()
+        };
+        await fs.promises.writeFile(
+            activeHubPath,
+            JSON.stringify(data, null, 2),
+            'utf-8'
+        );
     }
 }

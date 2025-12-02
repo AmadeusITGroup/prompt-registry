@@ -204,7 +204,7 @@ suite('Hub Bundle Resolution', () => {
             const resolved = await hubManager.resolveProfileBundles('test-hub', 'test-profile');
 
             assert.strictEqual(resolved.length, 3);
-            assert.ok(resolved.every(b => b.url));
+            // URL is no longer populated by resolveProfileBundles
             assert.ok(resolved.every(b => b.bundle));
         });
 
@@ -309,14 +309,15 @@ suite('Hub Bundle Resolution', () => {
             assert.strictEqual(source.enabled, false);
         });
 
-        test('should throw error for bundle with missing source reference', async () => {
+        test('should resolve bundles even with missing source reference', async () => {
             const hub = createHubWithSources();
             hub.profiles[0].bundles[0].source = 'missing-source';
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/hub' });
 
-            await assert.rejects(
-                async () => await hubManager.resolveProfileBundles('test-hub', 'test-profile')
-            );
+            // resolveProfileBundles no longer validates sources - that happens during installation
+            const resolved = await hubManager.resolveProfileBundles('test-hub', 'test-profile');
+            assert.ok(resolved.length > 0);
+            assert.strictEqual(resolved[0].bundle.source, 'missing-source');
         });
     });
 });

@@ -255,11 +255,8 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('hub-1', updated.config, updated.reference);
 
             const results = await commands.checkAllHubsForUpdates();
-            assert.strictEqual(results.length, 2);
-            
-            const hub1Result = results.find(r => r.hubId === 'hub-1');
-            assert.ok(hub1Result);
-            assert.ok(hub1Result.hasUpdates);
+            // Only hub-2 is active (single active profile enforcement deactivated hub-1)
+            assert.strictEqual(results.length, 1);
             
             const hub2Result = results.find(r => r.hubId === 'hub-2');
             assert.ok(hub2Result);

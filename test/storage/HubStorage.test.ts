@@ -407,4 +407,103 @@ suite('HubStorage - TDD', () => {
             assert.ok(true);
         });
     });
+
+    suite('Active Hub Management', () => {
+        test('should return null when no active hub is set', async () => {
+            const activeHubId = await storage.getActiveHubId();
+            assert.strictEqual(activeHubId, null, 'Should return null when no active hub exists');
+        });
+
+        test('should set and retrieve active hub ID', async () => {
+            const hubId = 'test-active-hub';
+            await storage.saveHub(hubId, testHubConfig, testHubReference);
+            
+            await storage.setActiveHubId(hubId);
+            const retrievedHubId = await storage.getActiveHubId();
+            
+            assert.strictEqual(retrievedHubId, hubId, 'Should return the correct active hub ID');
+        });
+
+        test('should update active hub ID when changed', async () => {
+            const hubId1 = 'test-hub-1';
+            const hubId2 = 'test-hub-2';
+            
+            await storage.saveHub(hubId1, testHubConfig, testHubReference);
+            await storage.saveHub(hubId2, testHubConfig, testHubReference);
+            
+            await storage.setActiveHubId(hubId1);
+            assert.strictEqual(await storage.getActiveHubId(), hubId1);
+            
+            await storage.setActiveHubId(hubId2);
+            assert.strictEqual(await storage.getActiveHubId(), hubId2, 'Should update to new active hub');
+        });
+
+        test('should clear active hub ID when set to null', async () => {
+            const hubId = 'test-clear-hub';
+            await storage.saveHub(hubId, testHubConfig, testHubReference);
+            
+            await storage.setActiveHubId(hubId);
+            assert.strictEqual(await storage.getActiveHubId(), hubId);
+            
+            await storage.setActiveHubId(null);
+            assert.strictEqual(await storage.getActiveHubId(), null, 'Should clear active hub ID');
+        });
+
+        test('should reject setting non-existent hub as active', async () => {
+            await assert.rejects(
+                async () => await storage.setActiveHubId('non-existent-hub'),
+                /does not exist/,
+                'Should reject non-existent hub'
+            );
+        });
+
+        test('should persist active hub ID across storage instances', async () => {
+            const hubId = 'test-persist-hub';
+            await storage.saveHub(hubId, testHubConfig, testHubReference);
+            await storage.setActiveHubId(hubId);
+            
+            // Create new storage instance with same directory
+            const newStorage = new HubStorage(tempDir);
+            const retrievedHubId = await newStorage.getActiveHubId();
+            
+            assert.strictEqual(retrievedHubId, hubId, 'Active hub ID should persist across instances');
+        });
+
+        test('should store timestamp when setting active hub', async () => {
+            const hubId = 'test-timestamp-hub';
+            await storage.saveHub(hubId, testHubConfig, testHubReference);
+            
+            const beforeTime = new Date();
+            await storage.setActiveHubId(hubId);
+            const afterTime = new Date();
+            
+            // Read the active hub file directly to verify timestamp
+            const activeHubPath = path.join(tempDir, 'activeHubId.json');
+            assert.ok(fs.existsSync(activeHubPath), 'activeHubId.json should exist');
+            
+            const content = JSON.parse(fs.readFileSync(activeHubPath, 'utf-8'));
+            assert.ok(content.setAt, 'Should have setAt timestamp');
+            
+            const setAtTime = new Date(content.setAt);
+            assert.ok(setAtTime >= beforeTime && setAtTime <= afterTime, 'Timestamp should be within test execution time');
+        });
+
+        test('should handle concurrent active hub changes', async () => {
+            const hubId1 = 'test-concurrent-1';
+            const hubId2 = 'test-concurrent-2';
+            
+            await storage.saveHub(hubId1, testHubConfig, testHubReference);
+            await storage.saveHub(hubId2, testHubConfig, testHubReference);
+            
+            // Simulate concurrent updates
+            await Promise.all([
+                storage.setActiveHubId(hubId1),
+                storage.setActiveHubId(hubId2)
+            ]);
+            
+            const finalHubId = await storage.getActiveHubId();
+            assert.ok(finalHubId === hubId1 || finalHubId === hubId2, 'Should have one of the hub IDs set');
+        });
+    });
+
 });

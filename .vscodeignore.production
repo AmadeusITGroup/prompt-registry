@@ -42,8 +42,6 @@ scripts/
 build/
 tools/
 *.sh
-!dist/extension.js
-!dist/extension.js.LICENSE.txt
 apply_*.sh
 create-*.sh
 ensure-*.sh
@@ -127,9 +125,12 @@ INTEGRATION_TEST_*.md
 !dist/extension.js
 !dist/extension.js.LICENSE.txt
 
-# IMPORTANT: Include templates directory with all its contents
+
+# IMPORTANT: Include templates and config directories with all its contents
 !templates/
 !templates/**
+!config/
+!config/**
 
 # Cache directories
 .cache/
@@ -137,3 +138,6 @@ INTEGRATION_TEST_*.md
 # Project-specific exclusions
 .specification/
 .tmp/
+
+# Test results
+test-results/

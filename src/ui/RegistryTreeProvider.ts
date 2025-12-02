@@ -17,14 +17,7 @@ export enum TreeItemType {
     PROFILES_ROOT = 'profiles_root',
     INSTALLED_ROOT = 'installed_root',
     DISCOVER_ROOT = 'discover_root',
-    SOURCES_ROOT = 'sources_root',
-
-    // Hub items
-    HUBS_ROOT = 'hubs_root',
-    HUB = 'hub',
-    IMPORT_HUB = 'import_hub',
-
-    // Profile items
+    SOURCES_ROOT = 'sources_root',// Profile items
     PROFILE = 'profile',
     PROFILE_BUNDLE = 'profile_bundle',
     CREATE_PROFILE = 'create_profile',
@@ -44,6 +37,10 @@ export enum TreeItemType {
 
     // Bundle items
     BUNDLE = 'bundle',
+
+    // Hub items
+    IMPORT_HUB = 'import_hub',
+    LIST_HUB = 'list_hub',
 }
 
 /**
@@ -94,11 +91,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
             [TreeItemType.SOURCES_ROOT]: 'radio-tower',
             [TreeItemType.SOURCE]: 'repo',
             [TreeItemType.ADD_SOURCE]: 'add',
-            [TreeItemType.HUBS_ROOT]: 'server',
-            [TreeItemType.HUB]: 'server-process',
-            [TreeItemType.IMPORT_HUB]: 'cloud-download',
-            
-            [TreeItemType.BUNDLE]: 'file-zip',
+[TreeItemType.BUNDLE]: 'file-zip',
         };
 
         const iconId = iconMap[this.type];
@@ -174,10 +167,8 @@ export class RegistryTreeItem extends vscode.TreeItem {
             TreeItemType.INSTALLED_BUNDLE,
             TreeItemType.PROFILE,
             TreeItemType.SOURCE,
-            TreeItemType.HUB,
             TreeItemType.CREATE_PROFILE,
             TreeItemType.ADD_SOURCE,
-            TreeItemType.IMPORT_HUB,
             TreeItemType.DISCOVER_CATEGORY,
             TreeItemType.DISCOVER_POPULAR,
             TreeItemType.DISCOVER_RECENT,
@@ -204,9 +195,9 @@ export class RegistryTreeItem extends vscode.TreeItem {
             case TreeItemType.ADD_SOURCE:
                 return 'promptRegistry.addSource';
             case TreeItemType.IMPORT_HUB:
-                return 'promptregistry.importHub';
-            case TreeItemType.HUB:
-                return 'promptregistry.listHubs';
+                return 'promptRegistry.importHub';
+            case TreeItemType.LIST_HUB:
+                return 'promptRegistry.listHubs';
             case TreeItemType.DISCOVER_CATEGORY:
                 return 'promptRegistry.browseByCategory';
             case TreeItemType.DISCOVER_POPULAR:
@@ -245,6 +236,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
         // Listen to profile events
         registryManager.onProfileActivated(() => this.refresh());
+        registryManager.onProfileDeactivated(() => this.refresh());
         registryManager.onProfileCreated(() => this.refresh());
         registryManager.onProfileUpdated(() => this.refresh());
         registryManager.onProfileDeleted(() => this.refresh());
@@ -286,10 +278,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
         // Get children based on parent type
         switch (element.type) {
-            case TreeItemType.HUBS_ROOT:
-                return this.getHubItems();
- 
-            case TreeItemType.PROFILES_ROOT:
+case TreeItemType.PROFILES_ROOT:
                 return this.getProfileItems();
             
             case TreeItemType.PROFILE:
@@ -338,12 +327,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             new RegistryTreeItem(
                 '📡 Sources',
                 TreeItemType.SOURCES_ROOT,
-                undefined,
-                vscode.TreeItemCollapsibleState.Collapsed
-            ),
-            new RegistryTreeItem(
-                '🌐 Hubs',
-                TreeItemType.HUBS_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Collapsed
             ),
@@ -554,39 +537,5 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     /**
      * Get hub items for tree view
      */
-    private async getHubItems(): Promise<RegistryTreeItem[]> {
-        try {
-            const items: RegistryTreeItem[] = [];
-            
-            // Get all hubs
-            const hubs = await this.hubManager.listHubs();
-            
-            for (const hub of hubs) {
-                items.push(
-                    new RegistryTreeItem(
-                        hub.name,
-                        TreeItemType.HUB,
-                        hub,
-                        vscode.TreeItemCollapsibleState.None
-                    )
-                );
-            }
-            
-            // Add "Import Hub" item
-            items.push(
-                new RegistryTreeItem(
-                    '➕ Import Hub...',
-                    TreeItemType.IMPORT_HUB,
-                    undefined,
-                    vscode.TreeItemCollapsibleState.None
-                )
-            );
-            
-            return items;
-        } catch (error) {
-            this.logger.error('Failed to load hubs', error as Error);
-            return [];
-        }
-    }
 
 }

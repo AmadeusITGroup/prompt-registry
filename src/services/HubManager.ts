@@ -349,6 +349,32 @@ export class HubManager {
     }
 
     /**
+     * Verify if a hub is accessible without importing it
+     * Used to validate default hubs before offering them in the first-run selector
+     * @param reference Hub reference to verify
+     * @returns true if hub is accessible, false otherwise
+     */
+    async verifyHubAvailability(reference: HubReference): Promise<boolean> {
+        try {
+            // Validate reference format
+            const refValidation = await this.validateReference(reference);
+            if (!refValidation.valid) {
+                this.logger.debug(`Hub verification failed: invalid reference - ${refValidation.errors.join(', ')}`);
+                return false;
+            }
+
+            // Try to fetch the hub config
+            await this.fetchHubConfig(reference);
+            
+            this.logger.debug(`Hub verification successful: ${reference.type}:${reference.location}`);
+            return true;
+        } catch (error) {
+            this.logger.debug(`Hub verification failed: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+    }
+
+    /**
      * Fetch hub config from local file
      * @param filePath Local file path
      * @returns Hub configuration
@@ -568,6 +594,69 @@ export class HubManager {
         return allProfiles;
     }
 
+    /**
+     * Get the currently active hub
+     * @returns Active hub ID, config and reference, or null if no hub is active
+     */
+    async getActiveHub(): Promise<LoadHubResult | null> {
+        const activeHubId = await this.storage.getActiveHubId();
+        
+        if (!activeHubId) {
+            return null;
+        }
+
+        try {
+            return await this.storage.loadHub(activeHubId);
+        } catch (error) {
+            // If active hub was deleted, clear the activeHubId
+            await this.storage.setActiveHubId(null);
+            return null;
+        }
+    }
+
+    /**
+     * Set the currently active hub
+     * @param hubId Hub identifier to set as active
+     */
+        async setActiveHub(hubId: string | null): Promise<void> {
+        if (hubId !== null) {
+            // Verify hub exists when setting (not clearing)
+            const hub = await this.getHub(hubId);
+            if (!hub) {
+                throw new Error(`Hub not found: ${hubId}`);
+            }
+        }
+
+        // Set or clear active hub
+        await this.storage.setActiveHubId(hubId);
+        this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
+    }
+
+    /**
+     * List profiles from the active hub only
+     * @returns Profiles from active hub, or empty array if no hub is active
+     */
+    async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
+        const activeHubId = await this.storage.getActiveHubId();
+        
+        if (!activeHubId) {
+            return [];
+        }
+
+        const activeHub = await this.getActiveHub();
+        if (!activeHub) {
+            return [];
+        }
+
+        const profiles = activeHub.config.profiles || [];
+        return profiles.map(profile => ({
+            ...profile,
+            hubId: activeHubId,
+            hubName: activeHub.config.metadata.name
+        }));
+    }
+
+
 
     /**
      * Resolve a source by ID from a hub
@@ -635,9 +724,9 @@ export class HubManager {
 
         for (const bundle of profile.bundles) {
             this.logger.info(`Resolving bundle: ${bundle.id} v${bundle.version} from source: ${bundle.source}`);
-            const url = await this.resolveBundleUrl(hubId, bundle);
-            this.logger.info(`Resolved URL: ${url}`);
-            resolved.push({ bundle: bundle, url: url });
+            // Note: We don't resolve URLs anymore since registryManager.installBundle() 
+            // searches sources by bundle ID and uses the appropriate adapter
+            resolved.push({ bundle: bundle, url: '' }); // URL not needed
         }
 
         this.logger.info(`Resolved ${resolved.length} bundles total`);
@@ -659,11 +748,30 @@ export class HubManager {
             // Verify hub and profile exist
             const profile = await this.getHubProfile(hubId, profileId);
 
-            // Deactivate any currently active profile for this hub
-            const currentActive = await this.storage.getActiveProfileForHub(hubId);
-            if (currentActive && currentActive.profileId !== profileId) {
-                await this.storage.setProfileActiveFlag(hubId, currentActive.profileId, false);
-                await this.storage.deleteProfileActivationState(hubId, currentActive.profileId);
+            // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
+            // This will uninstall bundles from previously active profiles
+            const allHubIds = await this.storage.listHubs();
+            for (const currentHubId of allHubIds) {
+                // Load hub config to check for active profiles in YAML (not activation states)
+                const hubData = await this.storage.loadHub(currentHubId);
+                const activeProfile = hubData.config.profiles.find(p => p.active);
+                
+                if (activeProfile && activeProfile.id !== profileId) {
+                    this.logger.info(`Deactivating hub profile from hub ${currentHubId}: ${activeProfile.id}`);
+                    
+                    // Use RegistryManager to properly deactivate profile and uninstall its bundles
+                    if (this.registryManager) {
+                        try {
+                            await this.registryManager.deactivateProfile(activeProfile.id);
+                        } catch (error) {
+                            this.logger.error(`Failed to deactivate profile ${activeProfile.id}`, error as Error);
+                        }
+                    } else {
+                        // Fallback: just update flags if RegistryManager not available
+                        await this.storage.setProfileActiveFlag(currentHubId, activeProfile.id, false);
+                        await this.storage.deleteProfileActivationState(currentHubId, activeProfile.id);
+                    }
+                }
             }
 
             // Resolve all bundles in the profile
@@ -689,25 +797,22 @@ export class HubManager {
             // Mark profile as active in hub config
             await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
-            // Install bundles if requested and installer is available
+            // Install bundles if requested and RegistryManager is available
             const installResults: Array<{ bundleId: string; success: boolean; error?: string }> = [];
-            if (options.installBundles && this.bundleInstaller) {
+            if (options.installBundles && this.registryManager) {
                 this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
                 
                 for (const rb of resolvedBundles) {
                     try {
-                        // Get source information for this bundle
-                        const source = await this.resolveSource(hubId, rb.bundle.source);
-                        this.logger.info(`Installing bundle: ${rb.bundle.id} v${rb.bundle.version} from ${source.type} source`);
+                        this.logger.info(`Installing bundle: ${rb.bundle.id} v${rb.bundle.version} from source: ${rb.bundle.source}`);
                         
-                        await this.bundleInstaller.install(
-                            rb.bundle,
-                            rb.url,
-                            {
-                                scope: 'user',
-                                force: false
-                            }
-                        );
+                        // Use RegistryManager.installBundle which handles source resolution and different adapter types
+                        await this.registryManager.installBundle(rb.bundle.id, {
+                            scope: 'user',
+                            force: false,
+                            profileId: profileId  // Tag bundle with profile ID for tracking
+                        });
+                        
                         installResults.push({ bundleId: rb.bundle.id, success: true });
                         this.logger.info(`Successfully installed: ${rb.bundle.id}`);
                     } catch (error) {
@@ -721,17 +826,20 @@ export class HubManager {
                     }
                 }
                 
-            const successCount = installResults.filter(r => r.success).length;
+                const successCount = installResults.filter(r => r.success).length;
                 const failCount = installResults.filter(r => !r.success).length;
                 this.logger.info(`Bundle installation complete: ${successCount} succeeded, ${failCount} failed`);
-            } else if (options.installBundles && !this.bundleInstaller) {
-                this.logger.warn('Bundle installation requested but BundleInstaller not available');
+            } else if (options.installBundles && !this.registryManager) {
+                this.logger.warn('Bundle installation requested but RegistryManager not available');
             }
 
+            // Note: Hub profiles are managed separately and displayed in tree view via HubManager
+            // No need to sync to local profile storage - that would create duplicates
+            /* DISABLED - Hub profiles don't need local sync
             // Sync with local profile in RegistryManager
             if (this.registryManager) {
                 try {
-                    const localProfiles = await this.registryManager.getProfiles();
+                    const localProfiles = await this.registryManager.listProfiles();
                     const localProfile = localProfiles.find((p: any) => p.id === profileId);
 
                     // Convert hub profile bundles to local profile format
@@ -767,6 +875,7 @@ export class HubManager {
             } else {
                 this.logger.warn('RegistryManager not available, local profile not synced');
             }
+            */
 
             return {
                 success: true,

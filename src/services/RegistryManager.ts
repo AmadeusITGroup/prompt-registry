@@ -16,6 +16,7 @@ import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapt
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
+import { HubManager } from './HubManager';
 import {
     RegistrySource,
     Bundle,
@@ -47,6 +48,7 @@ interface UpdateResults {
 export class RegistryManager {
     private static instance: RegistryManager;
     private storage: RegistryStorage;
+    private hubManager?: HubManager;
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
@@ -58,6 +60,7 @@ export class RegistryManager {
     private _onBundleUninstalled = new vscode.EventEmitter<string>();
     private _onBundleUpdated = new vscode.EventEmitter<InstalledBundle>();
     private _onProfileActivated = new vscode.EventEmitter<Profile>();
+    private _onProfileDeactivated = new vscode.EventEmitter<string>();
     private _onProfileCreated = new vscode.EventEmitter<Profile>();
     private _onProfileUpdated = new vscode.EventEmitter<Profile>();
     private _onProfileDeleted = new vscode.EventEmitter<string>();
@@ -71,6 +74,7 @@ export class RegistryManager {
     readonly onBundleUninstalled = this._onBundleUninstalled.event;
     readonly onBundleUpdated = this._onBundleUpdated.event;
     readonly onProfileActivated = this._onProfileActivated.event;
+    readonly onProfileDeactivated = this._onProfileDeactivated.event;
     readonly onProfileCreated = this._onProfileCreated.event;
     readonly onProfileUpdated = this._onProfileUpdated.event;
     readonly onProfileDeleted = this._onProfileDeleted.event;
@@ -96,14 +100,20 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
     }
 
+	/**
+	 * Set HubManager instance for hub integration
+	 */
+	setHubManager(hubManager: HubManager): void {
+		this.hubManager = hubManager;
+	}
+
     /**
      * Get singleton instance
      */
     static getInstance(context?: vscode.ExtensionContext): RegistryManager {
         if (!RegistryManager.instance && context) {
             RegistryManager.instance = new RegistryManager(context);
-        }
-        if (!RegistryManager.instance) {
+        }        if (!RegistryManager.instance) {
             throw new Error('RegistryManager not initialized. Provide context on first call.');
         }
         return RegistryManager.instance;
@@ -1007,6 +1017,18 @@ export class RegistryManager {
     }
 
     /**
+     * Check if a profile is from the active hub (and thus read-only)
+     */
+    async isHubProfile(profileId: string): Promise<boolean> {
+        if (!this.hubManager) {
+            return false;
+        }
+        
+        const hubProfiles = await this.hubManager.listActiveHubProfiles();
+        return hubProfiles.some(p => p.id === profileId);
+    }
+
+    /**
      * Delete a profile
      */
     async deleteProfile(profileId: string): Promise<void> {
@@ -1019,10 +1041,36 @@ export class RegistryManager {
     }
 
     /**
-     * List all profiles
+     * List all profiles (both hub profiles and local profiles)
      */
     async listProfiles(): Promise<Profile[]> {
-        return await this.storage.getProfiles();
+        const allProfiles: Profile[] = [];
+        
+        // Get hub profiles if hub manager is available
+        if (this.hubManager) {
+            try {
+                const hubProfiles = await this.hubManager.listActiveHubProfiles();
+                // Get list of all active profiles to check activation status
+                const activeProfiles = await this.hubManager.listAllActiveProfiles();
+                const activeProfileIds = new Set(activeProfiles.map(ap => ap.profileId));
+                
+                // Convert HubProfileWithMetadata to Profile format
+                const convertedHubProfiles = hubProfiles.map(hp => ({
+                    ...hp,
+                    icon: hp.icon || '📦', // Provide default icon if not defined in hub config
+                    active: activeProfileIds.has(hp.id) // Check if this profile is currently active
+                }));
+                allProfiles.push(...convertedHubProfiles);
+            } catch (error) {
+                this.logger.warn('Failed to get hub profiles', error as Error);
+            }
+        }
+        
+        // Also get local profiles
+        const localProfiles = await this.storage.getProfiles();
+        allProfiles.push(...localProfiles);
+        
+        return allProfiles;
     }
 
     /**
@@ -1038,12 +1086,76 @@ export class RegistryManager {
 
             const validatedProfileId = this.validateProfileId(profileId);
             this.logger.info(`Activating profile: ${validatedProfileId}`);
+
+            // Deactivate ALL currently active profiles (both hub and local)
+            progress.report({ message: "Deactivating other profiles..." });
+            
+            // Deactivate all active hub profiles (and uninstall their bundles)
+            if (this.hubManager) {
+                try {
+                    const activeHubProfiles = await this.hubManager.listAllActiveProfiles();
+                    for (const activeProfile of activeHubProfiles) {
+                        if (activeProfile.profileId !== validatedProfileId) {
+                            this.logger.info(`Deactivating hub profile: ${activeProfile.profileId}`);
+                            try {
+                                // Call RegistryManager.deactivateProfile() instead of HubManager.deactivateProfile()
+                                // This ensures bundles are uninstalled, not just flags updated
+                                await this.deactivateProfile(activeProfile.profileId);
+                            } catch (error) {
+                                this.logger.error(`Failed to deactivate hub profile ${activeProfile.profileId}`, error as Error);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    this.logger.error('Failed to deactivate hub profiles', error as Error);
+                }
+            }
+            
+            // Deactivate all active local profiles (and uninstall their bundles)
+            const profiles = await this.storage.getProfiles();
+            for (const profile of profiles) {
+                if (profile.active && profile.id !== validatedProfileId) {
+                    this.logger.info(`Deactivating local profile: ${profile.id}`);
+                    try {
+                        // Call deactivateProfile() to properly uninstall bundles, not just update flags
+                        await this.deactivateProfile(profile.id);
+                    } catch (error) {
+                        this.logger.error(`Failed to deactivate local profile ${profile.id}`, error as Error);
+                    }
+                }
+            }
+            
+            // Check if this is a hub profile and delegate to HubManager
+            if (this.hubManager) {
+                const isHub = await this.isHubProfile(validatedProfileId);
+                if (isHub) {
+                    this.logger.info(`Profile ${validatedProfileId} is from hub, delegating to HubManager`);
+                    const hubProfiles = await this.hubManager.listActiveHubProfiles();
+                    const hubProfile = hubProfiles.find(p => p.id === validatedProfileId);
+                    if (hubProfile && hubProfile.hubId) {
+                        await this.hubManager.activateProfile(hubProfile.hubId, validatedProfileId, { installBundles: true });
+                        // Fire event to update tree view with active status
+                        this._onProfileActivated.fire({ ...hubProfile, active: true } as Profile);
+                        return;
+                    }
+                }
+            }
+        
+            progress.report({ message: "Installing bundles..." });
+        
+            // Get all sources to find adapters
+            const allSources = await this.storage.getSources();
+
+            // Get and activate the target profile
+            const profile = await this.getProfileById(validatedProfileId);
+            if (profile) {
+                this._onProfileActivated.fire(profile);
+            }
             
             // Deactivate other active profiles
             await this.deactivateOtherProfiles(validatedProfileId, progress);
             
-            // Get and activate the target profile
-            const profile = await this.getProfileById(validatedProfileId);
+
             this._onProfileActivated.fire(profile);
             
             // Install profile bundles
@@ -1211,6 +1323,41 @@ export class RegistryManager {
      */
     async deactivateProfile(profileId: string): Promise<void> {
         this.logger.info(`Deactivating profile: ${profileId}`);
+        
+        // Check if this is a hub profile first
+        if (this.hubManager) {
+            const isHub = await this.isHubProfile(profileId);
+            if (isHub) {
+                this.logger.info(`Profile ${profileId} is from hub, delegating to HubManager`);
+                const hubProfiles = await this.hubManager.listActiveHubProfiles();
+                const hubProfile = hubProfiles.find(p => p.id === profileId);
+                if (hubProfile && hubProfile.hubId) {
+                    const result = await this.hubManager.deactivateProfile(hubProfile.hubId, profileId);
+                    
+                    // Uninstall only the bundles that were installed BY THIS PROFILE
+                    // (not bundles installed manually or by other profiles)
+                    const installedBundles = await this.storage.getInstalledBundles();
+                    const profileBundles = installedBundles.filter(b => b.profileId === profileId);
+                    
+                    if (profileBundles.length > 0) {
+                        this.logger.info(`Uninstalling ${profileBundles.length} bundles from hub profile '${profileId}'`);
+                        for (const bundle of profileBundles) {
+                            try {
+                                this.logger.info(`Uninstalling bundle: ${bundle.bundleId}`);
+                                await this.uninstallBundle(bundle.bundleId);
+                            } catch (error) {
+                                this.logger.error(`Failed to uninstall bundle ${bundle.bundleId}`, error as Error);
+                            }
+                        }
+                    }
+                    
+                    // Fire event to update tree view
+                    this._onProfileDeactivated.fire(profileId);
+                    this.logger.info(`Profile deactivated: ${profileId}`);
+                    return;
+                }
+            }
+        }
         
         const profiles = await this.storage.getProfiles();
         const profile = profiles.find(p => p.id === profileId);

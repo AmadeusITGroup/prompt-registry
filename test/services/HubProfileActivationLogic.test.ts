@@ -299,7 +299,7 @@ suite('Hub Profile Activation Logic', () => {
             assert.ok(result.resolvedBundles);
             assert.strictEqual(result.resolvedBundles.length, 2);
             assert.ok(result.resolvedBundles[0].bundle);
-            assert.ok(result.resolvedBundles[0].url);
+            // URL is no longer populated by resolveProfileBundles
         });
     });
 

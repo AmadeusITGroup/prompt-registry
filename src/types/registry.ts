@@ -36,6 +36,12 @@ export interface RegistrySource {
         homepage?: string;
         contact?: string;
     };
+    config?: {
+        branch?: string;          // Git branch (for git-based sources)
+        collectionsPath?: string;  // Collections directory (for awesome-copilot)
+        indexFile?: string;        // Index file name (for awesome-copilot)
+        [key: string]: any;        // Allow additional source-specific config
+    };
 }
 
 /**

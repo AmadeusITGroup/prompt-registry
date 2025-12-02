@@ -4,7 +4,11 @@
   "title": "Hub Configuration Schema",
   "description": "JSON Schema for Prompt Registry hub configuration files",
   "type": "object",
-  "required": ["version", "metadata", "sources"],
+  "required": [
+    "version",
+    "metadata",
+    "sources"
+  ],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -15,7 +19,12 @@
     "metadata": {
       "type": "object",
       "description": "Hub metadata and descriptive information",
-      "required": ["name", "description", "maintainer", "updatedAt"],
+      "required": [
+        "name",
+        "description",
+        "maintainer",
+        "updatedAt"
+      ],
       "additionalProperties": false,
       "properties": {
         "name": {
@@ -53,7 +62,12 @@
       "description": "List of bundle sources available in this hub",
       "items": {
         "type": "object",
-        "required": ["id", "type", "enabled", "priority"],
+        "required": [
+          "id",
+          "type",
+          "enabled",
+          "priority"
+        ],
         "additionalProperties": true,
         "properties": {
           "id": {
@@ -65,8 +79,16 @@
           },
           "type": {
             "type": "string",
-            "description": "Type of the source repository",
-            "enum": ["github", "local", "url"]
+            "description": "Type of the source repository (github, gitlab, http/url, local, awesome-copilot, local-awesome-copilot)",
+            "enum": [
+              "github",
+              "gitlab",
+              "http",
+              "url",
+              "local",
+              "awesome-copilot",
+              "local-awesome-copilot"
+            ]
           },
           "url": {
             "type": "string",
@@ -93,6 +115,44 @@
             "description": "Priority order for source resolution (higher = higher priority)",
             "minimum": 0,
             "maximum": 100
+          },
+          "config": {
+            "type": "object",
+            "description": "Source-specific configuration settings (e.g., branch, collectionsPath for awesome-copilot sources)",
+            "additionalProperties": true,
+            "properties": {
+              "branch": {
+                "type": "string",
+                "description": "Git branch name (for git-based sources)"
+              },
+              "collectionsPath": {
+                "type": "string",
+                "description": "Path to collections directory (for awesome-copilot sources)"
+              },
+              "indexFile": {
+                "type": "string",
+                "description": "Index file name (for awesome-copilot sources)"
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Additional source metadata",
+            "additionalProperties": true,
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "Source description"
+              },
+              "homepage": {
+                "type": "string",
+                "description": "Source homepage URL"
+              },
+              "contact": {
+                "type": "string",
+                "description": "Contact information"
+              }
+            }
           }
         }
       }
@@ -103,7 +163,12 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "name", "description", "bundles"],
+        "required": [
+          "id",
+          "name",
+          "description",
+          "bundles"
+        ],
         "additionalProperties": true,
         "properties": {
           "id": {
@@ -149,7 +214,12 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["id", "version", "source", "required"],
+              "required": [
+                "id",
+                "version",
+                "source",
+                "required"
+              ],
               "additionalProperties": false,
               "properties": {
                 "id": {

@@ -160,19 +160,19 @@
         "command": "promptRegistry.exportSettings",
         "title": "Export Settings",
         "category": "Prompt Registry",
-        "icon": "$(export)"
+        "icon": "$(save-as)"
       },
       {
         "command": "promptRegistry.importSettings",
         "title": "Import Settings",
         "category": "Prompt Registry",
-        "icon": "$(cloud-download)"
+        "icon": "$(folder-opened)"
       },
       {
         "command": "promptRegistry.openSettings",
         "title": "Open Settings",
         "category": "Prompt Registry",
-        "icon": "$(settings-gear)"
+        "icon": "$(gear)"
       },
       {
         "command": "promptRegistry.listProfiles",
@@ -342,10 +342,22 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "promptregistry.switchHub",
+        "title": "Switch Hub",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
+      },
+      {
         "command": "promptregistry.exportHubConfig",
         "title": "Export Hub Configuration",
         "category": "Prompt Registry",
         "icon": "$(export)"
+      },
+      {
+        "command": "promptregistry.openHubRepository",
+        "title": "Open Hub Repository",
+        "category": "Prompt Registry",
+        "icon": "$(repo)"
       }
     ],
     "viewsContainers": {
@@ -416,6 +428,21 @@
           "command": "promptRegistry.openSettings",
           "when": "view == promptRegistryExplorer",
           "group": "navigation@3"
+        },
+        {
+          "command": "promptregistry.switchHub",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@4"
+        },
+        {
+          "command": "promptregistry.exportHubConfig",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@5"
+        },
+        {
+          "command": "promptregistry.openHubRepository",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [

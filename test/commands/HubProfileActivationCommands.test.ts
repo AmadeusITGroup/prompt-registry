@@ -194,7 +194,7 @@ suite('Hub Profile Activation Commands - Integration', () => {
     });
 
     suite('Show Active Profiles Command Integration', () => {
-        test('should list multiple active profiles from different hubs', async () => {
+        test('should list only one active profile (enforces single active profile globally)', async () => {
             const hub1 = createTestHub();
             const hub2 = createTestHub();
             await storage.saveHub('hub-1', hub1, { type: 'github', location: 'test/repo1' });
@@ -205,9 +205,10 @@ suite('Hub Profile Activation Commands - Integration', () => {
 
             const activeProfiles = await hubManager.listAllActiveProfiles();
 
-            assert.strictEqual(activeProfiles.length, 2);
-            assert.ok(activeProfiles.some(p => p.hubId === 'hub-1' && p.profileId === 'profile-1'));
-            assert.ok(activeProfiles.some(p => p.hubId === 'hub-2' && p.profileId === 'profile-2'));
+            // Only the last activated profile should be active (single active profile enforcement)
+            assert.strictEqual(activeProfiles.length, 1);
+            assert.strictEqual(activeProfiles[0].hubId, 'hub-2');
+            assert.strictEqual(activeProfiles[0].profileId, 'profile-2');
         });
 
         test('should include activation timestamps in active profiles', async () => {

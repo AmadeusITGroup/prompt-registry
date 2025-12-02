@@ -70,7 +70,9 @@ export class HubCommands {
             vscode.commands.registerCommand('promptregistry.listHubs', () => this.listHubs()),
             vscode.commands.registerCommand('promptregistry.syncHub', (hubId?: string) => this.syncHub(hubId)),
             vscode.commands.registerCommand('promptregistry.deleteHub', (hubId?: string) => this.deleteHub(hubId)),
-            vscode.commands.registerCommand('promptregistry.exportHubConfig', () => this.exportHubConfig())
+            vscode.commands.registerCommand('promptregistry.switchHub', () => this.switchHub()),
+            vscode.commands.registerCommand('promptregistry.exportHubConfig', () => this.exportHubConfig()),
+            vscode.commands.registerCommand('promptregistry.openHubRepository', () => this.openHubRepository())
         );
     }
 
@@ -341,21 +343,66 @@ export class HubCommands {
     /**
      * Map internal source type to hub schema-compliant type
      */
-    private mapSourceTypeForHub(sourceType: string): 'github' | 'local' | 'url' {
-        // Map internal source types to schema-compliant types
-        switch (sourceType) {
-            case 'github':
-            case 'gitlab':
-                return 'github';
-            case 'local':
-            case 'local-awesome-copilot':
-            case 'awesome-copilot':
-                return 'local';
-            case 'http':
-            case 'url':
-                return 'url';
-            default:
-                return 'url'; // Default fallback
+    // Removed mapSourceTypeForHub - we now preserve source types directly
+
+    /**
+     * Switch the active hub
+     * Shows a quick-pick with all imported hubs and option to import new hub
+     */
+    async switchHub(): Promise<void> {
+        try {
+            // Get all imported hubs
+            const hubs = await this.hubManager.listHubs();
+            const activeHubId = await this.hubManager.getActiveHub();
+            const currentActiveId = activeHubId?.config.metadata.name;
+
+            // Build quick-pick items
+            const items: (vscode.QuickPickItem & { hubId?: string; action?: string })[] = hubs.map(hub => ({
+                label: hub.name,
+                description: hub.id === currentActiveId ? '$(check) Active' : hub.description,
+                detail: `ID: ${hub.id}`,
+                hubId: hub.id
+            }));
+
+            // Add "Import New Hub" option
+            items.push({
+                label: '$(cloud-download) Import New Hub...',
+                description: 'Import a hub from GitHub, URL, or local path',
+                action: 'import'
+            });
+
+            // Show quick-pick
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: 'Select a hub to activate',
+                title: 'Switch Active Hub'
+            });
+
+            if (!selected) {
+                return;
+            }
+
+            // Handle import action
+            if (selected.action === 'import') {
+                const newHubId = await this.importHub();
+                if (newHubId) {
+                    await this.hubManager.setActiveHub(newHubId);
+                    vscode.window.showInformationMessage(`✅ Hub '${newHubId}' imported and activated`);
+                    vscode.commands.executeCommand('promptRegistry.refresh');
+                }
+                return;
+            }
+
+            // Set selected hub as active
+            if (selected.hubId) {
+                await this.hubManager.setActiveHub(selected.hubId);
+                vscode.window.showInformationMessage(`✅ Switched to hub: ${selected.label}`);
+                vscode.commands.executeCommand('promptRegistry.refresh');
+            }
+
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to switch hub: ${message}`);
+            this.logger.error('Switch hub failed', error as Error);
         }
     }
 
@@ -396,11 +443,12 @@ export class HubCommands {
                 sources: sources.map(s => ({
                     id: s.id,
                     name: s.name,
-                    type: this.mapSourceTypeForHub(s.type),
+                    type: s.type,  // Preserve original source type
                     url: s.url,
                     enabled: s.enabled,
                     priority: s.priority,
-                    ...(s.metadata && { metadata: s.metadata })
+                    ...(s.metadata && { metadata: s.metadata }),
+                    ...(s.config && { config: s.config })  // Include source config
                 })),
                 profiles: profiles.map(p => ({
                     id: p.id,
@@ -444,6 +492,58 @@ export class HubCommands {
             vscode.window.showErrorMessage(`Failed to export hub config: ${message}`);
         }
     }
+
+    /**
+     * Open the active hub's repository in browser
+     */
+    async openHubRepository(): Promise<void> {
+        try {
+            const activeHub = await this.hubManager.getActiveHub();
+            
+            if (!activeHub) {
+                vscode.window.showInformationMessage('No active hub configured. Please activate a hub first.');
+                return;
+            }
+
+            const reference = activeHub.reference;
+            let repositoryUrl: string | undefined;
+
+            // Construct repository URL based on hub type
+            switch (reference.type) {
+                case 'github':
+                    // Format: owner/repo
+                    repositoryUrl = `https://github.com/${reference.location}`;
+                    break;
+                    
+                case 'url':
+                    // Direct URL - use as is
+                    repositoryUrl = reference.location;
+                    break;
+                    
+                case 'local':
+                    vscode.window.showInformationMessage(
+                        'This hub is stored locally and does not have a remote repository URL.',
+                        'OK'
+                    );
+                    return;
+                    
+                default:
+                    vscode.window.showWarningMessage('Unable to determine repository URL for this hub type.');
+                    return;
+            }
+
+            if (repositoryUrl) {
+                // Open URL in external browser
+                await vscode.env.openExternal(vscode.Uri.parse(repositoryUrl));
+                this.logger.info(`Opened hub repository: ${repositoryUrl}`);
+            }
+
+        } catch (error) {
+            this.logger.error('Failed to open hub repository', error as Error);
+            vscode.window.showErrorMessage(`Failed to open hub repository: ${(error as Error).message}`);
+        }
+    }
+
 
     /**
      * Convert object to YAML format (simple implementation)

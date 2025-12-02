@@ -80,9 +80,25 @@ export class ProfileCommands {
                 }
             }
 
+            // Create profile with unique ID
+            let profileId = this.generateProfileId(name);
+            
+            // Check if ID conflicts with existing profiles (hub or local)
+            const existingProfiles = await this.registryManager.listProfiles();
+            let counter = 1;
+            let originalId = profileId;
+            while (existingProfiles.some(p => p.id === profileId)) {
+                profileId = `${originalId}-${counter}`;
+                counter++;
+            }
+            
+            if (profileId !== originalId) {
+                this.logger.info(`Profile ID '${originalId}' already exists, using '${profileId}' instead`);
+            }
+
             // Create profile
             const profile: Omit<Profile, 'createdAt' | 'updatedAt'> = {
-                id: this.generateProfileId(name),
+                id: profileId,
                 name: name.trim(),
                 description: description.trim(),
                 icon,
@@ -362,6 +378,16 @@ export class ProfileCommands {
 
             if (!profile) {
                 vscode.window.showErrorMessage('Profile not found');
+                return;
+            }
+
+            // Check if profile is from active hub (read-only)
+            const isHubProfile = await this.registryManager.isHubProfile(targetProfileId!);
+            if (isHubProfile) {
+                vscode.window.showWarningMessage(
+                    `Profile "${profile.name}" is managed by the active hub configuration and cannot be deleted directly. To remove it, switch to a different hub or modify the hub configuration.`,
+                    'OK'
+                );
                 return;
             }
 

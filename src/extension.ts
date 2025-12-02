@@ -9,6 +9,7 @@ import { HubCommands } from './commands/HubCommands';
 import { HubProfileCommands } from './commands/HubProfileCommands';
 import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
 import { HubManager } from './services/HubManager';
+import { getEnabledDefaultHubs, DefaultHubConfig } from './config/defaultHubs';
 import { HubStorage } from './storage/HubStorage';
 import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
@@ -118,6 +119,12 @@ export class PromptRegistryExtension {
             // Check if this is first run and show welcome message
             await this.checkFirstRun();
 
+            // Always sync active hub on activation to keep it up-to-date
+            await this.syncActiveHub();
+
+            // Ensure only one profile is active (cleanup any multi-active state)
+            await this.ensureSingleActiveProfile();
+
             this.logger.info('Prompt Registry extension activated successfully');
 
         } catch (error) {
@@ -179,6 +186,9 @@ export class PromptRegistryExtension {
         // Pass BundleInstaller from RegistryManager to enable bundle installation during profile activation
         const bundleInstaller = (this.registryManager as any).installer;
         this.hubManager = new HubManager(hubStorage, hubValidator, this.context.extensionPath, bundleInstaller, this.registryManager);
+		
+		// Connect HubManager to RegistryManager for profile integration
+		this.registryManager.setHubManager(this.hubManager);
         
         this.hubCommands = new HubCommands(this.hubManager, this.registryManager, this.context);
         this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
@@ -374,6 +384,10 @@ export class PromptRegistryExtension {
             // Reset First Run Command
             vscode.commands.registerCommand('promptRegistry.resetFirstRun', async () => {
                 await this.context.globalState.update('promptregistry.firstRun', true);
+                await this.context.globalState.update('promptregistry.hubInitialized', false);
+                // Clear active hub to ensure hub selector is shown
+                await this.hubManager?.setActiveHub(null);
+                this.logger.info('First run state reset: firstRun=true, hubInitialized=false, activeHub=null');
                 vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
             }),
 
@@ -675,6 +689,39 @@ export class PromptRegistryExtension {
     }
 
     /**
+     * Ensure only one profile is active during startup
+     * Fixes cases where multiple profiles may be marked as active from previous sessions
+     */
+    private async ensureSingleActiveProfile(): Promise<void> {
+        try {
+            const allProfiles = await this.registryManager!.listProfiles();
+            const activeProfiles = allProfiles.filter(p => p.active);
+            
+            if (activeProfiles.length <= 1) {
+                // Already have 0 or 1 active profile - good state
+                return;
+            }
+            
+            this.logger.info(`Found ${activeProfiles.length} active profiles, ensuring only one is active`);
+            
+            // Deactivate all but the first active profile
+            for (let i = 1; i < activeProfiles.length; i++) {
+                const profile = activeProfiles[i];
+                this.logger.info(`Deactivating extra active profile: ${profile.name}`);
+                try {
+                    await this.registryManager!.deactivateProfile(profile.id);
+                } catch (error) {
+                    this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
+                }
+            }
+            
+            this.logger.info(`Profile cleanup complete, only ${activeProfiles[0].name} remains active`);
+        } catch (error) {
+            this.logger.error('Failed to ensure single active profile', error as Error);
+        }
+    }
+
+    /**
      * Check for automatic updates on extension activation
      */
     private async checkForAutomaticUpdates(): Promise<void> {
@@ -751,6 +798,9 @@ export class PromptRegistryExtension {
                 // Initialize default sources (Awesome Copilot)
                 await this.initializeDefaultSources();
 
+                // Initialize hub (first-run hub selector or migration)
+                await this.initializeHub();
+
 
                 // Check if Prompt Registry is already installed
                 const installedScopes = await this.installationManager.getInstalledScopes();
@@ -768,6 +818,252 @@ export class PromptRegistryExtension {
             this.logger.warn('Failed to check first run status', error as Error);
         }
     }
+
+    /**
+     * Sync active hub configuration on every activation
+     * Ensures users always have the latest hub configuration
+     */
+    private async syncActiveHub(): Promise<void> {
+        try {
+            const hubManager = this.hubManager;
+            const sourceCommands = this.sourceCommands;
+            
+            if (!hubManager || !sourceCommands) {
+                this.logger.warn('HubManager or SourceCommands not initialized, skipping hub sync');
+                return;
+            }
+
+            // Check if there's an active hub
+            const activeHub = await hubManager.getActiveHub();
+            if (!activeHub) {
+                this.logger.info('No active hub configured, skipping auto-sync');
+                return;
+            }
+
+            // Get active hub ID
+            const activeProfiles = await hubManager.listActiveHubProfiles();
+            if (activeProfiles.length === 0 || !activeProfiles[0].hubId) {
+                this.logger.warn('Active hub has no profiles or hub ID, skipping auto-sync');
+                return;
+            }
+
+            const activeHubId = activeProfiles[0].hubId;
+            this.logger.info(`Auto-syncing active hub: ${activeHubId}`);
+
+            // Sync hub configuration
+            await hubManager.syncHub(activeHubId);
+            
+            // Sync all sources from the active hub
+            await sourceCommands.syncAllSources();
+            
+            // Refresh tree view
+            await vscode.commands.executeCommand('promptRegistry.refresh');
+            
+            this.logger.info('Active hub synchronized successfully on activation');
+
+        } catch (error) {
+            this.logger.warn('Failed to auto-sync active hub on activation', error as Error);
+            // Don't fail extension activation if sync fails
+        }
+    }
+
+
+    /**
+     * Initialize hub configuration on first run or migrate existing installations
+     */
+    private async initializeHub(): Promise<void> {
+        try {
+            const hubManager = this.hubManager!;
+            const sourceCommands = this.sourceCommands!;
+            const isHubInitialized = this.context.globalState.get<boolean>('promptregistry.hubInitialized', false);
+
+            if (isHubInitialized) {
+                this.logger.info('Hub already initialized, skipping hub setup');
+                return;
+            }
+
+            // Check existing hubs
+            const hubs = await hubManager.listHubs();
+            const activeHubResult = await hubManager.getActiveHub();
+
+            if (hubs.length === 0 && !activeHubResult) {
+                // Scenario 1: First-time installation, no hubs
+                this.logger.info('First-time hub setup: showing hub selector');
+                await this.showFirstRunHubSelector();
+            } else if (hubs.length > 0 && !activeHubResult) {
+                // Scenario 2: Migration - hubs exist but no active hub set
+                this.logger.info(`Migration detected: ${hubs.length} hubs found, migrating to active hub model`);
+                await this.migrateToActiveHub(hubs);
+            } else {
+                // Scenario 3: Already initialized (active hub exists)
+                this.logger.info('Hub already configured with active hub');
+            }
+
+            // Mark as initialized
+            await this.context.globalState.update('promptregistry.hubInitialized', true);
+            this.logger.info('Hub initialization complete');
+
+        } catch (error) {
+            this.logger.error('Failed to initialize hub', error as Error);
+            // Don't block extension activation on hub init failure
+        }
+    }
+
+    /**
+     * Show first-run hub selector with preset options
+     */
+    private async showFirstRunHubSelector(): Promise<void> {
+        const hubManager = this.hubManager!;
+        
+        // Get enabled default hubs and verify their availability
+        const defaultHubs = getEnabledDefaultHubs();
+        // Verify each hub in parallel but preserve order
+        this.logger.info('Verifying default hubs...');
+        const verificationResults = await Promise.all(defaultHubs.map(async (hub) => {
+            const isAvailable = await hubManager.verifyHubAvailability(hub.reference);
+            this.logger.debug(`Hub verification result for ${hub.name}: ${isAvailable ? 'available' : 'unavailable'}`);
+            if (isAvailable) {
+                this.logger.info(`✓ Hub verified: ${hub.name} (${hub.reference.type}:${hub.reference.location})`);
+            } else {
+                this.logger.warn(`✗ Hub unavailable: ${hub.name} (${hub.reference.type}:${hub.reference.location})`);
+            }
+            return { ...hub, verified: isAvailable };
+        }));
+        
+        // verificationResults maintains the same order as defaultHubs
+        const verifiedHubs = verificationResults;
+
+        // Build quick-pick items from verified hubs
+        const items = verifiedHubs
+            .filter(hub => hub.verified) // Only show verified hubs
+            .map(hub => ({
+                label: `$(${hub.icon}) ${hub.name}${hub.recommended ? ' ⭐' : ''}`,
+                description: hub.recommended ? hub.description + ' (recommended)' : hub.description,
+                detail: `${hub.reference.type}/${hub.reference.location}`,
+                hubConfig: hub
+            }));
+
+        // Add custom URL and skip options
+        items.push(
+            {
+                label: '$(link-external) Custom Hub URL',
+                description: 'Import from custom URL',
+                detail: 'Enter a custom hub URL',
+                hubConfig: null as any
+            },
+            {
+                label: '$(x) Skip for now',
+                description: 'Configure hub later',
+                detail: 'You can configure a hub anytime from the toolbar',
+                hubConfig: null as any
+            }
+        );
+
+        // Show warning if no verified hubs
+        if (verifiedHubs.filter(h => h.verified).length === 0) {
+            this.logger.warn('No default hubs are currently accessible');
+            vscode.window.showWarningMessage(
+                'Default hubs are currently unavailable. You can import a custom hub or skip for now.',
+                'Continue'
+            );
+        }
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select a hub to get started',
+            title: 'Welcome to Prompt Registry - Choose Your Hub',
+            ignoreFocusOut: true
+        });
+
+        if (!selected) {
+            this.logger.info('User cancelled first-run hub selector');
+            return;
+        }
+
+        if (selected.hubConfig && selected.hubConfig.reference) {
+            // Import and activate the selected hub
+            this.logger.info(`Importing first-run hub: ${selected.hubConfig.name}`);
+            try {
+                const hubId = await hubManager.importHub(selected.hubConfig.reference);
+                await hubManager.setActiveHub(hubId);
+                this.logger.info(`First-run hub ${hubId} imported and activated, syncing sources...`);
+                
+                // Sync all sources from the newly imported hub
+                try {
+                    await this.sourceCommands!.syncAllSources();
+                    this.logger.info('Sources synchronized successfully');
+                } catch (syncError) {
+                    this.logger.warn('Failed to sync sources after hub import', syncError as Error);
+                }
+                
+                // Try to activate a default profile if hub has profiles
+                try {
+                    const hubProfiles = await hubManager.listActiveHubProfiles();
+                    if (hubProfiles.length > 0) {
+                        // Activate the first profile as default
+                        const defaultProfile = hubProfiles[0];
+                        this.logger.info(`Auto-activating default profile: ${defaultProfile.name}`);
+                        await this.registryManager!.activateProfile(defaultProfile.id);
+                        this.logger.info(`Default profile ${defaultProfile.id} activated successfully`);
+                    } else {
+                        this.logger.info('No profiles found in hub for auto-activation');
+                    }
+                } catch (profileError) {
+                    this.logger.warn('Failed to auto-activate default profile', profileError as Error);
+                }
+                
+                await vscode.commands.executeCommand('promptRegistry.refresh');
+                vscode.window.showInformationMessage(`Successfully activated ${selected.hubConfig.name}`);
+            } catch (error) {
+                this.logger.error(`Failed to import hub: ${selected.hubConfig.name}`, error as Error);
+                vscode.window.showErrorMessage(
+                    `Failed to import ${selected.hubConfig.name}: ${error instanceof Error ? error.message : String(error)}`
+                );
+            }
+        } else if (selected.label.includes('Custom Hub URL')) {
+            // Redirect to import hub command
+            this.logger.info('User chose custom hub URL, redirecting to import command');
+            await vscode.commands.executeCommand('promptregistry.importHub');
+        } else {
+            // Skip for now
+            this.logger.info('User chose to skip hub configuration');
+        }
+    }
+
+    /**
+     * Migrate existing multi-hub installation to active hub model
+     */
+    private async migrateToActiveHub(hubs: any[]): Promise<void> {
+        const hubManager = this.hubManager!;
+
+        if (hubs.length === 1) {
+            // Auto-activate the only hub
+            const hubId = hubs[0].id;
+            this.logger.info(`Auto-activating single hub: ${hubId}`);
+            await hubManager.setActiveHub(hubId);
+            await vscode.commands.executeCommand('promptRegistry.refresh');
+            return;
+        }
+
+        // Multiple hubs - show selection dialog
+        const items = hubs.map(hub => ({
+            label: hub.metadata?.name || hub.id,
+            description: hub.metadata?.description || '',
+            detail: `${hub.metadata?.url || 'Unknown URL'} (${hub.metadata?.ref || 'Unknown ref'})`,
+            hubId: hub.id
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Multiple hubs found. Select which hub to activate:',
+            title: 'Hub Migration - Select Active Hub',
+            ignoreFocusOut: true
+        });
+
+        const hubId = selected ? selected.hubId : hubs[0].id;
+        this.logger.info(`Migrating to active hub: ${hubId}`);
+        await hubManager.setActiveHub(hubId);
+        await vscode.commands.executeCommand('promptRegistry.refresh');
+    }
+
 }
 
 // Extension activation function called by VS Code
