@@ -634,6 +634,10 @@ suite('Bundle State Management - Integration Tests', () => {
             mockStorage.recordInstallation.resolves();
             mockStorage.getInstalledBundles.resolves([installedBundleV1_0_16]);
 
+            // Populate version consolidator by calling searchBundles first
+            // This simulates what happens in real usage when marketplace loads bundles
+            await registryManager.searchBundles({});
+            
             // Install specific version v1.0.16 (not the latest)
             await registryManager.installBundle(bundleV1_0_16.id, { 
                 scope: 'user',

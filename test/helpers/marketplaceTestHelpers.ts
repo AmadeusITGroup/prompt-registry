@@ -1,60 +1,63 @@
 /**
- * Shared test helpers for MarketplaceViewProvider tests
+ * Test helpers for MarketplaceViewProvider tests
+ * Provides utilities for testing button states and bundle identity matching
  */
 
 import { VersionManager } from '../../src/utils/versionManager';
+import { BundleIdentityMatcher } from '../../src/utils/bundleIdentityMatcher';
+import { SourceType } from '../../src/types/registry';
 
 /**
- * Determine button state based on version comparison
- * This mirrors the logic in MarketplaceViewProvider
- * 
- * @param installedVersion - Currently installed version (undefined if not installed)
- * @param latestVersion - Latest available version
- * @returns Button state: 'install', 'update', or 'uninstall'
+ * Determine button state based on installation status and version comparison
+ * Mirrors the logic in MarketplaceViewProvider
  */
 export function determineButtonState(
     installedVersion: string | undefined,
-    latestVersion: string
+    availableVersion: string
 ): 'install' | 'update' | 'uninstall' {
     if (!installedVersion) {
         return 'install';
     }
-    
+
     try {
-        if (VersionManager.isUpdateAvailable(installedVersion, latestVersion)) {
+        if (VersionManager.isUpdateAvailable(installedVersion, availableVersion)) {
             return 'update';
         }
     } catch (error) {
         // If version comparison fails, fall back to string comparison
-        if (installedVersion !== latestVersion) {
+        if (installedVersion !== availableVersion) {
             return 'update';
         }
     }
-    
+
     return 'uninstall';
 }
 
 /**
- * Check if bundle identities match
- * For GitHub bundles, compares without version suffix
- * For others, exact match
- * 
- * @param installedId - Bundle ID from installed bundle
- * @param bundleId - Bundle ID from marketplace
- * @param sourceType - Source type of the bundle
- * @returns True if the bundles match
+ * Check if installed bundle matches marketplace bundle identity
+ * Mirrors the logic in MarketplaceViewProvider
  */
 export function matchesBundleIdentity(
     installedId: string,
     bundleId: string,
-    sourceType: string
+    sourceType: SourceType
 ): boolean {
-    if (sourceType === 'github') {
-        const installedIdentity = VersionManager.extractBundleIdentity(installedId, 'github');
-        const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, 'github');
-        return installedIdentity === bundleIdentity;
+    return BundleIdentityMatcher.matches(installedId, bundleId, sourceType);
+}
+
+/**
+ * Filter bundles by search text
+ */
+export function filterBundlesBySearch(bundles: any[], searchText: string): any[] {
+    if (!searchText || searchText.trim() === '') {
+        return bundles;
     }
-    
-    // For non-GitHub sources, exact match
-    return installedId === bundleId;
+
+    const term = searchText.toLowerCase();
+    return bundles.filter(bundle =>
+        bundle.name.toLowerCase().includes(term) ||
+        bundle.description.toLowerCase().includes(term) ||
+        (bundle.tags && bundle.tags.some((tag: string) => tag.toLowerCase().includes(term))) ||
+        (bundle.author && bundle.author.toLowerCase().includes(term))
+    );
 }

@@ -1,609 +1,691 @@
 /**
- * RegistryManager Unit Tests
+ * RegistryManager Behavior Tests
  * 
- * Tests for RegistryManager export/import functionality (integration-style)
+ * Tests verify actual outcomes rather than implementation details.
+ * Focus on requirements from bundle-state-management-fixes spec.
  */
 
 import * as assert from 'assert';
+import * as sinon from 'sinon';
+import * as vscode from 'vscode';
+import { RegistryManager } from '../../src/services/RegistryManager';
+import { RegistryStorage } from '../../src/storage/RegistryStorage';
+import { RegistrySource } from '../../src/types/registry';
+import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
 
-suite('RegistryManager Export/Import', () => {
-    suite('Export Format Validation', () => {
-        test('JSON export should produce valid JSON structure', () => {
-            const mockExportData = {
-                version: '1.0.0',
-                exportedAt: new Date().toISOString(),
-                sources: [],
-                profiles: [],
-                configuration: {
-                    autoCheckUpdates: true,
-                    installationScope: 'user'
-                }
-            };
-            
-            const jsonString = JSON.stringify(mockExportData, null, 2);
-            const parsed = JSON.parse(jsonString);
-            
-            assert.strictEqual(parsed.version, '1.0.0');
-            assert.ok(Array.isArray(parsed.sources));
-            assert.ok(Array.isArray(parsed.profiles));
-            assert.ok(parsed.configuration);
-        });
+suite('RegistryManager - Settings Export/Import Behavior', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
 
-        test('YAML export format should be detectable', () => {
-            const yamlContent = `version: 1.0.0
-sources: []
-profiles: []
-configuration:
-  autoCheckUpdates: true`;
-            
-            assert.ok(yamlContent.includes('version:'));
-            assert.ok(yamlContent.includes('sources:'));
-            assert.ok(yamlContent.includes('profiles:'));
-        });
-    });
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
 
-    suite('Import Validation', () => {
-        test('should validate required version field', () => {
-            const validData = {
-                version: '1.0.0',
-                sources: [],
-                profiles: []
-            };
-            
-            assert.ok(validData.version);
-            assert.strictEqual(validData.version, '1.0.0');
-        });
-
-        test('should validate sources array', () => {
-            const validData = {
-                version: '1.0.0',
-                sources: [],
-                profiles: []
-            };
-            
-            assert.ok(Array.isArray(validData.sources));
-        });
-
-        test('should validate profiles array', () => {
-            const validData = {
-                version: '1.0.0',
-                sources: [],
-                profiles: []
-            };
-            
-            assert.ok(Array.isArray(validData.profiles));
-        });
+        manager = RegistryManager.getInstance(mockContext);
+        
+        // Create and inject mock storage
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        mockStorage.getSources.resolves([]);
+        mockStorage.getProfiles.resolves([]);
+        mockStorage.getInstalledBundles.resolves([]);
+        (manager as any).storage = mockStorage;
     });
 
-    suite('Data Structure', () => {
-        test('exported settings should have required fields', () => {
-            const settings = {
-                version: '1.0.0',
-                exportedAt: new Date().toISOString(),
-                sources: [],
-                profiles: [],
-                configuration: {}
-            };
-            
-            assert.ok(settings.version);
-            assert.ok(settings.exportedAt);
-            assert.ok(Array.isArray(settings.sources));
-            assert.ok(Array.isArray(settings.profiles));
-            assert.ok(typeof settings.configuration === 'object');
-        });
+    teardown(() => {
+        sandbox.restore();
+    });
 
-        test('timestamp should be valid ISO string', () => {
-            const timestamp = new Date().toISOString();
-            const parsed = new Date(timestamp);
-            
-            assert.ok(parsed.getTime() > 0);
-            assert.ok(!isNaN(parsed.getTime()));
-        });
+    test('should export settings as JSON string with required fields', async () => {
+        const exportedString = await manager.exportSettings('json');
+        const exported = JSON.parse(exportedString);
+        
+        assert.ok(exported.version, 'Should have version');
+        assert.ok(exported.exportedAt, 'Should have timestamp');
+        assert.ok(Array.isArray(exported.sources), 'Should have sources array');
+        assert.ok(Array.isArray(exported.profiles), 'Should have profiles array');
     });
-});
 
-suite('RegistryManager Unified Download Path', () => {
-    const fs = require('fs');
-    const path = require('path');
-    
-    test('installBundle() should use unified download path for all source types', () => {
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the installBundle method
-        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(installBundleMatch, 'installBundle method should exist');
-        
-        const installBundleCode = installBundleMatch[1];
-        
-        // Verify it calls adapter.downloadBundle()
-        assert.ok(
-            installBundleCode.includes('adapter.downloadBundle(bundle)'),
-            'installBundle should call adapter.downloadBundle(bundle)'
-        );
-        
-        // Verify it calls installer.installFromBuffer()
-        assert.ok(
-            installBundleCode.includes('installer.installFromBuffer(bundle, bundleBuffer'),
-            'installBundle should call installer.installFromBuffer(bundle, bundleBuffer, options)'
-        );
-    });
-    
-    test('installBundle() should NOT have branching logic for source types', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the installBundle method
-        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(installBundleMatch, 'installBundle method should exist');
-        
-        const installBundleCode = installBundleMatch[1];
-        
-        // Verify it does NOT have if/else branching for awesome-copilot
-        assert.ok(
-            !installBundleCode.includes("source.type === 'awesome-copilot'"),
-            'installBundle should NOT have branching logic for awesome-copilot'
-        );
-        
-        assert.ok(
-            !installBundleCode.includes("source.type === 'local-awesome-copilot'"),
-            'installBundle should NOT have branching logic for local-awesome-copilot'
-        );
-    });
-    
-    test('installBundle() should NOT call adapter.getDownloadUrl()', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the installBundle method
-        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(installBundleMatch, 'installBundle method should exist');
-        
-        const installBundleCode = installBundleMatch[1];
-        
-        // Verify it does NOT call getDownloadUrl
-        assert.ok(
-            !installBundleCode.includes('adapter.getDownloadUrl('),
-            'installBundle should NOT call adapter.getDownloadUrl()'
-        );
-    });
-    
-    test('installBundle() should NOT call installer.install()', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the installBundle method
-        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(installBundleMatch, 'installBundle method should exist');
-        
-        const installBundleCode = installBundleMatch[1];
-        
-        // Verify it does NOT call installer.install (the old method)
-        assert.ok(
-            !installBundleCode.includes('installer.install(bundle, downloadUrl'),
-            'installBundle should NOT call installer.install() with downloadUrl'
-        );
-    });
-    
-    test('All adapter interfaces should have downloadBundle method', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RepositoryAdapter interface
-        const adapterPath = path.join(__dirname, '../../../src/adapters/RepositoryAdapter.ts');
-        const sourceCode = fs.readFileSync(adapterPath, 'utf8');
-        
-        // Verify downloadBundle is in the interface
-        assert.ok(
-            sourceCode.includes('downloadBundle(bundle: Bundle): Promise<Buffer>'),
-            'IRepositoryAdapter interface should define downloadBundle method'
-        );
-    });
-});
-
-suite('RegistryManager Version Consolidation', () => {
-    test('searchBundles() should call consolidateBundles for GitHub sources', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the searchBundles method
-        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
-        
-        const searchBundlesCode = searchBundlesMatch[1];
-        
-        // Verify it calls versionConsolidator.consolidateBundles()
-        assert.ok(
-            searchBundlesCode.includes('versionConsolidator.consolidateBundles') ||
-            searchBundlesCode.includes('this.versionConsolidator.consolidateBundles'),
-            'searchBundles should call versionConsolidator.consolidateBundles()'
-        );
-    });
-    
-    test('RegistryManager should have versionConsolidator instance', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Verify versionConsolidator is declared as a private field
-        assert.ok(
-            sourceCode.includes('private versionConsolidator') ||
-            sourceCode.includes('versionConsolidator:'),
-            'RegistryManager should have versionConsolidator field'
-        );
-        
-        // Verify VersionConsolidator is imported
-        assert.ok(
-            sourceCode.includes("from './VersionConsolidator'") ||
-            sourceCode.includes('import { VersionConsolidator }'),
-            'RegistryManager should import VersionConsolidator'
-        );
-    });
-    
-    test('searchBundles() should have error handling with fallback', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the searchBundles method
-        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
-        
-        const searchBundlesCode = searchBundlesMatch[1];
-        
-        // Verify it has try-catch around consolidation
-        const hasTryCatch = searchBundlesCode.includes('try') && searchBundlesCode.includes('catch');
-        
-        // If consolidation is called, it should have error handling
-        if (searchBundlesCode.includes('consolidateBundles')) {
-            assert.ok(
-                hasTryCatch,
-                'searchBundles should have try-catch around consolidation with fallback'
-            );
-        }
-    });
-    
-    test('searchBundles() should apply consolidation before filters', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the searchBundles method
-        const searchBundlesMatch = sourceCode.match(/async searchBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(searchBundlesMatch, 'searchBundles method should exist');
-        
-        const searchBundlesCode = searchBundlesMatch[1];
-        
-        // If consolidation is present, verify it comes before filtering
-        if (searchBundlesCode.includes('consolidateBundles')) {
-            const consolidateIndex = searchBundlesCode.indexOf('consolidateBundles');
-            const filterIndex = searchBundlesCode.indexOf('query.text');
-            
-            // Consolidation should come before text filtering
-            if (filterIndex > -1) {
-                assert.ok(
-                    consolidateIndex < filterIndex,
-                    'Consolidation should be applied before filters'
-                );
-            }
-        }
-    });
-});
-
-suite('RegistryManager Version-Specific Installation', () => {
-    test('installBundle() should handle version parameter in options', () => {
-        // Verify that InstallOptions interface supports version parameter
-        const options = {
+    test('should import settings from JSON string', async () => {
+        const testData = {
             version: '1.0.0',
+            exportedAt: new Date().toISOString(),
+            sources: [{
+                id: 'test-source',
+                name: 'Test',
+                type: 'local' as const,
+                url: 'file:///mock/path',
+                enabled: true,
+                priority: 0
+            }],
+            profiles: [],
+            configuration: {}
+        };
+        
+        mockStorage.addSource.resolves();
+        mockStorage.getSources.resolves([testData.sources[0]]);
+        
+        await manager.importSettings(JSON.stringify(testData), 'json', 'merge');
+        
+        // Verify source was added
+        const sources = await manager.listSources();
+        assert.ok(sources.length > 0, 'Should have imported sources');
+    });
+});
+
+suite('RegistryManager - Version Selection Behavior', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('sources').returns([]);
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('profiles').returns([]);
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('installations').returns([]);
+
+        manager = RegistryManager.getInstance(mockContext);
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should retrieve available versions for a bundle', async () => {
+        // This tests Requirement 2.1: Display dropdown with all available versions
+        const bundleId = 'owner-repo-v2.0.0';
+        
+        const versions = await manager.getAvailableVersions(bundleId);
+        
+        // Should return array of version strings
+        assert.ok(Array.isArray(versions), 'Should return array of versions');
+    });
+});
+
+suite('RegistryManager - Event Emission Behavior', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('sources').returns([]);
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('profiles').returns([]);
+        (mockContext.globalState.get as sinon.SinonStub).withArgs('installations').returns([]);
+
+        manager = RegistryManager.getInstance(mockContext);
+        
+        // Create and inject mock storage
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        mockStorage.getSources.resolves([]);
+        mockStorage.getProfiles.resolves([]);
+        mockStorage.getInstalledBundles.resolves([]);
+        (manager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should fire onBundleInstalled event when bundle is installed', async () => {
+        // Requirement 6.1: Fire onBundleInstalled event
+        let eventFired = false;
+        let firedBundleId: string | undefined;
+        
+        const listener = manager.onBundleInstalled((bundle) => {
+            eventFired = true;
+            firedBundleId = bundle.bundleId;
+        });
+        
+        // Set up mocks for actual installation
+        const testBundle = {
+            id: 'test-bundle',
+            name: 'Test Bundle',
+            version: '1.0.0',
+            description: 'Test',
+            author: 'Test',
+            tags: [],
+            sourceId: 'test-source',
+            downloadUrl: 'http://example.com/bundle.zip',
+            manifestUrl: 'http://example.com/manifest.json',
+            lastUpdated: new Date().toISOString(),
+            downloads: 0,
+            rating: 0,
+            environments: []
+        };
+        
+        const testSource = {
+            id: 'test-source',
+            name: 'Test Source',
+            type: 'local' as const,
+            url: 'file:///test',
+            enabled: true,
+            priority: 0
+        };
+        
+        mockStorage.getInstalledBundle.resolves(undefined);
+        mockStorage.getSources.resolves([testSource]);
+        
+        // Mock adapter and installer
+        const mockAdapter = {
+            downloadBundle: sandbox.stub().resolves(Buffer.from('test'))
+        };
+        sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
+        
+        const mockInstaller = (manager as any).installer;
+        sandbox.stub(mockInstaller, 'installFromBuffer').resolves({
+            bundleId: 'test-bundle',
+            version: '1.0.0',
+            sourceId: 'test-source',
+            sourceType: 'local',
+            installedAt: new Date().toISOString(),
+            scope: 'user'
+        });
+        
+        mockStorage.recordInstallation.resolves();
+        
+        // Stub getBundleDetails to return test bundle
+        sandbox.stub(manager as any, 'getBundleDetails').resolves(testBundle);
+        
+        // Perform actual installation which should fire the event
+        await manager.installBundle('test-bundle', { scope: 'user' });
+        
+        assert.ok(eventFired, 'Event should fire when bundle is installed');
+        assert.strictEqual(firedBundleId, 'test-bundle', 'Event should contain correct bundle ID');
+        
+        listener.dispose();
+    });
+
+    test('should fire onBundleUninstalled event when bundle is uninstalled', async () => {
+        // Requirement 6.2: Fire onBundleUninstalled event
+        let eventFired = false;
+        let firedBundleId: string | undefined;
+        
+        const listener = manager.onBundleUninstalled((bundleId) => {
+            eventFired = true;
+            firedBundleId = bundleId;
+        });
+        
+        // Set up mocks for actual uninstallation
+        const installedBundle = {
+            bundleId: 'test-bundle',
+            version: '1.0.0',
+            sourceId: 'test-source',
+            sourceType: 'local' as const,
+            installedAt: new Date().toISOString(),
             scope: 'user' as const,
-            force: false
+            installPath: '/mock/path',
+            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any
         };
         
-        assert.ok(options.version);
-        assert.strictEqual(options.version, '1.0.0');
+        mockStorage.getInstalledBundle.resolves(installedBundle);
+        mockStorage.removeInstallation.resolves();
+        
+        const mockInstaller = (manager as any).installer;
+        sandbox.stub(mockInstaller, 'uninstall').resolves();
+        
+        // Perform actual uninstallation which should fire the event
+        await manager.uninstallBundle('test-bundle', 'user');
+        
+        assert.ok(eventFired, 'Event should fire when bundle is uninstalled');
+        assert.strictEqual(firedBundleId, 'test-bundle', 'Event should contain correct bundle ID');
+        
+        listener.dispose();
     });
 
-    test('installBundle() should retrieve specific version from VersionConsolidator when version is specified', () => {
-        // This test verifies the logic flow:
-        // 1. options.version is provided
-        // 2. VersionManager.extractBundleIdentity is called
-        // 3. versionConsolidator.getBundleVersion is called
-        // 4. Bundle object is updated with version-specific URLs
+    test('should fire onBundleUpdated event when bundle is updated', async () => {
+        // Requirement 6.3: Fire onBundleUpdated event
+        let eventFired = false;
+        let firedUpdate: any;
         
-        // Mock bundle identity extraction
-        const bundleId = 'owner-repo-v1.0.0';
-        const sourceType = 'github';
-        const expectedIdentity = 'owner-repo';
+        const listener = manager.onBundleUpdated((update) => {
+            eventFired = true;
+            firedUpdate = update;
+        });
         
-        // Verify the logic would extract identity correctly
-        assert.ok(bundleId.includes(expectedIdentity));
-    });
-
-    test('installBundle() should update bundle object with version-specific URLs', () => {
-        // Mock scenario: specific version metadata
-        const specificVersion = {
+        // Set up mocks for actual update
+        const currentInstallation = {
+            bundleId: 'test-bundle',
             version: '1.0.0',
-            downloadUrl: 'https://example.com/v1.0.0/bundle.zip',
-            manifestUrl: 'https://example.com/v1.0.0/manifest.json',
-            publishedAt: '2024-01-01T00:00:00Z'
+            sourceId: 'test-source',
+            sourceType: 'local' as const,
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/mock/path',
+            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any
         };
         
-        // Mock original bundle
-        const originalBundle = {
-            id: 'test-bundle',
-            version: '2.0.0',
-            downloadUrl: 'https://example.com/latest/bundle.zip',
-            manifestUrl: 'https://example.com/latest/manifest.json',
-            lastUpdated: '2024-02-01T00:00:00Z'
-        };
-        
-        // Simulate the update logic
         const updatedBundle = {
-            ...originalBundle,
-            version: specificVersion.version,
-            downloadUrl: specificVersion.downloadUrl,
-            manifestUrl: specificVersion.manifestUrl,
-            lastUpdated: specificVersion.publishedAt
-        };
-        
-        // Verify the bundle was updated correctly
-        assert.strictEqual(updatedBundle.version, '1.0.0');
-        assert.strictEqual(updatedBundle.downloadUrl, 'https://example.com/v1.0.0/bundle.zip');
-        assert.strictEqual(updatedBundle.manifestUrl, 'https://example.com/v1.0.0/manifest.json');
-        assert.strictEqual(updatedBundle.lastUpdated, '2024-01-01T00:00:00Z');
-    });
-
-    test('installBundle() should pass updated bundle to installer with correct version', () => {
-        // This test verifies that after updating the bundle object,
-        // the installer receives the bundle with the specific version
-        
-        const bundle = {
             id: 'test-bundle',
-            version: '1.0.0',
-            downloadUrl: 'https://example.com/v1.0.0/bundle.zip'
+            name: 'Test Bundle',
+            version: '2.0.0',
+            description: 'Test',
+            author: 'Test',
+            tags: [],
+            sourceId: 'test-source',
+            downloadUrl: 'http://example.com/bundle.zip',
+            manifestUrl: 'http://example.com/manifest.json',
+            lastUpdated: new Date().toISOString(),
+            downloads: 0,
+            rating: 0,
+            environments: []
         };
         
-        // The installer.installFromBuffer should receive this bundle
-        // and create an installation record with version: '1.0.0'
-        assert.strictEqual(bundle.version, '1.0.0');
-    });
-
-    test('installBundle() should log warning when requested version not found', () => {
-        // When getBundleVersion returns undefined, a warning should be logged
-        // and the latest version should be used as fallback
+        const testSource = {
+            id: 'test-source',
+            name: 'Test Source',
+            type: 'local' as const,
+            url: 'file:///test',
+            enabled: true,
+            priority: 0
+        };
         
-        const latestVersion = '2.0.0';
+        mockStorage.getInstalledBundles.resolves([currentInstallation]);
+        mockStorage.getSources.resolves([testSource]);
+        mockStorage.removeInstallation.resolves();
+        mockStorage.recordInstallation.resolves();
         
-        // Simulate the fallback logic when version is not found
-        const foundVersion = false;
-        const versionToUse = foundVersion ? '0.5.0' : latestVersion;
+        // Mock adapter
+        const mockAdapter = {
+            downloadBundle: sandbox.stub().resolves(Buffer.from('test'))
+        };
+        sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
         
-        assert.strictEqual(versionToUse, latestVersion);
+        // Mock installer
+        const mockInstaller = (manager as any).installer;
+        sandbox.stub(mockInstaller, 'update').resolves({
+            bundleId: 'test-bundle',
+            version: '2.0.0',
+            sourceId: 'test-source',
+            sourceType: 'local',
+            installedAt: new Date().toISOString(),
+            scope: 'user'
+        });
+        
+        // Stub getBundleDetails
+        sandbox.stub(manager as any, 'getBundleDetails').resolves(updatedBundle);
+        
+        // Perform actual update which should fire the event
+        await manager.updateBundle('test-bundle');
+        
+        assert.ok(eventFired, 'Event should fire when bundle is updated');
+        assert.strictEqual(firedUpdate.bundleId, 'test-bundle', 'Event should contain correct bundle ID');
+        assert.strictEqual(firedUpdate.version, '2.0.0', 'Event should contain new version');
+        
+        listener.dispose();
     });
 });
 
-suite('RegistryManager Source-Type-Specific Sync Behavior', () => {
-    const fs = require('fs');
-    const path = require('path');
-    
-    test('syncSource() should have source-type-specific behavior', () => {
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+suite('RegistryManager - Installation Record Structure', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
         
-        // Find the syncSource method
-        const syncSourceMatch = sourceCode.match(/async syncSource\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(syncSourceMatch, 'syncSource method should exist');
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        manager = RegistryManager.getInstance(mockContext);
         
-        const syncSourceCode = syncSourceMatch[1];
+        // Create and inject mock storage
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        mockStorage.getInstalledBundles.resolves([]);
+        (manager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should list installed bundles', async () => {
+        // Requirement 4.5: Store both full bundle ID and source type
+        const installed = await manager.listInstalledBundles();
         
-        // Verify it checks source type
-        assert.ok(
-            syncSourceCode.includes("source.type === 'awesome-copilot'") ||
-            syncSourceCode.includes("source.type === 'github'"),
-            'syncSource should check source type'
+        assert.ok(Array.isArray(installed), 'Should return array of installed bundles');
+    });
+
+    test('should return empty array when no bundles installed', async () => {
+        const installed = await manager.listInstalledBundles();
+        
+        assert.strictEqual(installed.length, 0, 'Should return empty array');
+    });
+});
+
+suite('RegistryManager - Source Management', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        manager = RegistryManager.getInstance(mockContext);
+        
+        // Create and inject mock storage
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        mockStorage.getSources.resolves([]);
+        (manager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should list sources', async () => {
+        const sources = await manager.listSources();
+        
+        assert.ok(Array.isArray(sources), 'Should return array of sources');
+    });
+
+    test('should add a new source and make it available in source list', async () => {
+        const newSource: RegistrySource = {
+            id: 'new-source',
+            name: 'New Source',
+            type: 'local',
+            url: 'file:///mock/path',
+            enabled: true,
+            priority: 0
+        };
+        
+        // Mock the storage to return the new source after adding
+        mockStorage.addSource.resolves();
+        mockStorage.getSources.resolves([newSource]);
+        
+        // Mock the adapter factory to return a mock adapter with successful validation
+        const mockAdapter = {
+            validate: sandbox.stub().resolves({ valid: true, errors: [] }),
+            fetchBundles: sandbox.stub().resolves([])
+        };
+        const factoryStub = sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
+        
+        await manager.addSource(newSource);
+        
+        // Verify the source is now in the list
+        const sources = await manager.listSources();
+        assert.ok(sources.some(s => s.id === 'new-source'), 'Added source should be in source list');
+        assert.strictEqual(sources[0].name, 'New Source', 'Source should have correct name');
+        
+        // Verify adapter was created and validated
+        assert.ok(factoryStub.called, 'Adapter factory should be called');
+        assert.ok(mockAdapter.validate.called, 'Adapter validation should be called');
+    });
+});
+
+suite('RegistryManager - Version Change Installation', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let manager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        manager = RegistryManager.getInstance(mockContext);
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        (manager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should allow installing different version when bundle already installed', async () => {
+        const bundleId = 'test-bundle';
+        
+        // Mock existing installation with v1.0.0
+        mockStorage.getInstalledBundle.resolves({
+            bundleId: bundleId,
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user',
+            sourceId: 'test-source',
+            sourceType: 'github',
+            installPath: '/mock/path',
+            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any
+        });
+
+        // Mock bundle resolution to return v1.0.1
+        const mockBundle = {
+            id: bundleId,
+            name: 'Test Bundle',
+            version: '1.0.1',
+            description: 'Test',
+            author: 'Test',
+            tags: []
+        };
+
+        // Stub internal methods
+        sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
+        sandbox.stub(manager as any, 'getSourceForBundle').resolves({ id: 'test-source', type: 'github' });
+        sandbox.stub(manager as any, 'downloadAndInstall').resolves({
+            bundleId: bundleId,
+            version: '1.0.1',
+            installedAt: new Date().toISOString(),
+            scope: 'user',
+            sourceId: 'test-source',
+            sourceType: 'github'
+        });
+        mockStorage.recordInstallation.resolves();
+
+        // Should not throw error - version change should be allowed
+        await manager.installBundle(bundleId, { scope: 'user', version: '1.0.1' });
+
+        // Verify installation was recorded with correct version
+        assert.ok(mockStorage.recordInstallation.called, 'Installation should be recorded');
+        const recordedInstallation = mockStorage.recordInstallation.firstCall.args[0];
+        assert.strictEqual(recordedInstallation.version, '1.0.1', 'Should install requested version 1.0.1');
+        assert.strictEqual(recordedInstallation.bundleId, bundleId, 'Should record correct bundle ID');
+    });
+
+    test('should throw error when installing same version without force', async () => {
+        const bundleId = 'test-bundle';
+        
+        // Mock existing installation with v1.0.0
+        mockStorage.getInstalledBundle.resolves({
+            bundleId: bundleId,
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user',
+            sourceId: 'test-source',
+            sourceType: 'github',
+            installPath: '/mock/path',
+            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any
+        });
+
+        // Mock bundle resolution to return same version
+        const mockBundle = {
+            id: bundleId,
+            name: 'Test Bundle',
+            version: '1.0.0',
+            description: 'Test',
+            author: 'Test',
+            tags: []
+        };
+
+        sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
+
+        // Should throw error for same version
+        await assert.rejects(
+            manager.installBundle(bundleId, { scope: 'user', version: '1.0.0' }),
+            /already installed/,
+            'Installing same version should throw error'
         );
     });
-    
-    test('syncSource() should call autoUpdateInstalledBundles for Awesome Copilot sources', () => {
-        const fs = require('fs');
-        const path = require('path');
+
+    test('should allow downgrade from v1.0.17 to v1.0.15', async () => {
+        const bundleId = 'amadeus-airlines-solutions-workflow-instructions';
         
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the syncSource method
-        const syncSourceMatch = sourceCode.match(/async syncSource\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(syncSourceMatch, 'syncSource method should exist');
-        
-        const syncSourceCode = syncSourceMatch[1];
-        
-        // Verify it calls autoUpdateInstalledBundles for awesome-copilot
-        assert.ok(
-            syncSourceCode.includes('autoUpdateInstalledBundles'),
-            'syncSource should call autoUpdateInstalledBundles for Awesome Copilot sources'
-        );
-    });
-    
-    test('syncSource() should NOT auto-install for GitHub sources', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the syncSource method
-        const syncSourceMatch = sourceCode.match(/async syncSource\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(syncSourceMatch, 'syncSource method should exist');
-        
-        const syncSourceCode = syncSourceMatch[1];
-        
-        // Verify GitHub sources use cache-only behavior
-        const hasGitHubCheck = syncSourceCode.includes("source.type === 'github'");
-        
-        if (hasGitHubCheck) {
-            // Find the GitHub branch
-            const githubBranchMatch = syncSourceCode.match(/if \(source\.type === 'github'\) \{([^}]*)\}/);
-            
-            if (githubBranchMatch) {
-                const githubBranch = githubBranchMatch[1];
-                
-                // Verify it does NOT call autoUpdateInstalledBundles
-                assert.ok(
-                    !githubBranch.includes('autoUpdateInstalledBundles'),
-                    'GitHub sources should NOT call autoUpdateInstalledBundles'
-                );
-            }
-        }
-    });
-    
-    test('syncSource() should have logging for different sync behaviors', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the syncSource method
-        const syncSourceMatch = sourceCode.match(/async syncSource\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(syncSourceMatch, 'syncSource method should exist');
-        
-        const syncSourceCode = syncSourceMatch[1];
-        
-        // Verify it has logging statements
-        assert.ok(
-            syncSourceCode.includes('this.logger.info') ||
-            syncSourceCode.includes('logger.info'),
-            'syncSource should have logging for sync behaviors'
-        );
-    });
-    
-    test('RegistryManager should have autoUpdateInstalledBundles private method', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Verify autoUpdateInstalledBundles method exists
-        assert.ok(
-            sourceCode.includes('autoUpdateInstalledBundles'),
-            'RegistryManager should have autoUpdateInstalledBundles method'
-        );
-        
-        // Verify it's a private method
-        assert.ok(
-            sourceCode.includes('private async autoUpdateInstalledBundles') ||
-            sourceCode.includes('private autoUpdateInstalledBundles'),
-            'autoUpdateInstalledBundles should be a private method'
-        );
-    });
-    
-    test('autoUpdateInstalledBundles should filter bundles by sourceId', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the autoUpdateInstalledBundles method
-        const autoUpdateMatch = sourceCode.match(/private async autoUpdateInstalledBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        
-        if (autoUpdateMatch) {
-            const autoUpdateCode = autoUpdateMatch[1];
-            
-            // Verify it filters installed bundles by sourceId
-            assert.ok(
-                autoUpdateCode.includes('filter') &&
-                (autoUpdateCode.includes('sourceId') || autoUpdateCode.includes('sourceId')),
-                'autoUpdateInstalledBundles should filter bundles by sourceId'
-            );
-        }
-    });
-    
-    test('autoUpdateInstalledBundles should call updateBundle for outdated bundles', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the autoUpdateInstalledBundles method
-        const autoUpdateMatch = sourceCode.match(/private async autoUpdateInstalledBundles\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        
-        if (autoUpdateMatch) {
-            const autoUpdateCode = autoUpdateMatch[1];
-            
-            // Verify it calls updateBundle
-            assert.ok(
-                autoUpdateCode.includes('updateBundle') ||
-                autoUpdateCode.includes('this.updateBundle'),
-                'autoUpdateInstalledBundles should call updateBundle'
-            );
-        }
-    });
-    
-    test('syncSource() should cache bundles before applying source-specific behavior', () => {
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Read the RegistryManager source code
-        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
-        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
-        
-        // Find the syncSource method
-        const syncSourceMatch = sourceCode.match(/async syncSource\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
-        assert.ok(syncSourceMatch, 'syncSource method should exist');
-        
-        const syncSourceCode = syncSourceMatch[1];
-        
-        // Verify caching happens
-        assert.ok(
-            syncSourceCode.includes('cacheSourceBundles'),
-            'syncSource should cache bundles'
-        );
-        
-        // Verify caching happens before source-type checks
-        const cacheIndex = syncSourceCode.indexOf('cacheSourceBundles');
-        const typeCheckIndex = syncSourceCode.indexOf("source.type === 'awesome-copilot'");
-        
-        if (typeCheckIndex > -1) {
-            assert.ok(
-                cacheIndex < typeCheckIndex,
-                'Caching should happen before source-type-specific behavior'
-            );
-        }
+        // Mock existing installation with v1.0.17
+        mockStorage.getInstalledBundle.resolves({
+            bundleId: `${bundleId}-1.0.17`,
+            version: '1.0.17',
+            installedAt: new Date().toISOString(),
+            scope: 'user',
+            sourceId: 'test-source',
+            sourceType: 'github',
+            installPath: '/mock/path',
+            manifest: { id: bundleId, name: 'Amadeus', version: '1.0.17' } as any
+        });
+
+        // Mock bundle resolution to return v1.0.15 (downgrade)
+        const mockBundle = {
+            id: `${bundleId}-1.0.15`,
+            name: 'Amadeus Airlines Solutions',
+            version: '1.0.15',
+            description: 'Test',
+            author: 'Test',
+            tags: []
+        };
+
+        sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
+        sandbox.stub(manager as any, 'getSourceForBundle').resolves({ id: 'test-source', type: 'github' });
+        sandbox.stub(manager as any, 'downloadAndInstall').resolves({
+            bundleId: `${bundleId}-1.0.15`,
+            version: '1.0.15',
+            installedAt: new Date().toISOString(),
+            scope: 'user',
+            sourceId: 'test-source',
+            sourceType: 'github'
+        });
+        mockStorage.recordInstallation.resolves();
+
+        // Should allow downgrade
+        await manager.installBundle(bundleId, { scope: 'user', version: '1.0.15' });
+
+        // Verify downgrade was recorded with correct version
+        assert.ok(mockStorage.recordInstallation.called, 'Downgrade should be recorded');
+        const recordedInstallation = mockStorage.recordInstallation.firstCall.args[0];
+        assert.strictEqual(recordedInstallation.version, '1.0.15', 'Should install downgraded version 1.0.15');
+        assert.ok(recordedInstallation.bundleId.includes('1.0.15'), 'Bundle ID should reflect downgraded version');
     });
 });

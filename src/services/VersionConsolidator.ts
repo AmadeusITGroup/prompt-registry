@@ -39,14 +39,29 @@ interface CacheEntry {
  */
 export class VersionConsolidator {
     /**
-     * Maximum cache size to prevent unbounded memory growth.
+     * Default maximum cache size to prevent unbounded memory growth.
      * Assuming ~1KB per bundle version metadata = ~1MB total cache size.
      */
-    private static readonly MAX_CACHE_SIZE = 1000;
+    private static readonly DEFAULT_MAX_CACHE_SIZE = 1000;
     
     private versionCache: Map<string, CacheEntry> = new Map();
+    private accessOrder: string[] = []; // Track access order for efficient LRU
     private logger = Logger.getInstance();
     private sourceTypeResolver?: (sourceId: string) => SourceType;
+    private maxCacheSize: number;
+    
+    /**
+     * Create a new VersionConsolidator
+     * 
+     * @param maxCacheSize - Maximum number of bundle identities to cache (default: 1000)
+     * @throws Error if maxCacheSize is not a positive number
+     */
+    constructor(maxCacheSize: number = VersionConsolidator.DEFAULT_MAX_CACHE_SIZE) {
+        if (!Number.isFinite(maxCacheSize) || maxCacheSize <= 0) {
+            throw new Error('maxCacheSize must be a positive number');
+        }
+        this.maxCacheSize = maxCacheSize;
+    }
     
     /**
      * Set a custom source type resolver function
@@ -141,8 +156,8 @@ export class VersionConsolidator {
     getAllVersions(identity: string): BundleVersion[] {
         const entry = this.versionCache.get(identity);
         if (entry) {
-            // Update last access time for LRU tracking
-            entry.lastAccess = Date.now();
+            // Update access order for LRU tracking
+            this.updateAccessOrder(identity);
             return entry.versions;
         }
         return [];
@@ -152,7 +167,7 @@ export class VersionConsolidator {
      * Get a specific version of a bundle
      * 
      * This is useful when a user wants to install a specific version
-     * instead of the latest version. Updates the last access time for LRU tracking.
+     * instead of the latest version. Updates the access order for LRU tracking.
      * 
      * @param bundleIdentity - Unique identifier for the bundle
      * @param version - Specific version to retrieve
@@ -161,8 +176,8 @@ export class VersionConsolidator {
     getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
         const entry = this.versionCache.get(bundleIdentity);
         if (entry) {
-            // Update last access time for LRU tracking
-            entry.lastAccess = Date.now();
+            // Update access order for LRU tracking
+            this.updateAccessOrder(bundleIdentity);
             return entry.versions.find(v => v.version === version);
         }
         return undefined;
@@ -173,52 +188,75 @@ export class VersionConsolidator {
      */
     clearCache(): void {
         this.versionCache.clear();
+        this.accessOrder = [];
         this.logger.debug('Version cache cleared');
     }
     
     /**
      * Add entry to cache with LRU eviction strategy
      * 
-     * If cache exceeds MAX_CACHE_SIZE, removes the least recently used entry.
+     * If cache exceeds maxCacheSize, removes the least recently used entry.
      * This ensures frequently accessed bundles remain in cache.
+     * Uses an access order array for O(1) LRU eviction.
      * 
      * @param key - Bundle identity key
      * @param versions - Array of bundle versions to cache
      */
     private addToCache(key: string, versions: BundleVersion[]): void {
+        const isUpdate = this.versionCache.has(key);
+        
         // Check if we need to evict an entry (for new entries only)
-        if (this.versionCache.size >= VersionConsolidator.MAX_CACHE_SIZE) {
-            if (!this.versionCache.has(key)) {
-                // Need to evict for new entry
-                this.evictLRU();
-            }
-            // For updates to existing entries, no eviction needed
+        if (!isUpdate && this.versionCache.size >= this.maxCacheSize) {
+            this.evictLRU();
         }
         
-        // Add or update entry with current timestamp
+        // Add or update entry
         this.versionCache.set(key, {
             versions,
             lastAccess: Date.now()
         });
+        
+        // Update access order
+        this.updateAccessOrder(key);
     }
 
     /**
-     * Evict the least recently used entry from cache
+     * Update access order for LRU tracking (O(1) operation)
+     * Moves the key to the end of the access order array (most recently used)
      */
-    private evictLRU(): void {
-        let lruKey: string | null = null;
-        let oldestTime = Infinity;
-        
-        for (const [k, entry] of this.versionCache.entries()) {
-            if (entry.lastAccess < oldestTime) {
-                oldestTime = entry.lastAccess;
-                lruKey = k;
-            }
+    private updateAccessOrder(key: string): void {
+        // Remove key from current position if it exists
+        const index = this.accessOrder.indexOf(key);
+        if (index !== -1) {
+            this.accessOrder.splice(index, 1);
         }
         
+        // Add to end (most recently used)
+        this.accessOrder.push(key);
+    }
+
+    /**
+     * Evict the least recently used entry from cache (O(1) operation)
+     * Uses the access order array to identify the LRU entry
+     */
+    private evictLRU(): void {
+        if (this.accessOrder.length === 0) {
+            return;
+        }
+        
+        // First entry in accessOrder is the least recently used
+        const lruKey = this.accessOrder.shift();
+        
         if (lruKey) {
+            const entry = this.versionCache.get(lruKey);
             this.versionCache.delete(lruKey);
-            this.logger.debug(`Cache size limit reached, evicted LRU entry: ${lruKey} (last access: ${new Date(oldestTime).toISOString()})`);
+            
+            if (entry) {
+                this.logger.debug(
+                    `Cache size limit (${this.maxCacheSize}) reached, evicted LRU entry: ${lruKey} ` +
+                    `(last access: ${new Date(entry.lastAccess).toISOString()})`
+                );
+            }
         }
     }
     

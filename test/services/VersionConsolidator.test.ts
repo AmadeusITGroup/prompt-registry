@@ -367,83 +367,75 @@ suite('VersionConsolidator Unit Tests', () => {
         
         test('should evict least recently used entry when cache is full', async () => {
             // Create a consolidator with a very small cache size for testing
-            // We'll use reflection to set MAX_CACHE_SIZE to 3 for this test
-            const smallConsolidator = new VersionConsolidator();
+            const smallConsolidator = new VersionConsolidator(3);
             
-            // Override MAX_CACHE_SIZE by setting it via prototype
-            // This is a test-only hack to avoid modifying production code
-            (VersionConsolidator as any).MAX_CACHE_SIZE = 3;
+            // Add 3 bundles to fill the cache
+            const bundle1 = [BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build()];
+            const bundle2 = [BundleBuilder.github('owner2', 'repo2').withVersion('1.0.0').build()];
+            const bundle3 = [BundleBuilder.github('owner3', 'repo3').withVersion('1.0.0').build()];
             
-            try {
-                // Add 3 bundles to fill the cache
-                const bundle1 = [BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build()];
-                const bundle2 = [BundleBuilder.github('owner2', 'repo2').withVersion('1.0.0').build()];
-                const bundle3 = [BundleBuilder.github('owner3', 'repo3').withVersion('1.0.0').build()];
-                
-                smallConsolidator.consolidateBundles(bundle1);
-                await new Promise(resolve => setTimeout(resolve, 10));
-                
-                smallConsolidator.consolidateBundles(bundle2);
-                await new Promise(resolve => setTimeout(resolve, 10));
-                
-                smallConsolidator.consolidateBundles(bundle3);
-                await new Promise(resolve => setTimeout(resolve, 10));
-                
-                // All 3 should be in cache
-                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 1);
-                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1);
-                assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1);
-                
-                // Access owner2 and owner3 to make them more recently used
-                await new Promise(resolve => setTimeout(resolve, 10));
-                smallConsolidator.getAllVersions('owner2-repo2');
-                await new Promise(resolve => setTimeout(resolve, 10));
-                smallConsolidator.getAllVersions('owner3-repo3');
-                
-                // Add a 4th bundle - should evict owner1 (least recently used)
-                await new Promise(resolve => setTimeout(resolve, 10));
-                const bundle4 = [BundleBuilder.github('owner4', 'repo4').withVersion('1.0.0').build()];
-                smallConsolidator.consolidateBundles(bundle4);
-                
-                // owner1 should be evicted (LRU)
-                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 0, 'LRU entry should be evicted');
-                
-                // owner2, owner3, and owner4 should still be in cache
-                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Recently used entry should remain');
-                assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1, 'Recently used entry should remain');
-                assert.strictEqual(smallConsolidator.getAllVersions('owner4-repo4').length, 1, 'New entry should be cached');
-            } finally {
-                // Restore original MAX_CACHE_SIZE
-                (VersionConsolidator as any).MAX_CACHE_SIZE = 1000;
-            }
+            smallConsolidator.consolidateBundles(bundle1);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            smallConsolidator.consolidateBundles(bundle2);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            smallConsolidator.consolidateBundles(bundle3);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            // All 3 should be in cache
+            assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 1);
+            assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1);
+            assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1);
+            
+            // Access owner2 and owner3 to make them more recently used
+            await new Promise(resolve => setTimeout(resolve, 10));
+            smallConsolidator.getAllVersions('owner2-repo2');
+            await new Promise(resolve => setTimeout(resolve, 10));
+            smallConsolidator.getAllVersions('owner3-repo3');
+            
+            // Add a 4th bundle - should evict owner1 (least recently used)
+            await new Promise(resolve => setTimeout(resolve, 10));
+            const bundle4 = [BundleBuilder.github('owner4', 'repo4').withVersion('1.0.0').build()];
+            smallConsolidator.consolidateBundles(bundle4);
+            
+            // owner1 should be evicted (LRU)
+            assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 0, 'LRU entry should be evicted');
+            
+            // owner2, owner3, and owner4 should still be in cache
+            assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Recently used entry should remain');
+            assert.strictEqual(smallConsolidator.getAllVersions('owner3-repo3').length, 1, 'Recently used entry should remain');
+            assert.strictEqual(smallConsolidator.getAllVersions('owner4-repo4').length, 1, 'New entry should be cached');
         });
         
         test('should not evict entry when updating existing cache entry', () => {
             // Create a consolidator with small cache
-            const smallConsolidator = new VersionConsolidator();
-            (VersionConsolidator as any).MAX_CACHE_SIZE = 2;
+            const smallConsolidator = new VersionConsolidator(2);
             
-            try {
-                // Add 2 bundles to fill cache
-                const bundle1 = [BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build()];
-                const bundle2 = [BundleBuilder.github('owner2', 'repo2').withVersion('1.0.0').build()];
-                
-                smallConsolidator.consolidateBundles(bundle1);
-                smallConsolidator.consolidateBundles(bundle2);
-                
-                // Update bundle1 with new version (should not trigger eviction)
-                const bundle1Updated = [
-                    BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build(),
-                    BundleBuilder.github('owner1', 'repo1').withVersion('2.0.0').build()
-                ];
-                smallConsolidator.consolidateBundles(bundle1Updated);
-                
-                // Both should still be in cache
-                assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 2, 'Updated entry should have 2 versions');
-                assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Other entry should remain');
-            } finally {
-                (VersionConsolidator as any).MAX_CACHE_SIZE = 1000;
-            }
+            // Add 2 bundles to fill cache
+            const bundle1 = [BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build()];
+            const bundle2 = [BundleBuilder.github('owner2', 'repo2').withVersion('1.0.0').build()];
+            
+            smallConsolidator.consolidateBundles(bundle1);
+            smallConsolidator.consolidateBundles(bundle2);
+            
+            // Update bundle1 with new version (should not trigger eviction)
+            const bundle1Updated = [
+                BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build(),
+                BundleBuilder.github('owner1', 'repo1').withVersion('2.0.0').build()
+            ];
+            smallConsolidator.consolidateBundles(bundle1Updated);
+            
+            // Both should still be in cache
+            assert.strictEqual(smallConsolidator.getAllVersions('owner1-repo1').length, 2, 'Updated entry should have 2 versions');
+            assert.strictEqual(smallConsolidator.getAllVersions('owner2-repo2').length, 1, 'Other entry should remain');
+        });
+        
+        test('should reject invalid cache sizes', () => {
+            assert.throws(() => new VersionConsolidator(0), /positive number/, 'Should reject zero');
+            assert.throws(() => new VersionConsolidator(-1), /positive number/, 'Should reject negative');
+            assert.throws(() => new VersionConsolidator(NaN), /positive number/, 'Should reject NaN');
+            assert.throws(() => new VersionConsolidator(Infinity), /positive number/, 'Should reject Infinity');
         });
         
         test('should handle cache with single-version bundles', () => {
