@@ -16,7 +16,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { promisify } from 'util';
 import * as yaml from 'js-yaml';
 import { Logger } from '../utils/logger';
@@ -47,60 +46,200 @@ export interface CopilotFile {
  */
 export class CopilotSyncService {
     private logger: Logger;
-    private copilotPromptsDir: string;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
-        
-        // Detect which VSCode flavor and get appropriate prompts directory
-        this.copilotPromptsDir = this.getCopilotPromptsDirectory();
     }
 
     /**
      * Get the Copilot prompts directory for current VSCode flavor
+     * Uses the extension's globalStorageUri to dynamically determine the IDE's data directory
+     * 
+     * Supports both standard and profile-based paths:
+     * - Standard: ~/Library/Application Support/<IDE>/User/globalStorage/<publisher>.<extension>
+     * - Profile:  ~/Library/Application Support/<IDE>/User/profiles/<profile-id>/globalStorage/<publisher>.<extension>
+     * 
+     * WORKAROUND: If extension is installed globally but user is in a profile,
+     * we detect the active profile using combined detection methods
      */
     private getCopilotPromptsDirectory(): string {
-        const home = os.homedir();
-        const platform = os.platform();
+        const globalStoragePath = this.context.globalStorageUri.fsPath;
         
-        // Detect VSCode flavor from executable name or environment
-        const product = vscode.env.appName;
+        // Find the User directory by looking for '/User/' or '\User\' in the path
+        const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
         
-        let baseDir: string;
-        
-        // Determine base directory based on OS and VSCode flavor
-        if (platform === 'darwin') {
-            // macOS: ~/Library/Application Support/...
-            if (product.includes('Insiders')) {
-                baseDir = path.join(home, 'Library/Application Support/Code - Insiders');
-            } else if (product.includes('Windsurf')) {
-                baseDir = path.join(home, 'Library/Application Support/Windsurf');
-            } else {
-                // Default to stable VSCode
-                baseDir = path.join(home, 'Library/Application Support/Code');
+        if (userIndex === -1) {
+            // Fallback: Custom user-data-dir without 'User' directory
+            // Navigate up from globalStorage/publisher.extension
+            const baseDir = path.dirname(path.dirname(globalStoragePath));
+            
+            // Check if we're in a profiles structure
+            const profilesMatch = baseDir.match(new RegExp(`profiles${path.sep}([^${path.sep}]+)`));
+            if (profilesMatch) {
+                const profileId = profilesMatch[1];
+                const profileName = this.getActiveProfileName(baseDir) || profileId;
+                this.logger.info(`[CopilotSync] Using profile: ${profileName}`);
+                return path.join(baseDir, 'prompts');
             }
-        } else if (platform === 'win32') {
-            // Windows: %APPDATA%\...
-            const appData = process.env.APPDATA || path.join(home, 'AppData/Roaming');
-            if (product.includes('Insiders')) {
-                baseDir = path.join(appData, 'Code - Insiders');
-            } else if (product.includes('Windsurf')) {
-                baseDir = path.join(appData, 'Windsurf');
-            } else {
-                baseDir = path.join(appData, 'Code');
-            }
-        } else {
-            // Linux/Unix: ~/.config/...
-            if (product.includes('Insiders')) {
-                baseDir = path.join(home, '.config/Code - Insiders');
-            } else if (product.includes('Windsurf')) {
-                baseDir = path.join(home, '.config/Windsurf');
-            } else {
-                baseDir = path.join(home, '.config/Code');
-            }
+            
+            return path.join(baseDir, 'prompts');
         }
         
-        return path.join(baseDir, 'User', 'prompts');
+        // Extract path up to and including 'User'
+        const userDir = globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
+        
+        // Check if this is a profile-based path by looking for '/profiles/' after User
+        // Path structure: .../User/profiles/<profile-id>/globalStorage/...
+        const remainingPath = globalStoragePath.substring(userDir.length);
+        const profilesMatch = remainingPath.match(new RegExp(`^${path.sep}profiles${path.sep}([^${path.sep}]+)`));
+        
+        if (profilesMatch) {
+            // Profile-based path: include the profile directory
+            const profileId = profilesMatch[1];
+            const profileName = this.getActiveProfileName(userDir) || profileId;
+            this.logger.info(`[CopilotSync] Using profile: ${profileName}`);
+            return path.join(userDir, 'profiles', profileId, 'prompts');
+        }
+        
+        // Extension installed globally but user might be in a profile
+        // Use combined detection method (storage.json + filesystem heuristic)
+        const detectedProfile = this.detectActiveProfile(userDir);
+        if (detectedProfile) {
+            this.logger.info(`[CopilotSync] Using profile: ${detectedProfile.name}`);
+            return path.join(userDir, 'profiles', detectedProfile.id, 'prompts');
+        }
+        
+        // Standard path: User/prompts
+        this.logger.info(`[CopilotSync] Using default profile`);
+        return path.join(userDir, 'prompts');
+    }
+
+    /**
+     * Detect active profile using combined workarounds
+     * 
+     * Uses two complementary methods:
+     * 1. storage.json parsing (most reliable when available)
+     * 2. Filesystem heuristic (fallback based on recent activity)
+     * 
+     * Returns profile ID and human-readable name, or null if no profile detected
+     */
+    private detectActiveProfile(userDir: string): { id: string; name: string } | null {
+        try {
+            const storageJsonPath = path.join(userDir, 'globalStorage', 'storage.json');
+            const profilesDir = path.join(userDir, 'profiles');
+            
+            // Check if profiles directory exists
+            if (!fs.existsSync(profilesDir)) {
+                return null;
+            }
+            
+            let profileId: string | null = null;
+            let profileName: string | null = null;
+            
+            // WORKAROUND #1: Try storage.json first (most reliable)
+            if (fs.existsSync(storageJsonPath)) {
+                const storageData = JSON.parse(fs.readFileSync(storageJsonPath, 'utf-8'));
+                const items = storageData?.lastKnownMenubarData?.menus?.Preferences?.items;
+                
+                if (Array.isArray(items)) {
+                    const profilesMenu = items.find((i: any) => i?.id === 'submenuitem.Profiles');
+                    
+                    if (profilesMenu) {
+                        // Extract human-readable name from parent label
+                        // Format: "Profile (MyProfile)" or just "Profile"
+                        const parentLabel: string | undefined = profilesMenu.label;
+                        if (parentLabel) {
+                            const match = parentLabel.match(/\((.+)\)$/);
+                            if (match && match[1] && match[1] !== 'Default') {
+                                profileName = match[1];
+                            }
+                        }
+                        
+                        // Find corresponding profile ID from submenu items
+                        const submenuItems = profilesMenu.submenu?.items;
+                        if (Array.isArray(submenuItems)) {
+                            for (const item of submenuItems) {
+                                if (item?.command?.startsWith('workbench.profiles.actions.profileEntry.')) {
+                                    const candidateId = item.command.replace('workbench.profiles.actions.profileEntry.', '');
+                                    const profileDir = path.join(profilesDir, candidateId);
+                                    if (fs.existsSync(profileDir)) {
+                                        profileId = candidateId;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (profileId) {
+                    this.logger.debug(`[CopilotSync] Profile detected from storage.json: ${profileId}`);
+                    return { id: profileId, name: profileName || profileId };
+                }
+            }
+            
+            // WORKAROUND #2: Fallback to filesystem heuristic
+            // Check profiles directory for recent activity
+            const profiles = fs.readdirSync(profilesDir);
+            
+            for (const candidateId of profiles) {
+                const profileGlobalStorage = path.join(profilesDir, candidateId, 'globalStorage');
+                
+                if (fs.existsSync(profileGlobalStorage)) {
+                    const stats = fs.statSync(profileGlobalStorage);
+                    const ageMinutes = (Date.now() - stats.mtimeMs) / 1000 / 60;
+                    
+                    // If modified in last 5 minutes, likely the active profile
+                    if (ageMinutes < 5) {
+                        this.logger.debug(`[CopilotSync] Profile detected from filesystem heuristic: ${candidateId}`);
+                        return { id: candidateId, name: candidateId };
+                    }
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            // Silent failure - this is a best-effort workaround
+            return null;
+        }
+    }
+
+    /**
+     * Get the active profile display name from storage.json
+     * Returns the human-readable profile name (e.g., "Work", "Personal")
+     * Used for paths that already have a profile ID embedded
+     */
+    private getActiveProfileName(userDir: string): string | null {
+        try {
+            const storageJsonPath = path.join(userDir, 'globalStorage', 'storage.json');
+            
+            if (!fs.existsSync(storageJsonPath)) {
+                return null;
+            }
+            
+            const storageData = JSON.parse(fs.readFileSync(storageJsonPath, 'utf-8'));
+            const items = storageData?.lastKnownMenubarData?.menus?.Preferences?.items;
+            
+            if (!Array.isArray(items)) {
+                return null;
+            }
+            
+            const profilesMenu = items.find((i: any) => i?.id === 'submenuitem.Profiles');
+            
+            // Extract profile name from parent label
+            // Format: "Profile (MyProfile)" or just "Profile"
+            const parentLabel: string | undefined = profilesMenu?.label;
+            if (parentLabel) {
+                const match = parentLabel.match(/\((.+)\)$/);
+                if (match && match[1] && match[1] !== 'Default') {
+                    return match[1];
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            return null;
+        }
     }
 
     /**
@@ -111,7 +250,8 @@ export class CopilotSyncService {
             this.logger.info('Syncing bundles to GitHub Copilot...');
             
             // Ensure Copilot prompts directory exists
-            await this.ensureDirectory(this.copilotPromptsDir);
+            const promptsDir = this.getCopilotPromptsDirectory();
+            await this.ensureDirectory(promptsDir);
             
             // Get all installed bundles
             const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
@@ -145,6 +285,12 @@ export class CopilotSyncService {
     async syncBundle(bundleId: string, bundlePath: string): Promise<void> {
         try {
             this.logger.debug(`Syncing bundle: ${bundleId}`);
+            
+            // Get prompts directory
+            const promptsDir = this.getCopilotPromptsDirectory();
+            
+            // Ensure base Copilot prompts directory exists
+            await this.ensureDirectory(promptsDir);
             
             // Read deployment manifest
             const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
@@ -211,9 +357,10 @@ export class CopilotSyncService {
             type = promptDef.type as CopilotFileType;
         }
         
-        // Create target filename: bundleId-promptId.type.md
-        const targetFileName = `${bundleId}-${promptDef.id}.${type}.md`;
-        const targetPath = path.join(this.copilotPromptsDir, targetFileName);
+        // Create target path: promptId.type.md directly in prompts directory
+        const targetFileName = `${promptDef.id}.${type}.md`;
+        const promptsDir = this.getCopilotPromptsDirectory();
+        const targetPath = path.join(promptsDir, targetFileName);
         
         return {
             bundleId,
@@ -264,43 +411,67 @@ export class CopilotSyncService {
             this.logger.info(`✅ Synced ${file.type}: ${file.name} → ${path.basename(file.targetPath)}`);
             
         } catch (error) {
-            this.logger.error(`Failed to create Copilot file: ${file.targetPath}`, error as Error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            this.logger.error(`Failed to create Copilot file: ${file.targetPath}`, {
+                message: errorMessage,
+                stack: errorStack,
+                bundleId: file.bundleId,
+                fileType: file.type
+            } as any);
         }
     }
 
     /**
      * Remove synced files for a bundle
+     * Since we use a flat structure, we need to read the bundle's manifest to know which files to remove
      */
     async unsyncBundle(bundleId: string): Promise<void> {
         try {
             this.logger.debug(`Removing Copilot files for bundle: ${bundleId}`);
             
-            if (!fs.existsSync(this.copilotPromptsDir)) {
+            const promptsDir = this.getCopilotPromptsDirectory();
+            if (!fs.existsSync(promptsDir)) {
                 return;
             }
             
-            // List all files in Copilot prompts directory
-            const files = await readdir(this.copilotPromptsDir);
+            // Read the bundle's manifest to find which files were synced
+            const bundlePath = path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);
+            const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
             
-            // Remove files that match our bundle ID pattern
-            for (const file of files) {
-                if (file.startsWith(`${bundleId}-`)) {
-                    const filePath = path.join(this.copilotPromptsDir, file);
-                    
-                    // Check if it's a symlink or regular file
-                    const stats = await lstat(filePath);
+            if (!fs.existsSync(manifestPath)) {
+                this.logger.warn(`No manifest found for bundle: ${bundleId}, cannot determine files to remove`);
+                return;
+            }
+            
+            const manifestContent = await readFile(manifestPath, 'utf-8');
+            const manifest = yaml.load(manifestContent) as any;
+            
+            if (!manifest.prompts || manifest.prompts.length === 0) {
+                this.logger.debug(`Bundle ${bundleId} has no prompts to unsync`);
+                return;
+            }
+            
+            // Remove each synced file
+            let removedCount = 0;
+            for (const promptDef of manifest.prompts) {
+                const copilotFile = this.determineCopilotFileType(promptDef, '', bundleId);
+                
+                if (fs.existsSync(copilotFile.targetPath)) {
+                    const stats = await lstat(copilotFile.targetPath);
                     
                     // Only remove if it's a symlink (to avoid deleting user's custom files)
                     if (stats.isSymbolicLink()) {
-                        await unlink(filePath);
-                        this.logger.debug(`Removed: ${file}`);
+                        await unlink(copilotFile.targetPath);
+                        this.logger.debug(`Removed: ${path.basename(copilotFile.targetPath)}`);
+                        removedCount++;
                     } else {
-                        this.logger.warn(`Skipping non-symlink file: ${file}`);
+                        this.logger.warn(`Skipping non-symlink file: ${path.basename(copilotFile.targetPath)}`);
                     }
                 }
             }
             
-            this.logger.info(`✅ Removed Copilot files for bundle: ${bundleId}`);
+            this.logger.info(`✅ Removed ${removedCount} Copilot file(s) for bundle: ${bundleId}`);
             
         } catch (error) {
             this.logger.error(`Failed to unsync bundle ${bundleId}`, error as Error);
@@ -314,11 +485,10 @@ export class CopilotSyncService {
         try {
             this.logger.info('Cleaning all Copilot synced files...');
             
-            if (!fs.existsSync(this.copilotPromptsDir)) {
+            const promptsDir = this.getCopilotPromptsDirectory();
+            if (!fs.existsSync(promptsDir)) {
                 return;
             }
-            
-            const files = await readdir(this.copilotPromptsDir);
             
             // Get list of all bundle IDs from our storage
             const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
@@ -350,28 +520,32 @@ export class CopilotSyncService {
         syncedFiles: number;
         files: string[];
     }> {
+        const promptsDir = this.getCopilotPromptsDirectory();
         const status = {
-            copilotDir: this.copilotPromptsDir,
-            dirExists: fs.existsSync(this.copilotPromptsDir),
+            copilotDir: promptsDir,
+            dirExists: fs.existsSync(promptsDir),
             syncedFiles: 0,
             files: [] as string[]
         };
         
         if (status.dirExists) {
-            const files = await readdir(this.copilotPromptsDir);
+            const entries = await readdir(promptsDir);
             
-            // Get bundle IDs
-            const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
-            const bundleIds = fs.existsSync(bundlesDir) ? await readdir(bundlesDir) : [];
-            
-            // Count files that belong to our bundles
-            for (const file of files) {
-                for (const bundleId of bundleIds) {
-                    if (file.startsWith(`${bundleId}-`)) {
+            // Count symlinks (our synced files) in the prompts directory
+            for (const entry of entries) {
+                const entryPath = path.join(promptsDir, entry);
+                
+                try {
+                    const entryStat = await lstat(entryPath);
+                    
+                    // Only count symlinks (files we created)
+                    if (entryStat.isSymbolicLink()) {
                         status.syncedFiles++;
-                        status.files.push(file);
-                        break;
+                        status.files.push(entry);
                     }
+                } catch (error) {
+                    // Skip files we can't stat
+                    this.logger.debug(`Could not stat file: ${entry}`);
                 }
             }
         }
