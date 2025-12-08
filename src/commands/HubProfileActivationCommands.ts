@@ -79,7 +79,8 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 
             selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: `Select a profile to activate from ${activeHubName}`,
-                title: `Activate Profile - ${activeHubName}`
+                title: `Activate Profile - ${activeHubName}`,
+                ignoreFocusOut: true
             });
 
             if (!selectedProfile) {
@@ -163,7 +164,8 @@ export async function deactivateHubProfile(hubManager: HubManager, item?: any): 
             ],
             {
                 placeHolder: `Deactivate profile "${profile.name}" from ${activeHubName}?`,
-                title: 'Deactivate Profile'
+                title: 'Deactivate Profile',
+                ignoreFocusOut: true
             }
         );
 
@@ -235,7 +237,8 @@ export async function showActiveProfiles(hubManager: HubManager): Promise<void> 
             ],
             {
                 placeHolder: 'Active profile (select to deactivate)',
-                title: `Active Profile - ${activeHubName}`
+                title: `Active Profile - ${activeHubName}`,
+                ignoreFocusOut: true
             }
         );
 

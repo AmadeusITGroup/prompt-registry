@@ -52,6 +52,7 @@ export class CreateCollectionCommand {
             const collectionId = await vscode.window.showInputBox({
                 prompt: 'Collection ID (lowercase-with-hyphens)',
                 placeHolder: 'my-collection',
+                ignoreFocusOut: true,
                 validateInput: (value) => {
                     if (!value || value.trim().length === 0) {
                         return 'ID is required';
@@ -87,7 +88,8 @@ export class CreateCollectionCommand {
             const collectionName = await vscode.window.showInputBox({
                 prompt: 'Collection name',
                 placeHolder: defaultName,
-                value: defaultName
+                value: defaultName,
+                ignoreFocusOut: true
             });
 
             if (collectionName === undefined) {
@@ -98,7 +100,8 @@ export class CreateCollectionCommand {
             const description = await vscode.window.showInputBox({
                 prompt: 'Collection description',
                 placeHolder: 'A collection of prompts, instructions, and chat modes',
-                value: 'A collection of prompts, instructions, and chat modes.'
+                value: 'A collection of prompts, instructions, and chat modes.',
+                ignoreFocusOut: true
             });
 
             if (description === undefined) {
@@ -109,7 +112,8 @@ export class CreateCollectionCommand {
             const tagsInput = await vscode.window.showInputBox({
                 prompt: 'Tags (comma-separated)',
                 placeHolder: 'example',
-                value: 'example'
+                value: 'example',
+                ignoreFocusOut: true
             });
 
             if (tagsInput === undefined) {

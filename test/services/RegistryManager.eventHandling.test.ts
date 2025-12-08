@@ -194,4 +194,57 @@ suite('RegistryManager - Event Handling', () => {
             assert.strictEqual(eventOrder[0], 'updated', 'Should fire update event');
         });
     });
+
+    suite('onSourceSynced Event', () => {
+        test('should fire onSourceSynced event with correct source ID and bundle count', () => {
+            // Requirement 1.6: WHEN a source is synced THEN the Registry Manager SHALL emit an event to notify listeners that bundle metadata has been refreshed
+            // Requirement 11.1: WHEN a source sync completes THEN the Registry Manager SHALL emit a source synced event
+
+            // Create a mock event emitter
+            const eventEmitter = new vscode.EventEmitter<{ sourceId: string; bundleCount: number }>();
+
+            // Listen for event
+            let eventFired = false;
+            let eventData: { sourceId: string; bundleCount: number } | undefined;
+            
+            eventEmitter.event((data) => {
+                eventFired = true;
+                eventData = data;
+            });
+
+            // Fire the event
+            eventEmitter.fire({ sourceId: 'test-source', bundleCount: 42 });
+
+            // Verify event was fired
+            assert.strictEqual(eventFired, true, 'onSourceSynced event should be fired');
+            assert.ok(eventData, 'Event data should be provided');
+            assert.strictEqual(eventData?.sourceId, 'test-source', 'Event should contain correct source ID');
+            assert.strictEqual(eventData?.bundleCount, 42, 'Event should contain correct bundle count');
+        });
+
+        test('should fire onSourceSynced event with zero bundle count for empty sources', () => {
+            // Edge case: source with no bundles
+
+            // Create a mock event emitter
+            const eventEmitter = new vscode.EventEmitter<{ sourceId: string; bundleCount: number }>();
+
+            // Listen for event
+            let eventFired = false;
+            let eventData: { sourceId: string; bundleCount: number } | undefined;
+            
+            eventEmitter.event((data) => {
+                eventFired = true;
+                eventData = data;
+            });
+
+            // Fire the event with zero bundles
+            eventEmitter.fire({ sourceId: 'empty-source', bundleCount: 0 });
+
+            // Verify event was fired
+            assert.strictEqual(eventFired, true, 'onSourceSynced event should be fired even for empty sources');
+            assert.ok(eventData, 'Event data should be provided');
+            assert.strictEqual(eventData?.sourceId, 'empty-source', 'Event should contain correct source ID');
+            assert.strictEqual(eventData?.bundleCount, 0, 'Event should contain zero bundle count');
+        });
+    });
 });

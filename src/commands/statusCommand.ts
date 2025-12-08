@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { UpdateManager } from '../services/updateManager';
+import { ExtensionUpdateManager } from '../services/updateManager';
 import { InstallationManager } from '../services/installationManager';
 import { Logger } from '../utils/logger';
 
@@ -8,12 +8,12 @@ import { Logger } from '../utils/logger';
  */
 export class StatusCommand {
     private readonly logger: Logger;
-    private readonly updateManager: UpdateManager;
+    private readonly updateManager: ExtensionUpdateManager;
     private readonly installationManager: InstallationManager;
 
     constructor() {
         this.logger = Logger.getInstance();
-        this.updateManager = UpdateManager.getInstance();
+        this.updateManager = ExtensionUpdateManager.getInstance();
         this.installationManager = InstallationManager.getInstance();
     }
 

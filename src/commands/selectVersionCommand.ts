@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GitHubService } from '../services/githubService';
 import { Logger } from '../utils/logger';
-import { Notifications } from '../ui/notifications';
+import { ExtensionNotifications } from '../notifications/ExtensionNotifications';
 
 /**
  * Command to select and install a specific version of Prompt Registry
@@ -9,7 +9,7 @@ import { Notifications } from '../ui/notifications';
 export async function selectVersionCommand(): Promise<void> {
     const logger = Logger.getInstance();
     const githubService = GitHubService.getInstance();
-    const notifications = Notifications.getInstance();
+    const notifications = ExtensionNotifications.getInstance();
 
     try {
         logger.info('Fetching available versions...');

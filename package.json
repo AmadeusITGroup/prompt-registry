@@ -189,6 +189,26 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.manualCheckForUpdates",
+        "title": "Check for Updates (Manual)",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.enableAutoUpdate",
+        "title": "Enable Auto-Update",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.disableAutoUpdate",
+        "title": "Disable Auto-Update",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.updateAllBundles",
+        "title": "Update All Bundles",
+        "category": "Prompt Registry"
+      },
+      {
         "command": "promptRegistry.uninstallBundle",
         "title": "Uninstall Bundle",
         "category": "Prompt Registry"
@@ -469,17 +489,37 @@
         },
         {
           "command": "promptRegistry.updateBundle",
-          "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_auto_disabled || viewItem == installed_bundle_auto_enabled)",
           "group": "bundleActions@2"
         },
         {
+          "command": "promptRegistry.updateBundle",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_updatable_auto_disabled || viewItem == installed_bundle_updatable_auto_enabled)",
+          "group": "bundleActions@1"
+        },
+        {
           "command": "promptRegistry.checkBundleUpdates",
-          "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_auto_disabled || viewItem == installed_bundle_auto_enabled)",
           "group": "bundleActions@3"
         },
         {
+          "command": "promptRegistry.enableAutoUpdate",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_auto_disabled || viewItem == installed_bundle_updatable_auto_disabled)",
+          "group": "autoUpdate@1"
+        },
+        {
+          "command": "promptRegistry.disableAutoUpdate",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_auto_enabled || viewItem == installed_bundle_updatable_auto_enabled)",
+          "group": "autoUpdate@1"
+        },
+        {
           "command": "promptRegistry.uninstallBundle",
-          "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_auto_disabled || viewItem == installed_bundle_auto_enabled)",
+          "group": "bundleActions@4"
+        },
+        {
+          "command": "promptRegistry.uninstallBundle",
+          "when": "view == promptRegistryExplorer && (viewItem == installed_bundle_updatable_auto_disabled || viewItem == installed_bundle_updatable_auto_enabled)",
           "group": "bundleActions@4"
         },
         {
@@ -571,6 +611,43 @@
           "type": "string",
           "default": "latest",
           "description": "Default version to install (use 'latest' for latest release or specific version like 'v1.0.0')"
+        },
+        "promptregistry.updateCheck.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic update checks for installed bundles"
+        },
+        "promptregistry.updateCheck.frequency": {
+          "type": "string",
+          "enum": [
+            "daily",
+            "weekly",
+            "manual"
+          ],
+          "default": "daily",
+          "description": "How often to check for bundle updates"
+        },
+        "promptregistry.updateCheck.notificationPreference": {
+          "type": "string",
+          "enum": [
+            "all",
+            "critical",
+            "none"
+          ],
+          "default": "all",
+          "description": "Which updates to show notifications for"
+        },
+        "promptregistry.updateCheck.autoUpdate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically install updates in the background"
+        },
+        "promptregistry.updateCheck.cacheTTL": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 60000,
+          "maximum": 3600000,
+          "description": "Cache time-to-live for update check results in milliseconds (default: 5 minutes, min: 1 minute, max: 1 hour)"
         }
       }
     }
@@ -586,7 +663,7 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "npm run test:all",
-    "test:one": "npm run compile-tests && npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js --timeout 5000",
+    "test:one": "node scripts/run-single-test.js",
     "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,commands,services,utils}/**/*.test.js' --timeout 5000",
     "test:integration": "npm run compile-tests && node ./test/runExtensionTests.js",
     "test:all": "npm run compile-tests && npm run test:unit && npm run test:integration",

@@ -77,7 +77,8 @@ export class InstallSpecificVersionCommand {
 
             const selectedItem = await vscode.window.showQuickPick(versionItems, {
                 placeHolder: 'Select a version to install',
-                title: 'Choose Prompt Registry Version'
+                title: 'Choose Prompt Registry Version',
+                ignoreFocusOut: true
             });
 
             if (!selectedItem) {
@@ -93,7 +94,8 @@ export class InstallSpecificVersionCommand {
 
             const selectedScope = await vscode.window.showQuickPick(scopeItems, {
                 placeHolder: 'Select installation scope',
-                title: 'Installation Scope'
+                title: 'Installation Scope',
+                ignoreFocusOut: true
             });
 
             if (!selectedScope) {

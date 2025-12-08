@@ -727,7 +727,7 @@ export class ProfileCommands {
      */
     private async changeIcon(profileId: string): Promise<void> {
         const icons = ['🚀', '📦', '💻', '🎨', '🔬', '📊', '🏗️', '🎯', '⚡', '🌟', '🔥', '💡', '🎪', '🎭'];
-        
+
         const selected = await vscode.window.showQuickPick(
             icons.map(icon => ({ label: icon, description: icon })),
             {
@@ -775,7 +775,7 @@ export class ProfileCommands {
             // Remove bundles
             const profiles = await this.registryManager.listProfiles();
             const profile = profiles.find(p => p.id === profileId);
-            
+
             if (profile && profile.bundles.length > 0) {
                 const bundleDetails = await Promise.all(
                     profile.bundles.map(async pb => {
@@ -813,3 +813,5 @@ export class ProfileCommands {
         }
     }
 }
+
+

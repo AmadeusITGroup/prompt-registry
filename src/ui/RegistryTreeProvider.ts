@@ -8,6 +8,8 @@ import { RegistryManager } from '../services/RegistryManager';
 import { HubManager } from '../services/HubManager';
 import { RegistrySource, Profile, Bundle, InstalledBundle } from '../types/registry';
 import { Logger } from '../utils/logger';
+import { UpdateCheckResult } from '../services/UpdateCache';
+import { UI_CONSTANTS } from '../utils/constants';
 
 /**
  * Tree item types
@@ -218,41 +220,49 @@ export class RegistryTreeItem extends vscode.TreeItem {
  * Registry Tree Data Provider
  */
 export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTreeItem> {
-    private _onDidChangeTreeData = new vscode.EventEmitter<RegistryTreeItem | undefined | null>();
+    private readonly _onDidChangeTreeData = new vscode.EventEmitter<RegistryTreeItem | undefined | null>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private logger: Logger;
+    private readonly logger: Logger;
+    private readonly availableUpdates: Map<string, UpdateCheckResult> = new Map();
+    private sourceSyncDebounceTimer?: NodeJS.Timeout;
+    private disposables: vscode.Disposable[] = [];
 
     constructor(
-        private registryManager: RegistryManager,
-        private hubManager: HubManager
+        private readonly registryManager: RegistryManager,
+        private readonly hubManager: HubManager
     ) {
         this.logger = Logger.getInstance();
         
         // Listen to registry events and refresh tree
-        registryManager.onBundleInstalled(() => this.refresh());
-        registryManager.onBundleUninstalled(() => this.refresh());
-        registryManager.onBundleUpdated(() => this.refresh());
-        registryManager.onBundlesInstalled(() => this.refresh());
-        registryManager.onBundlesUninstalled(() => this.refresh());
+        this.disposables.push(
+            registryManager.onBundleInstalled(() => this.refresh()),
+            registryManager.onBundleUninstalled(() => this.refresh()),
+            registryManager.onBundleUpdated(() => this.refresh()),
+            registryManager.onBundlesInstalled(() => this.refresh()),
+            registryManager.onBundlesUninstalled(() => this.refresh()),
 
-        // Listen to profile events
-        registryManager.onProfileActivated(() => this.refresh());
-        registryManager.onProfileDeactivated(() => this.refresh());
-        registryManager.onProfileCreated(() => this.refresh());
-        registryManager.onProfileUpdated(() => this.refresh());
-        registryManager.onProfileDeleted(() => this.refresh());
+            // Profile events
+            registryManager.onProfileActivated(() => this.refresh()),
+            registryManager.onProfileDeactivated(() => this.refresh()),
+            registryManager.onProfileCreated(() => this.refresh()),
+            registryManager.onProfileUpdated(() => this.refresh()),
+            registryManager.onProfileDeleted(() => this.refresh()),
 
-        // Listen to source events
-        registryManager.onSourceAdded(() => this.refresh());
-        registryManager.onSourceRemoved(() => this.refresh());
-        registryManager.onSourceUpdated(() => this.refresh());
+            // Source events
+            registryManager.onSourceAdded(() => this.refresh()),
+            registryManager.onSourceRemoved(() => this.refresh()),
+            registryManager.onSourceUpdated(() => this.refresh()),
+            registryManager.onSourceSynced((event) => this.handleSourceSynced(event)),
+
+            // Auto-update preference changes
+            registryManager.onAutoUpdatePreferenceChanged(() => this.refresh()),
         
-        // Listen to hub events
-        hubManager.onHubImported(() => this.refresh());
-        hubManager.onHubDeleted(() => this.refresh());
-        hubManager.onHubSynced(() => this.refresh());
-        
+            // Hub events
+            hubManager.onHubImported(() => this.refresh()),
+            hubManager.onHubDeleted(() => this.refresh()),
+            hubManager.onHubSynced(() => this.refresh())
+        );
     }
 
     /**
@@ -260,6 +270,117 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
      */
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
+    }
+
+    /**
+     * Handle source synced event with debouncing
+     * Debounces refresh calls to prevent excessive updates when multiple sources sync
+     */
+    private handleSourceSynced(event: { sourceId: string; bundleCount: number }): void {
+        this.logger.debug(`Source synced: ${event.sourceId} (${event.bundleCount} bundles)`);
+
+        // Clear existing timer
+        if (this.sourceSyncDebounceTimer) {
+            clearTimeout(this.sourceSyncDebounceTimer);
+        }
+
+        // Set new timer with shared debounce delay
+        this.sourceSyncDebounceTimer = setTimeout(() => {
+            this.logger.debug('Refreshing tree view after source sync');
+            this.refresh();
+        }, UI_CONSTANTS.SOURCE_SYNC_DEBOUNCE_MS);
+    }
+
+    /**
+     * Dispose of resources
+     */
+    dispose(): void {
+        // Clear debounce timer
+        if (this.sourceSyncDebounceTimer) {
+            clearTimeout(this.sourceSyncDebounceTimer);
+        }
+
+        // Dispose all event listeners
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
+    }
+
+    /**
+     * Update tree view when updates are detected
+     * Stores update information and refreshes the tree
+     */
+    onUpdatesDetected(updates: UpdateCheckResult[]): void {
+        this.logger.debug(`Updates detected for ${updates.length} bundles`);
+
+        // Clear existing updates
+        this.availableUpdates.clear();
+
+        // Store new updates
+        for (const update of updates) {
+            this.availableUpdates.set(update.bundleId, update);
+        }
+
+        // Refresh tree to show update indicators
+        this.refresh();
+    }
+
+    /**
+     * Check if a bundle has an available update
+     */
+    private hasUpdate(bundleId: string): boolean {
+        return this.availableUpdates.has(bundleId);
+    }
+
+    /**
+     * Get update information for a bundle
+     */
+    private getUpdateInfo(bundleId: string): UpdateCheckResult | undefined {
+        return this.availableUpdates.get(bundleId);
+    }
+
+    /**
+     * Map bundle update/auto-update state to tree icon prefix and context value
+     */
+    private getBundleStatusPresentation(hasUpdate: boolean, autoUpdateEnabled: boolean): {
+        prefix: string;
+        contextValue: string;
+    } {
+        let prefix = '✓';
+
+        if (hasUpdate) {
+            prefix = '⬆️';
+        } else if (autoUpdateEnabled) {
+            prefix = '🔄';
+        }
+
+        let contextValue: string;
+        if (hasUpdate && autoUpdateEnabled) {
+            contextValue = 'installed_bundle_updatable_auto_enabled';
+        } else if (hasUpdate && !autoUpdateEnabled) {
+            contextValue = 'installed_bundle_updatable_auto_disabled';
+        } else if (!hasUpdate && autoUpdateEnabled) {
+            contextValue = 'installed_bundle_auto_enabled';
+        } else {
+            contextValue = 'installed_bundle_auto_disabled';
+        }
+
+        return { prefix, contextValue };
+    }
+
+    /**
+     * Set version display for tree item with update information
+     * Shows both installed and available versions when update exists
+     */
+    private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string): void {
+        const updateInfo = this.getUpdateInfo(bundleId);
+
+        if (updateInfo) {
+            // Show both versions when update is available
+            treeItem.description = `v${currentVersion} → v${updateInfo.latestVersion}`;
+        } else {
+            // Show only current version
+            treeItem.description = `v${currentVersion}`;
+        }
     }
 
     /**
@@ -397,7 +518,8 @@ case TreeItemType.PROFILES_ROOT:
                     )
                 );
             } catch (error) {
-                // Bundle not found
+                // Bundle not found in registry - display with warning
+                this.logger.debug(`Bundle '${profileBundle.id}' not found in registry`, error as Error);
                 items.push(
                     new RegistryTreeItem(
                         `⚠️  ${profileBundle.id} (not found)`,
@@ -420,32 +542,70 @@ case TreeItemType.PROFILES_ROOT:
             const installed = await this.registryManager.listInstalledBundles();
             const items: RegistryTreeItem[] = [];
 
+            // Get auto-update service to check auto-update status
+            const autoUpdateService = this.registryManager.autoUpdateService;
+
+            // Preload auto-update preferences once per refresh
+            const autoUpdatePreferences = autoUpdateService
+                ? await autoUpdateService.getAllAutoUpdatePreferences()
+                : {};
+
             for (const bundle of installed) {
                 try {
                     const details = await this.registryManager.getBundleDetails(bundle.bundleId);
                     
-                    // Check if update available
-                    const hasUpdate = details.version !== bundle.version;
-                    const prefix = hasUpdate ? '⚠️ ' : '✓';
+                    // Check if update available from our tracked updates
+                    const updateInfo = this.getUpdateInfo(bundle.bundleId);
+                    const hasUpdate = updateInfo !== undefined;
                     
-                    items.push(
-                        new RegistryTreeItem(
-                            `${prefix} ${details.name}`,
-                            TreeItemType.INSTALLED_BUNDLE,
-                            bundle,
-                            vscode.TreeItemCollapsibleState.None
-                        )
+                    // Resolve auto-update state from preloaded preferences
+                    const autoUpdateEnabled = autoUpdatePreferences[bundle.bundleId] ?? false;
+
+                    const { prefix, contextValue } = this.getBundleStatusPresentation(
+                        hasUpdate,
+                        autoUpdateEnabled
                     );
+
+                    const treeItem = new RegistryTreeItem(
+                        `${prefix} ${details.name}`,
+                        TreeItemType.INSTALLED_BUNDLE,
+                        bundle,
+                        vscode.TreeItemCollapsibleState.None
+                    );
+
+                    // Set version display with update information
+                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
+
+                    // Set context value to enable/disable update menu option and auto-update toggle
+                    treeItem.contextValue = contextValue;
+
+                    items.push(treeItem);
                 } catch (error) {
-                    // Bundle details not available
-                    items.push(
-                        new RegistryTreeItem(
-                            `✓ ${bundle.bundleId}`,
-                            TreeItemType.INSTALLED_BUNDLE,
-                            bundle,
-                            vscode.TreeItemCollapsibleState.None
-                        )
+                    // Bundle details not available - fall back to ID display
+                    this.logger.debug(`Could not get details for bundle '${bundle.bundleId}'`, error as Error);
+                    const updateInfo = this.getUpdateInfo(bundle.bundleId);
+                    const hasUpdate = updateInfo !== undefined;
+
+                    const autoUpdateEnabled = autoUpdatePreferences[bundle.bundleId] ?? false;
+
+                    const { prefix, contextValue } = this.getBundleStatusPresentation(
+                        hasUpdate,
+                        autoUpdateEnabled
                     );
+
+                    const treeItem = new RegistryTreeItem(
+                        `${prefix} ${bundle.bundleId}`,
+                        TreeItemType.INSTALLED_BUNDLE,
+                        bundle,
+                        vscode.TreeItemCollapsibleState.None
+                    );
+
+                    // Set version display with update information
+                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
+
+                    treeItem.contextValue = contextValue;
+
+                    items.push(treeItem);
                 }
             }
 

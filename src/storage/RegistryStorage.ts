@@ -463,4 +463,43 @@ export class RegistryStorage {
         // Clear all caches
         await this.clearAllCaches();
     }
+
+    // ===== Update Preferences Management =====
+
+    /**
+     * Bundle update preferences
+     */
+    private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
+
+    /**
+     * Get all update preferences
+     */
+    async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
+        const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
+            this.UPDATE_PREFERENCES_KEY,
+            {}
+        );
+        return prefs;
+    }
+
+    /**
+     * Set update preference for a specific bundle
+     */
+    async setUpdatePreference(bundleId: string, autoUpdate: boolean): Promise<void> {
+        const prefs = await this.getUpdatePreferences();
+        prefs[bundleId] = {
+            autoUpdate,
+            lastChecked: new Date().toISOString()
+        };
+        await this.context.globalState.update(this.UPDATE_PREFERENCES_KEY, prefs);
+    }
+
+    /**
+     * Get update preference for a specific bundle
+     * Returns false if no preference is set
+     */
+    async getUpdatePreference(bundleId: string): Promise<boolean> {
+        const prefs = await this.getUpdatePreferences();
+        return prefs[bundleId]?.autoUpdate ?? false;
+    }
 }

@@ -6,6 +6,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as sinon from 'sinon';
+import { RegistryStorage } from '../../src/storage/RegistryStorage';
 
 suite('RegistryStorage', () => {
     let sandbox: sinon.SinonSandbox;
@@ -371,6 +372,163 @@ suite('RegistryStorage', () => {
 
             assert.ok(data);
             assert.ok(data.version);
+        });
+    });
+
+    suite('Update Preferences', () => {
+        test('should return empty object when no preferences are set', async () => {
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns({}),
+                    update: sandbox.stub().resolves(),
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            const prefs = await storage.getUpdatePreferences();
+
+            assert.deepStrictEqual(prefs, {});
+        });
+
+        test('should return all update preferences', async () => {
+            const mockPrefs = {
+                'bundle-1': { autoUpdate: true, lastChecked: '2024-01-01T00:00:00.000Z' },
+                'bundle-2': { autoUpdate: false, lastChecked: '2024-01-02T00:00:00.000Z' },
+            };
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: sandbox.stub().resolves(),
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            const prefs = await storage.getUpdatePreferences();
+
+            assert.deepStrictEqual(prefs, mockPrefs);
+            assert.strictEqual(prefs['bundle-1'].autoUpdate, true);
+            assert.strictEqual(prefs['bundle-2'].autoUpdate, false);
+        });
+
+        test('should set update preference for a bundle', async () => {
+            const mockPrefs = {};
+            const updateStub = sandbox.stub().resolves();
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: updateStub,
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            await storage.setUpdatePreference('bundle-1', true);
+
+            assert.ok(updateStub.calledOnce);
+            const [key, value] = updateStub.firstCall.args;
+            assert.strictEqual(key, 'bundleUpdatePreferences');
+            assert.strictEqual(value['bundle-1'].autoUpdate, true);
+            assert.ok(value['bundle-1'].lastChecked);
+        });
+
+        test('should update existing preference for a bundle', async () => {
+            const mockPrefs = {
+                'bundle-1': { autoUpdate: false, lastChecked: '2024-01-01T00:00:00.000Z' },
+            };
+            const updateStub = sandbox.stub().resolves();
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: updateStub,
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            await storage.setUpdatePreference('bundle-1', true);
+
+            assert.ok(updateStub.calledOnce);
+            const [key, value] = updateStub.firstCall.args;
+            assert.strictEqual(key, 'bundleUpdatePreferences');
+            assert.strictEqual(value['bundle-1'].autoUpdate, true);
+            assert.notStrictEqual(value['bundle-1'].lastChecked, '2024-01-01T00:00:00.000Z');
+        });
+
+        test('should get update preference for a specific bundle', async () => {
+            const mockPrefs = {
+                'bundle-1': { autoUpdate: true, lastChecked: '2024-01-01T00:00:00.000Z' },
+                'bundle-2': { autoUpdate: false, lastChecked: '2024-01-02T00:00:00.000Z' },
+            };
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: sandbox.stub().resolves(),
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            const pref1 = await storage.getUpdatePreference('bundle-1');
+            const pref2 = await storage.getUpdatePreference('bundle-2');
+
+            assert.strictEqual(pref1, true);
+            assert.strictEqual(pref2, false);
+        });
+
+        test('should return false for bundle with no preference set', async () => {
+            const mockPrefs = {
+                'bundle-1': { autoUpdate: true, lastChecked: '2024-01-01T00:00:00.000Z' },
+            };
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: sandbox.stub().resolves(),
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            const pref = await storage.getUpdatePreference('bundle-nonexistent');
+
+            assert.strictEqual(pref, false);
+        });
+
+        test('should persist preference with timestamp', async () => {
+            const mockPrefs = {};
+            const updateStub = sandbox.stub().resolves();
+            const beforeTime = new Date().toISOString();
+
+            const mockContext = {
+                globalState: {
+                    get: sandbox.stub().returns(mockPrefs),
+                    update: updateStub,
+                },
+                globalStorageUri: { fsPath: testStoragePath },
+            } as any;
+
+            const storage = new RegistryStorage(mockContext);
+
+            await storage.setUpdatePreference('bundle-1', true);
+
+            const afterTime = new Date().toISOString();
+            const [, value] = updateStub.firstCall.args;
+            const timestamp = value['bundle-1'].lastChecked;
+
+            assert.ok(timestamp >= beforeTime);
+            assert.ok(timestamp <= afterTime);
         });
     });
 });

@@ -170,7 +170,7 @@ export class AddResourceCommand {
                 description: f.uri.fsPath,
                 folder: f
             })),
-            { placeHolder: 'Select workspace folder' }
+            { placeHolder: 'Select workspace folder', ignoreFocusOut: true }
         );
 
         return selected?.folder.uri.fsPath;
@@ -189,7 +189,8 @@ export class AddResourceCommand {
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select resource type to add',
             matchOnDescription: true,
-            matchOnDetail: true
+            matchOnDetail: true,
+            ignoreFocusOut: true
         });
 
         return selected ? (selected as any).type : undefined;
@@ -199,6 +200,7 @@ export class AddResourceCommand {
         return await vscode.window.showInputBox({
             prompt: 'Enter resource name',
             placeHolder: 'e.g., Code Review Helper',
+            ignoreFocusOut: true,
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
                     return 'Resource name is required';
@@ -215,6 +217,7 @@ export class AddResourceCommand {
         return await vscode.window.showInputBox({
             prompt: 'Enter resource description',
             placeHolder: 'e.g., Helps review code for best practices and potential issues',
+            ignoreFocusOut: true,
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
                     return 'Description is required';
@@ -232,6 +235,7 @@ export class AddResourceCommand {
         return await vscode.window.showInputBox({
             prompt: 'Enter author name',
             placeHolder: 'Your name',
+            ignoreFocusOut: true,
             value: gitConfig,
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
@@ -281,7 +285,7 @@ export class AddResourceCommand {
                     label: f,
                     description: path.join('collections', f)
                 })),
-                { placeHolder: 'Select collection to add resource to' }
+                { placeHolder: 'Select collection to add resource to', ignoreFocusOut: true }
             );
 
             if (!selected) {
