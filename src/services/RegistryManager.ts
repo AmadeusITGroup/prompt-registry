@@ -467,6 +467,27 @@ export class RegistryManager {
         return await adapter.validate();
     }
 
+    /**
+     * Force authentication for all sources
+     */
+    async forceAuthentication(): Promise<void> {
+        this.logger.info('Forcing authentication for all adapters...');
+        const promises: Promise<void>[] = [];
+        
+        for (const [sourceId, adapter] of this.adapters.entries()) {
+            if (adapter.forceAuthentication) {
+                promises.push(
+                    adapter.forceAuthentication().catch(err => {
+                        this.logger.error(`Failed to force auth for source ${sourceId}`, err as Error);
+                    })
+                );
+            }
+        }
+        
+        await Promise.all(promises);
+        this.logger.info('Authentication refresh completed');
+    }
+
     // ===== Bundle Management =====
 
     /**

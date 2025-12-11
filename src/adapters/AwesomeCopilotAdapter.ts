@@ -576,6 +576,35 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     }
 
     /**
+     * Force re-authentication
+     * Clears cached token and forces new VS Code session
+     */
+    async forceAuthentication(): Promise<void> {
+        this.logger.info('[AwesomeCopilotAdapter] Forcing re-authentication...');
+        
+        // Clear current state
+        this.authToken = undefined;
+        this.authMethod = 'none';
+
+        // Force new session with VS Code
+        try {
+            const session = await vscode.authentication.getSession('github', ['repo'], { 
+                createIfNone: true,
+                forceNewSession: true 
+            });
+            
+            if (session) {
+                this.authToken = session.accessToken;
+                this.authMethod = 'vscode';
+                this.logger.info('[AwesomeCopilotAdapter] ✓ Re-authentication successful');
+            }
+        } catch (error) {
+            this.logger.error(`[AwesomeCopilotAdapter] Re-authentication failed: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
      * Get authentication token using fallback chain:
      * 1. VSCode GitHub API (if user is logged in)
      * 2. gh CLI (if installed and authenticated)

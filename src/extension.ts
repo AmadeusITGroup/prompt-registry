@@ -18,6 +18,7 @@ import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
+import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
 import { StatusBar } from './ui/statusBar';
 import { Notifications } from './ui/notifications';
 import { Logger } from './utils/logger';
@@ -200,6 +201,7 @@ export class PromptRegistryExtension {
         this.hubProfileCommands = new HubProfileCommands(this.context);
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
+        const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
@@ -465,6 +467,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
             vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
             vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
+            vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
 
             // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
             // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),

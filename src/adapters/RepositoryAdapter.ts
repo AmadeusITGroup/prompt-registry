@@ -65,6 +65,12 @@ export interface IRepositoryAdapter {
      * @returns Download URL
      */
     getDownloadUrl(bundleId: string, version?: string): string;
+
+    /**
+     * Force re-authentication for the source
+     * Useful when token expires or user wants to switch accounts
+     */
+    forceAuthentication?(): Promise<void>;
 }
 
 /**
@@ -81,6 +87,15 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
     abstract validate(): Promise<ValidationResult>;
     abstract getManifestUrl(bundleId: string, version?: string): string;
     abstract getDownloadUrl(bundleId: string, version?: string): string;
+
+    /**
+     * Force re-authentication
+     * Default implementation does nothing
+     */
+    async forceAuthentication(): Promise<void> {
+        // Default implementation does nothing
+        return Promise.resolve();
+    }
 
     /**
      * Check if source requires authentication

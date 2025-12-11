@@ -81,6 +81,11 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptregistry.forceGitHubAuth",
+        "title": "Force GitHub Authentication",
+        "category": "Prompt Registry"
+      },
+      {
         "command": "promptRegistry.scaffoldProject",
         "title": "Scaffold Project",
         "category": "Prompt Registry"
@@ -394,6 +399,9 @@
         },
         {
           "command": "promptregistry.validateAccess"
+        },
+        {
+          "command": "promptregistry.forceGitHubAuth"
         }
       ],
       "view/title": [
