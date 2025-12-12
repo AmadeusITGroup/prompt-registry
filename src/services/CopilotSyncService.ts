@@ -18,7 +18,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { promisify } from 'util';
-import { execSync } from 'child_process';
 import * as yaml from 'js-yaml';
 import { Logger } from '../utils/logger';
 import { escapeRegex } from '../utils/regexUtils';
@@ -69,13 +68,6 @@ export class CopilotSyncService {
      * so we need to sync prompts to the Windows filesystem, not the WSL filesystem.
      */
     private getCopilotPromptsDirectory(): string {
-        // WSL Support: Check if we're running in WSL remote context
-        // In WSL, the extension runs in the remote (Linux) context, but Copilot runs in UI (Windows) context
-        // We need to write prompts to the Windows filesystem where Copilot can find them
-        if (vscode.env.remoteName === 'wsl') {
-            return this.getWindowsPromptDirectoryFromWSL();
-        }
-
         const globalStoragePath = this.context.globalStorageUri.fsPath;
         
         // Find the User directory by looking for '/User/' or '\User\' in the path
@@ -130,157 +122,6 @@ export class CopilotSyncService {
     }
 
 
-    /**
-     * Get Windows Copilot prompts directory when running in WSL
-     * 
-     * In WSL, the extension runs in the remote (Linux) context,
-     * but Copilot runs in the UI (Windows) context.
-     * We need to sync prompts to the Windows filesystem.
-     * 
-     * Strategy:
-     * 1. Detect if globalStorageUri already points to Windows mount (/mnt/c/)
-     * 2. If not, get Windows username and construct Windows path
-     * 3. Handle multiple drive letters (C:, D:, etc.)
-     * 4. Detect VS Code flavor (Code, Insiders, Windsurf)
-     * 5. Support profile detection
-     * 
-     * Edge cases handled:
-     * - Different WSL and Windows usernames (exec Windows USERNAME command)
-     * - Multiple drive letters (/mnt/c, /mnt/d, etc.)
-     * - VS Code profiles
-     * - Different VS Code flavors
-     */
-    private getWindowsPromptDirectoryFromWSL(): string {
-        const globalStoragePath = this.context.globalStorageUri.fsPath;
-        this.logger.info(`[CopilotSync] WSL detected, globalStoragePath: ${globalStoragePath}`);
-
-        let windowsUsername: string;
-        let appDataPath: string;
-        let vscodeFlavorDir: string;
-        let driveLetter = 'c'; // Default to C:
-
-        // Check if globalStoragePath already points to Windows mount (/mnt/X/)
-        const mountMatch = globalStoragePath.match(/^\/mnt\/([a-z])\/Users\/([^/]+)\/AppData\/Roaming\/([^/]+)/);
-        
-        if (mountMatch) {
-            // Scenario A: Already pointing to Windows filesystem via WSL mount
-            // Path like: /mnt/c/Users/username/AppData/Roaming/Code/User/globalStorage/...
-            driveLetter = mountMatch[1];
-            windowsUsername = mountMatch[2];
-            vscodeFlavorDir = mountMatch[3]; // "Code", "Code - Insiders", "Windsurf", etc.
-            appDataPath = `/mnt/${driveLetter}/Users/${windowsUsername}/AppData/Roaming`;
-            
-            this.logger.info(`[CopilotSync] WSL: Detected Windows mount - User: ${windowsUsername}, Flavor: ${vscodeFlavorDir}, Drive: ${driveLetter.toUpperCase()}:`);
-        } else {
-            // Scenario B: globalStoragePath points to WSL filesystem (e.g., /home/username/.vscode-server)
-            // Need to map to Windows equivalent
-            
-            this.logger.info(`[CopilotSync] WSL: Remote storage detected, mapping to Windows filesystem`);
-            
-            // Get Windows username - try multiple methods for robustness
-            try {
-                // Method 1: Execute Windows command to get actual Windows username
-                // This handles cases where WSL username differs from Windows username
-                const result = execSync('cmd.exe /c echo %USERNAME%', { 
-                    encoding: 'utf-8',
-                    timeout: 5000,
-                    stdio: ['pipe', 'pipe', 'ignore'] // Suppress stderr
-                }).trim();
-                
-                if (result && result !== '%USERNAME%') {
-                    windowsUsername = result;
-                    this.logger.info(`[CopilotSync] WSL: Windows username from cmd.exe: ${windowsUsername}`);
-                } else {
-                    throw new Error('cmd.exe returned empty or unexpanded variable');
-                }
-            } catch (error) {
-                // Method 2: Fallback to WSL username (assumes same as Windows username)
-                windowsUsername = process.env.LOGNAME || process.env.USER || os.userInfo().username || 'default';
-                this.logger.warn(`[CopilotSync] WSL: Could not get Windows username via cmd.exe, using WSL username: ${windowsUsername}`);
-                this.logger.debug(`[CopilotSync] WSL: cmd.exe error: ${error}`);
-            }
-            
-            // Detect VS Code flavor from appName
-            const appName = vscode.env.appName;
-            if (appName.includes('Insiders')) {
-                vscodeFlavorDir = 'Code - Insiders';
-            } else if (appName.includes('Windsurf')) {
-                vscodeFlavorDir = 'Windsurf';
-            } else if (appName.includes('Cursor')) {
-                vscodeFlavorDir = 'Cursor';
-            } else {
-                vscodeFlavorDir = 'Code';
-            }
-            
-            this.logger.info(`[CopilotSync] WSL: Detected VS Code flavor: ${vscodeFlavorDir}`);
-            
-            // Try to find the correct Windows drive by checking common mount points
-            // Priority: C: > D: > E: > F:
-            const driveLetters = ['c', 'd', 'e', 'f'];
-            let foundDrive = false;
-            
-            for (const letter of driveLetters) {
-                const testPath = `/mnt/${letter}/Users/${windowsUsername}/AppData/Roaming`;
-                try {
-                    if (fs.existsSync(testPath)) {
-                        driveLetter = letter;
-                        foundDrive = true;
-                        this.logger.info(`[CopilotSync] WSL: Found Windows drive: ${letter.toUpperCase()}:`);
-                        break;
-                    }
-                } catch (error) {
-                    // Drive not accessible, continue to next
-                    continue;
-                }
-            }
-            
-            if (!foundDrive) {
-                this.logger.warn(`[CopilotSync] WSL: Could not find Windows AppData, defaulting to C: drive`);
-                driveLetter = 'c';
-            }
-            
-            appDataPath = `/mnt/${driveLetter}/Users/${windowsUsername}/AppData/Roaming`;
-        }
-
-        // Check for profile in globalStoragePath
-        // Profiles can appear in both Windows mount paths and WSL remote paths
-        const escapedSep = escapeRegex(path.sep);
-        const profilesMatch = globalStoragePath.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
-        
-        if (profilesMatch) {
-            const profileId = profilesMatch[1];
-            const promptsDir = path.join(appDataPath, vscodeFlavorDir, 'User', 'profiles', profileId, 'prompts');
-            this.logger.info(`[CopilotSync] WSL: Using profile prompts directory: ${promptsDir}`);
-            
-            // Ensure directory exists
-            try {
-                if (!fs.existsSync(promptsDir)) {
-                    fs.mkdirSync(promptsDir, { recursive: true });
-                    this.logger.info(`[CopilotSync] WSL: Created profile prompts directory`);
-                }
-            } catch (error) {
-                this.logger.error(`[CopilotSync] WSL: Failed to create profile prompts directory: ${error}`);
-            }
-            
-            return promptsDir;
-        }
-
-        // Standard path: User/prompts
-        const promptsDir = path.join(appDataPath, vscodeFlavorDir, 'User', 'prompts');
-        this.logger.info(`[CopilotSync] WSL: Using default prompts directory: ${promptsDir}`);
-        
-        // Ensure directory exists
-        try {
-            if (!fs.existsSync(promptsDir)) {
-                fs.mkdirSync(promptsDir, { recursive: true });
-                this.logger.info(`[CopilotSync] WSL: Created prompts directory`);
-            }
-        } catch (error) {
-            this.logger.error(`[CopilotSync] WSL: Failed to create prompts directory: ${error}`);
-        }
-        
-        return promptsDir;
-    }
     /**
      * Detect active profile using combined workarounds
      * 
