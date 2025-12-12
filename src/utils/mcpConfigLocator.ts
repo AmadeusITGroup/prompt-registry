@@ -6,6 +6,11 @@ import * as vscode from 'vscode';
 export class McpConfigLocator {
     private static readonly MCP_FILENAME = 'mcp.json';
     private static readonly TRACKING_FILENAME = 'prompt-registry-mcp-tracking.json';
+    private static context: vscode.ExtensionContext | undefined;
+
+    static initialize(context: vscode.ExtensionContext) {
+        this.context = context;
+    }
 
     private static getVsCodeVariant(): string {
         const productName = vscode.env?.appName || "Visual Studio Code";
@@ -22,6 +27,14 @@ export class McpConfigLocator {
     }
 
     private static getUserConfigDirectory(): string {
+        // If context is initialized, use globalStorageUri to find profile-specific User directory
+        if (this.context?.globalStorageUri) {
+            // globalStorageUri points to .../User/globalStorage/publisher.name
+            // We want .../User which is 2 levels up
+            return path.dirname(path.dirname(this.context.globalStorageUri.fsPath));
+        }
+
+        // Fallback for tests or when context is not available
         const home = os.homedir();
         const platform = os.platform();
         const variant = this.getVsCodeVariant();

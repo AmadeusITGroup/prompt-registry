@@ -22,6 +22,7 @@ import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
 import { StatusBar } from './ui/statusBar';
 import { Notifications } from './ui/notifications';
 import { Logger } from './utils/logger';
+import { McpConfigLocator } from './utils/mcpConfigLocator';
 import { CopilotIntegration } from './integrations/CopilotIntegration';
 
 import { ApmRuntimeManager } from './services/ApmRuntimeManager';
@@ -96,6 +97,9 @@ export class PromptRegistryExtension {
     public async activate(): Promise<void> {
         try {
             this.logger.info('Activating Prompt Registry extension...');
+
+            // Initialize McpConfigLocator for profile support
+            McpConfigLocator.initialize(this.context);
 
             // Initialize Runtime Manager with context
             ApmRuntimeManager.getInstance().initialize(this.context);
