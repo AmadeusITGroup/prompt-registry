@@ -327,8 +327,10 @@ export const TestGenerators = {
         const repoChars = 'abcdefghijklmnopqrstuvwxyz0123456789-_'.split('');
         
         return fc.tuple(
-            fc.stringOf(fc.constantFrom(...ownerChars), { minLength: 1, maxLength: 39 }),
-            fc.stringOf(fc.constantFrom(...repoChars), { minLength: 1, maxLength: 100 })
+            fc.array(fc.constantFrom(...ownerChars), { minLength: 1, maxLength: 39 })
+                .map(chars => chars.join('')),
+            fc.array(fc.constantFrom(...repoChars), { minLength: 1, maxLength: 100 })
+                .map(chars => chars.join(''))
         ).map(([owner, repo]) => `https://github.com/${owner}/${repo}`);
     },
 
@@ -362,6 +364,55 @@ export const TestGenerators = {
             'text/html; charset=utf-8',
             'text/plain',
             'application/octet-stream'
+        );
+    }
+};
+
+/**
+ * Bundle-specific test data generators
+ * 
+ * Shared generators for bundle-related property-based tests.
+ * Ensures consistent version and bundle ID generation across test files.
+ */
+export const BundleGenerators = {
+    /**
+     * Generate semantic version strings (0-10 for each component)
+     * Format: "major.minor.patch" (e.g., "1.2.3")
+     * 
+     * Used across AutoUpdateService, UpdateChecker, and RegistryTreeProvider tests.
+     */
+    version: () => {
+        return fc.tuple(
+            fc.integer({ min: 0, max: 10 }),
+            fc.integer({ min: 0, max: 10 }),
+            fc.integer({ min: 0, max: 10 })
+        ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+    },
+
+    /**
+     * Generate valid bundle IDs
+     * Format: lowercase alphanumeric with hyphens, 1-20 chars
+     * 
+     * Used across AutoUpdateService, UpdateChecker, and RegistryTreeProvider tests.
+     */
+    bundleId: () => {
+        return fc.string({ minLength: 1, maxLength: 20 })
+            .map(s => s.replace(/[^a-zA-Z0-9-]/g, 'a').toLowerCase());
+    },
+
+    /**
+     * Generate semantic version tuples (for UpdateChecker compatibility)
+     * Returns tuple of [major, minor, patch] integers
+     * 
+     * @param maxMajor - Maximum major version (default: 10)
+     * @param maxMinor - Maximum minor version (default: 10)
+     * @param maxPatch - Maximum patch version (default: 10)
+     */
+    versionTuple: (maxMajor = 10, maxMinor = 10, maxPatch = 10) => {
+        return fc.tuple(
+            fc.integer({ min: 0, max: maxMajor }),
+            fc.integer({ min: 0, max: maxMinor }),
+            fc.integer({ min: 0, max: maxPatch })
         );
     }
 };

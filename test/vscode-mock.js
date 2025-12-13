@@ -22,11 +22,16 @@ module.exports = {
     showInformationMessage: () => Promise.resolve(),
     showWarningMessage: () => Promise.resolve(),
     showErrorMessage: () => Promise.resolve(),
+    showQuickPick: () => Promise.resolve(),
     createOutputChannel: (name) => ({
       appendLine: () => undefined,
       show: () => undefined,
       dispose: () => undefined
-    })
+    }),
+    withProgress: async (options, task) => {
+      const progress = { report: () => undefined };
+      return await task(progress);
+    }
   },
   env: {
     appName: 'Visual Studio Code',
@@ -44,5 +49,13 @@ module.exports = {
     Global: 1,
     Workspace: 2,
     WorkspaceFolder: 3
+  },
+  commands: {
+    executeCommand: () => Promise.resolve()
+  },
+  ProgressLocation: {
+    Notification: 15,
+    Window: 10,
+    SourceControl: 1
   }
 };

@@ -25,6 +25,14 @@ These are short, actionable notes to help an AI coding assistant be productive i
   - Package VSIX: `npm run package:vsix` (via `vsce package`) or `npm run package:full` for a full prepared package.
   - Pretest pipeline: `npm run pretest` runs compile-tests, compile, then lint — tests expect compiled JS in `dist`/`test-dist`.
 
+- Logging and test output (for Copilot agents)
+  - Minimize context pollution from logs. For any command expected to produce more than ~50 lines of output (tests, builds, lint, packaging), prefer to run it as:
+    - `... | tee <short-name>.log | tail -n 20`
+    so the full log is preserved on disk while only the tail enters the chat context.
+  - When verifying changes with tests, run the **narrowest relevant** test command (single file, pattern, or focused subset) instead of the entire test suite by default.
+    - Only run the full `npm run test:unit` / `npm run test:integration` suites when the change is clearly cross-cutting or the user explicitly asks for it.
+  - When a command fails, summarize the failure using the tail output and, if more detail is needed, refer back to the stored `<short-name>.log` file instead of re-running the command with full output streamed into the conversation.
+
 - Project-specific conventions
   - Singletons: `RegistryManager.getInstance(context?)` requires an ExtensionContext on first call. Many services follow this pattern; pass `context` from `extension.ts` when activating.
   - Storage: persistent data lives under the extension's global storage (`context.globalStorageUri.fsPath`). `RegistryStorage.getPaths()` exposes locations; tests may mock or read these paths.

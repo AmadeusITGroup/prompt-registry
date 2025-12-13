@@ -4,8 +4,81 @@ This directory contains utility scripts for managing the Prompt Registry project
 
 ## 📋 Table of Contents
 
+- [Test Scripts](#test-scripts)
 - [Version Management](#version-management)
 - [Package Helpers](#package-helpers)
+
+---
+
+## Test Scripts
+
+### `run-single-test.js`
+
+Helper script to run a single test file with automatic TypeScript to JavaScript path conversion.
+
+#### Features
+
+- ✅ Accepts TypeScript file paths (`.ts`) directly
+- ✅ Automatically converts to compiled JavaScript paths
+- ✅ Smart compilation: Only recompiles if needed
+- ✅ Skip compilation with `--no-compile` flag for faster execution
+- ✅ Works with both unit and integration tests
+
+#### Usage
+
+**Run a single test (auto-compiles if needed):**
+```bash
+npm run test:one -- test/path/to/file.test.ts
+```
+
+**Run without recompiling (faster if tests are already compiled):**
+```bash
+npm run test:one -- test/path/to/file.test.ts --no-compile
+```
+
+**With LOG_LEVEL (recommended):**
+```bash
+LOG_LEVEL=ERROR npm run test:one -- test/utils/configTypeGuards.test.ts
+LOG_LEVEL=ERROR npm run test:one -- test/commands/BundleCommands.autoUpdate.integration.test.ts
+```
+
+#### How It Works
+
+1. Takes TypeScript test path: `test/commands/MyTest.test.ts`
+2. Converts to compiled path: `test-dist/test/commands/MyTest.test.js`
+3. Checks if compilation is needed (file missing or outdated)
+4. Compiles if needed (unless `--no-compile` is used)
+5. Runs the test with Mocha
+
+#### Examples
+
+```bash
+# Unit test
+npm run test:one -- test/services/AutoUpdateService.test.ts
+
+# Integration test
+npm run test:one -- test/commands/BundleCommands.autoUpdate.integration.test.ts
+
+# Skip compilation for speed (tests already compiled)
+npm run test:one -- test/utils/configTypeGuards.test.ts --no-compile
+
+# With error-only logging
+LOG_LEVEL=ERROR npm run test:one -- test/services/RegistryManager.test.ts
+```
+
+#### Troubleshooting
+
+**Test file not found:**
+- Ensure the path starts with `test/` and ends with `.test.ts`
+- Check that the file exists in the test directory
+
+**Compilation errors:**
+- Run `npm run compile-tests` manually to see detailed errors
+- Check TypeScript syntax in your test file
+
+**Test fails to run:**
+- Verify the compiled file exists in `test-dist/test/`
+- Try running with full compilation: remove `--no-compile` flag
 
 ---
 

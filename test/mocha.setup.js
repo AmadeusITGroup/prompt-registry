@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const Module = require('module');
 
+// Set test environment flag to prevent UpdateScheduler from running
+process.env.NODE_ENV = 'test';
+
 // Ensure this is running in Mocha context
 if (typeof global.suite === 'undefined' && typeof global.describe === 'undefined') {
   console.warn('[mocha.setup.js] Warning: Mocha test functions not available yet. This file should be loaded via --require flag.');
@@ -86,6 +89,26 @@ const vscode = {
           };
           return config[key] || defaultValue;
         }
+        // Mock promptregistry.updateCheck configuration to prevent UpdateScheduler errors
+        if (section === 'promptregistry.updateCheck') {
+          const config = {
+            'enabled': false, // Disable update checks during tests
+            'frequency': 'manual',
+            'cacheTTL': 300000, // 5 minutes
+            'notificationPreference': 'all'
+          };
+          return config[key] || defaultValue;
+        }
+        // Mock promptregistry configuration
+        if (section === 'promptregistry') {
+          const config = {
+            'githubToken': '',
+            'autoCheckUpdates': false, // Disable auto updates during tests
+            'installationScope': 'user',
+            'defaultVersion': 'latest'
+          };
+          return config[key] || defaultValue;
+        }
         return defaultValue;
       },
       update: async (key, value, target) => undefined
@@ -115,7 +138,15 @@ const vscode = {
       };
       return channel;
     },
-    withProgress: (options, task) => task({ report: () => {} })
+    withProgress: async (options, task) => {
+      const progress = { report: () => undefined };
+      return await task(progress);
+    }
+  },
+  ProgressLocation: {
+    Notification: 15,
+    Window: 10,
+    SourceControl: 1
   },
   authentication: {
     // Mock authentication API for GitHub tests
@@ -147,8 +178,9 @@ const vscode = {
     },
     parse: (value) => ({
         fsPath: value,
-        scheme: 'file',
-        path: value
+        scheme: value.startsWith('http') ? value.split('://')[0] : 'file',
+        path: value,
+        toString: () => value
     })
   },
   EventEmitter: class EventEmitter {
@@ -181,6 +213,13 @@ const vscode = {
     Global: 1,
     Workspace: 2,
     WorkspaceFolder: 3
+  },
+  commands: {
+    executeCommand: () => Promise.resolve()
+  },
+  QuickPickItemKind: {
+    Separator: -1,
+    Default: 0
   }
 };
 

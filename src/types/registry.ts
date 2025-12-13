@@ -207,6 +207,22 @@ export interface SourceMetadata {
 }
 
 /**
+ * Source synced event data
+ */
+export interface SourceSyncedEvent {
+    sourceId: string;
+    bundleCount: number;
+}
+
+/**
+ * Auto-update preference changed event data
+ */
+export interface AutoUpdatePreferenceChangedEvent {
+    bundleId: string;
+    enabled: boolean;
+}
+
+/**
  * Deployment manifest (from bundle spec)
  */
 export interface DeploymentManifest {

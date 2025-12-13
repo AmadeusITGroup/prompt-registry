@@ -94,7 +94,8 @@ export class HubProfileCommands {
 
             const selected = await vscode.window.showQuickPick(items.filter(i => i.profile), {
                 placeHolder: 'Select a hub profile to view details',
-                title: `Hub Profiles (${profiles.length} available)`
+                title: `Hub Profiles (${profiles.length} available)`,
+                ignoreFocusOut: true
             });
 
             if (selected?.profile) {
@@ -136,7 +137,8 @@ export class HubProfileCommands {
 
             const selectedHub = await vscode.window.showQuickPick(hubItems, {
                 placeHolder: 'Select a hub to browse its profiles',
-                title: 'Browse Hub Profiles'
+                title: 'Browse Hub Profiles',
+                ignoreFocusOut: true
             });
 
             if (!selectedHub) {
@@ -164,7 +166,8 @@ export class HubProfileCommands {
 
             const selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: `Select a profile from "${selectedHub.hub.name}"`,
-                title: `${selectedHub.hub.name} - Profiles`
+                title: `${selectedHub.hub.name} - Profiles`,
+                ignoreFocusOut: true
             });
 
             if (selectedProfile) {
@@ -384,7 +387,8 @@ export class HubProfileCommands {
                         return 'Profile name cannot be empty';
                     }
                     return null;
-                }
+                },
+                ignoreFocusOut: true
             });
 
             if (!newName) {

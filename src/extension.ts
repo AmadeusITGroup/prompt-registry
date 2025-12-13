@@ -9,7 +9,7 @@ import { HubCommands } from './commands/HubCommands';
 import { HubProfileCommands } from './commands/HubProfileCommands';
 import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
 import { HubManager } from './services/HubManager';
-import { getEnabledDefaultHubs, DefaultHubConfig } from './config/defaultHubs';
+import { getEnabledDefaultHubs } from './config/defaultHubs';
 import { HubStorage } from './storage/HubStorage';
 import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
@@ -20,10 +20,18 @@ import { ValidateApmCommand } from './commands/ValidateApmCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
 import { StatusBar } from './ui/statusBar';
-import { Notifications } from './ui/notifications';
+import { ExtensionNotifications } from './notifications/ExtensionNotifications';
 import { Logger } from './utils/logger';
 import { McpConfigLocator } from './utils/mcpConfigLocator';
 import { CopilotIntegration } from './integrations/CopilotIntegration';
+import { UpdateScheduler } from './services/UpdateScheduler';
+import { UpdateChecker } from './services/UpdateChecker';
+import { NotificationManager } from './services/NotificationManager';
+import { AutoUpdateService } from './services/AutoUpdateService';
+import {
+    getValidUpdateCheckFrequency,
+    getValidNotificationPreference
+} from './utils/configTypeGuards';
 
 import { ApmRuntimeManager } from './services/ApmRuntimeManager';
 
@@ -32,7 +40,6 @@ import { selectVersionCommand } from './commands/selectVersionCommand';
 import { UpdateCommand } from './commands/updateCommand';
 import { StatusCommand } from './commands/statusCommand';
 import { ValidateAccessCommand } from './commands/validateAccessCommand';
-import { UpdateManager } from './services/updateManager';
 import { InstallationManager } from './services/installationManager';
 import { RegistrySource } from './types/registry';
 
@@ -40,10 +47,10 @@ import { RegistrySource } from './types/registry';
  * Main extension class that handles activation, deactivation, and command registration
  */
 export class PromptRegistryExtension {
-    private logger: Logger;
-    private statusBar: StatusBar;
-    private notifications: Notifications;
-    private registryManager: RegistryManager;
+    private readonly logger: Logger;
+    private readonly statusBar: StatusBar;
+    private readonly notifications: ExtensionNotifications;
+    private readonly registryManager: RegistryManager;
     private treeProvider: RegistryTreeProvider | undefined;
     private marketplaceProvider: MarketplaceViewProvider | undefined;
     private profileCommands: ProfileCommands | undefined;
@@ -59,19 +66,23 @@ export class PromptRegistryExtension {
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
     
+    // Update notification services
+    private updateScheduler: UpdateScheduler | undefined;
+    private updateChecker: UpdateChecker | undefined;
+    private notificationManager: NotificationManager | undefined;
+    private autoUpdateService: AutoUpdateService | undefined;
+
     // Legacy (to be removed)
-    private updateManager: UpdateManager;
-    private installationManager: InstallationManager;
+    private readonly installationManager: InstallationManager;
     private disposables: vscode.Disposable[] = [];
 
-    constructor(private context: vscode.ExtensionContext) {
+    constructor(private readonly context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.statusBar = StatusBar.getInstance();
-        this.notifications = Notifications.getInstance();
+        this.notifications = ExtensionNotifications.getInstance();
         this.registryManager = RegistryManager.getInstance(context);
         
         // Legacy (to be removed)
-        this.updateManager = UpdateManager.getInstance();
         this.installationManager = InstallationManager.getInstance();
     }
 
@@ -122,6 +133,9 @@ export class PromptRegistryExtension {
             // Initialize Copilot Integration
             await this.initializeCopilot();
 
+            // Initialize update notification system
+            await this.initializeUpdateSystem();
+
             // Check for automatic updates if enabled
             await this.checkForAutomaticUpdates();
 
@@ -159,6 +173,9 @@ export class PromptRegistryExtension {
             // Dispose of all resources
             this.disposables.forEach(disposable => disposable.dispose());
             this.disposables = [];
+
+            // Dispose update scheduler
+            this.updateScheduler?.dispose();
 
             // Dispose Copilot integration
             this.copilotIntegration?.dispose();
@@ -203,7 +220,7 @@ export class PromptRegistryExtension {
         this.hubCommands = new HubCommands(this.hubManager, this.registryManager, this.context);
         this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
         this.hubProfileCommands = new HubProfileCommands(this.context);
-        const scaffoldCommand = new ScaffoldCommand();
+        // Note: scaffoldCommand is registered inline in command handler
         const addResourceCommand = new AddResourceCommand();
         const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
@@ -248,13 +265,19 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.checkBundleUpdates', (arg?) => {
                 const bundleId = this.extractBundleId(arg);
                 if (bundleId) {
-                    // Check single bundle update
-                    this.bundleCommands!.updateBundle(bundleId);
+                    // Check single bundle update - show dialog instead of directly updating
+                    this.bundleCommands!.checkSingleBundleUpdate(bundleId);
                 } else {
                     // Check all bundles
                     this.bundleCommands!.checkAllUpdates();
                 }
             }),
+            vscode.commands.registerCommand('promptRegistry.manualCheckForUpdates', async () => {
+                await this.handleManualUpdateCheck();
+            }),
+            vscode.commands.registerCommand('promptRegistry.updateAllBundles', () => this.bundleCommands!.updateAllBundles()),
+            vscode.commands.registerCommand('promptRegistry.enableAutoUpdate', (arg?) => this.bundleCommands!.enableAutoUpdate(this.extractBundleId(arg))),
+            vscode.commands.registerCommand('promptRegistry.disableAutoUpdate', (arg?) => this.bundleCommands!.disableAutoUpdate(this.extractBundleId(arg))),
             vscode.commands.registerCommand('promptRegistry.viewBundle', async (arg?) => {
                 const bundleId = this.extractBundleId(arg);
                 
@@ -379,7 +402,7 @@ export class PromptRegistryExtension {
                             value: 'apm, prompts',
                             ignoreFocusOut: true
                         });
-                        
+
                         if (tagsInput) {
                             tags = tagsInput.split(',').map(t => t.trim()).filter(t => t.length > 0);
                         }
@@ -394,8 +417,8 @@ export class PromptRegistryExtension {
                             },
                             async () => {
                                 const cmd = new ScaffoldCommand(undefined, scaffoldTypeChoice.value);
-                                await cmd.execute(targetPath[0], { 
-                                    projectName, 
+                                await cmd.execute(targetPath[0], {
+                                    projectName,
                                     githubRunner,
                                     description,
                                     author,
@@ -436,24 +459,24 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.validateCollectionsWithRefs', async () => {
                 await this.validateCollectionsCommand!.execute({ checkRefs: true });
             }),
-            
+
             vscode.commands.registerCommand('promptRegistry.listCollections', async () => {
                 await this.validateCollectionsCommand!.execute({ listOnly: true });
             }),
-            
+
             vscode.commands.registerCommand('promptRegistry.validateApm', async () => {
                 await this.validateApmCommand!.execute();
             }),
-            
+
             vscode.commands.registerCommand('promptRegistry.createCollection', async () => {
                 await this.createCollectionCommand!.execute();
             }),
-            
+
             // Command Menu - Show all commands
             vscode.commands.registerCommand('promptRegistry.showCommandMenu', async () => {
                 await this.showCommandMenu();
             }),
-            
+
             // Settings Command
             vscode.commands.registerCommand('promptRegistry.openSettings', () => {
                 vscode.commands.executeCommand('workbench.action.openSettings', 'promptregistry');
@@ -569,6 +592,199 @@ export class PromptRegistryExtension {
     }
 
     /**
+     * Initialize update notification system
+     * Sets up UpdateScheduler, UpdateChecker, NotificationManager, and AutoUpdateService
+     * Uses dependency injection to avoid circular dependencies
+     */
+    private async initializeUpdateSystem(): Promise<void> {
+        try {
+            this.logger.info('Initializing update notification system...');
+
+            // Get RegistryStorage instance
+            const registryStorage = this.registryManager.getStorage();
+
+            // Initialize NotificationManager (singleton)
+            this.notificationManager = NotificationManager.getInstance();
+
+            // Initialize UpdateChecker (no circular dependency)
+            this.updateChecker = new UpdateChecker(
+                this.registryManager,
+                registryStorage,
+                this.context.globalState
+            );
+
+            // Initialize AutoUpdateService with dependency injection
+            // Pass RegistryManager methods as functions to avoid circular reference
+            const { BundleUpdateNotifications } = await import('./notifications/BundleUpdateNotifications');
+            const bundleNotifications = new BundleUpdateNotifications(
+                async (bundleId: string) => {
+                    return await this.registryManager.getBundleName(bundleId);
+                }
+            );
+
+            // Create update service factory to inject dependencies
+            this.autoUpdateService = new AutoUpdateService(
+                // Bundle operations
+                {
+                    updateBundle: (bundleId: string, version?: string) => this.registryManager.updateBundle(bundleId, version),
+                    listInstalledBundles: () => this.registryManager.listInstalledBundles(),
+                    getBundleDetails: (bundleId: string) => this.registryManager.getBundleDetails(bundleId)
+                },
+                // Source operations
+                {
+                    listSources: () => this.registryManager.listSources(),
+                    syncSource: (sourceId: string) => this.registryManager.syncSource(sourceId)
+                },
+                bundleNotifications,
+                registryStorage
+            );
+
+            // Set AutoUpdateService in RegistryManager for command access
+            this.registryManager.setAutoUpdateService(this.autoUpdateService);
+
+            // Initialize UpdateScheduler
+            this.updateScheduler = new UpdateScheduler(
+                this.context,
+                this.updateChecker
+            );
+
+            // Wire up update detection to tree provider
+            if (this.treeProvider) {
+                this.updateScheduler.onUpdatesDetected(updates => {
+                    this.treeProvider?.onUpdatesDetected(updates);
+                });
+            }
+
+            // Initialize scheduler (triggers startup check)
+            await this.updateScheduler.initialize();
+
+            // Register configuration change listeners
+            this.registerUpdateConfigurationListeners();
+
+            this.logger.info('Update notification system initialized successfully');
+        } catch (error) {
+            this.logger.warn('Failed to initialize update notification system', error as Error);
+            // Don't fail extension activation if update system fails
+        }
+    }
+
+    /**
+     * Register configuration change listeners for update system
+     * Applies configuration changes immediately without requiring restart
+     */
+    private registerUpdateConfigurationListeners(): void {
+        // Listen for update check configuration changes
+        const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('promptregistry.updateCheck')) {
+                this.handleUpdateConfigurationChange();
+            }
+        });
+
+        this.disposables.push(configListener);
+        this.context.subscriptions.push(configListener);
+    }
+
+    /**
+     * Handle update configuration changes
+     * Applies new settings immediately to UpdateScheduler
+     */
+    private handleUpdateConfigurationChange(): void {
+        if (!this.updateScheduler) {
+            return;
+        }
+
+        const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
+        const enabled = config.get<boolean>('enabled', true);
+        const rawFrequency = config.get<string>('frequency', 'daily');
+
+        // Validate and sanitize configuration values
+        const frequency = getValidUpdateCheckFrequency(rawFrequency, 'daily');
+
+        // Log warning if invalid value was provided
+        if (rawFrequency !== frequency) {
+            this.logger.warn(
+                `Invalid update check frequency "${rawFrequency}" in configuration. Using default "${frequency}".`
+            );
+        }
+
+        this.logger.info(`Update configuration changed: enabled=${enabled}, frequency=${frequency}`);
+
+        // Apply changes immediately
+        this.updateScheduler.updateEnabled(enabled);
+        this.updateScheduler.updateSchedule(frequency);
+    }
+
+    /**
+     * Handle manual update check command
+     * Bypasses cache and displays results immediately
+     */
+    private async handleManualUpdateCheck(): Promise<void> {
+        if (!this.updateScheduler || !this.updateChecker || !this.notificationManager) {
+            this.logger.warn('Update system not initialized');
+            await vscode.window.showWarningMessage('Update system is not initialized yet. Please try again in a moment.');
+            return;
+        }
+
+        try {
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Checking for bundle updates...',
+                    cancellable: false
+                },
+                async () => {
+                    // Trigger manual check (bypasses cache)
+                    await this.updateScheduler!.checkNow();
+
+                    // Get the results
+                    const updates = await this.updateChecker!.getCachedResults();
+
+                    if (!updates || updates.length === 0) {
+                        await vscode.window.showInformationMessage('All bundles are up to date!');
+                        return;
+                    }
+
+                    // Show notification with results
+                    const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
+                    const rawNotificationPreference = config.get<string>('notificationPreference', 'all');
+
+                    // Validate and sanitize notification preference
+                    const notificationPreference = getValidNotificationPreference(rawNotificationPreference, 'all');
+
+                    // Log warning if invalid value was provided
+                    if (rawNotificationPreference !== notificationPreference) {
+                        this.logger.warn(
+                            `Invalid notification preference "${rawNotificationPreference}" in configuration. Using default "${notificationPreference}".`
+                        );
+                    }
+
+                    // Use BundleUpdateNotifications for bundle update notifications
+                    const { BundleUpdateNotifications } = await import('./notifications/BundleUpdateNotifications');
+                    const bundleNotifications = new BundleUpdateNotifications(
+                        async (bundleId: string) => {
+                            return await this.registryManager.getBundleName(bundleId);
+                        }
+                    );
+                    await bundleNotifications.showUpdateNotification({
+                        updates,
+                        notificationPreference
+                    });
+                }
+            );
+        } catch (error) {
+            this.logger.error('Manual update check failed', error as Error);
+            await vscode.window.showErrorMessage(
+                `Failed to check for updates: ${(error as Error).message}`,
+                'Show Logs'
+            ).then(action => {
+                if (action === 'Show Logs') {
+                    this.logger.show();
+                }
+            });
+        }
+    }
+
+    /**
      * Initialize UI components
      */
     private async initializeUI(): Promise<void> {
@@ -596,11 +812,11 @@ export class PromptRegistryExtension {
         }
 
         const workspaceRoot = workspaceFolders[0].uri;
-        
+
         // Check for key directories that indicate an awesome-copilot structure
         const requiredDirs = ['collections', 'prompts', 'instructions', 'agents'];
         const existingDirs = [];
-        
+
         for (const dir of requiredDirs) {
             const dirUri = vscode.Uri.joinPath(workspaceRoot, dir);
             try {
@@ -628,7 +844,7 @@ export class PromptRegistryExtension {
 
         const workspaceRoot = workspaceFolders[0].uri;
         const apmYmlUri = vscode.Uri.joinPath(workspaceRoot, 'apm.yml');
-        
+
         try {
             await vscode.workspace.fs.stat(apmYmlUri);
             return true;
@@ -802,7 +1018,8 @@ export class PromptRegistryExtension {
         const selected = await vscode.window.showQuickPick(commands, {
             placeHolder: 'Select a Prompt Registry command',
             matchOnDescription: true,
-            matchOnDetail: true
+            matchOnDetail: true,
+            ignoreFocusOut: true
         });
 
         if (selected && selected.command) {
@@ -996,7 +1213,6 @@ export class PromptRegistryExtension {
     private async initializeHub(): Promise<void> {
         try {
             const hubManager = this.hubManager!;
-            const sourceCommands = this.sourceCommands!;
             const isHubInitialized = this.context.globalState.get<boolean>('promptregistry.hubInitialized', false);
 
             if (isHubInitialized) {

@@ -164,7 +164,8 @@ export class HubIntegrationCommands {
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select a profile',
             matchOnDescription: true,
-            matchOnDetail: true
+            matchOnDetail: true,
+            ignoreFocusOut: true
         });
 
         return selected ? { hubId: selected.hubId, profileId: selected.profileId } : null;

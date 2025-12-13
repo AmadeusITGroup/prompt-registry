@@ -1,13 +1,15 @@
-import * as vscode from 'vscode';
 import { GitHubService } from './githubService';
 import { InstallationManager, InstallationResult } from './installationManager';
 import { PlatformDetector } from './platformDetector';
 import { Platform, InstallationScope } from '../types/platform';
-import { GitHubRelease, BundleInfo, VersionInfo } from '../types/github';
+import { GitHubRelease, BundleInfo } from '../types/github';
 import { Logger } from '../utils/logger';
 
 /**
- * Update check result
+ * Update check result for EXTENSION updates
+ * 
+ * NOTE: This is different from bundle UpdateCheckResult in UpdateCache.ts
+ * This interface is for extension/platform updates, not bundle updates.
  */
 export interface UpdateCheckResult {
     hasUpdate: boolean;
@@ -28,10 +30,16 @@ export interface UpdateOptions {
 }
 
 /**
- * Service for managing Prompt Registry updates
+ * Service for managing Prompt Registry EXTENSION updates
+ * 
+ * NOTE: This is for updating the Prompt Registry extension/platform installation itself,
+ * NOT for updating prompt bundles. For bundle updates, see:
+ * - UpdateChecker (src/services/UpdateChecker.ts)
+ * - UpdateScheduler (src/services/UpdateScheduler.ts)
+ * - AutoUpdateService (src/services/AutoUpdateService.ts)
  */
-export class UpdateManager {
-    private static instance: UpdateManager;
+export class ExtensionUpdateManager {
+    private static instance: ExtensionUpdateManager;
     private readonly logger: Logger;
     private readonly githubService: GitHubService;
     private readonly installationManager: InstallationManager;
@@ -44,11 +52,11 @@ export class UpdateManager {
         this.platformDetector = PlatformDetector.getInstance();
     }
 
-    public static getInstance(): UpdateManager {
-        if (!UpdateManager.instance) {
-            UpdateManager.instance = new UpdateManager();
+    public static getInstance(): ExtensionUpdateManager {
+        if (!ExtensionUpdateManager.instance) {
+            ExtensionUpdateManager.instance = new ExtensionUpdateManager();
         }
-        return UpdateManager.instance;
+        return ExtensionUpdateManager.instance;
     }
 
     /**

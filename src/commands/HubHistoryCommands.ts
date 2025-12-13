@@ -51,7 +51,8 @@ export class HubHistoryCommands {
 
             const selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: 'Select a profile to view sync history',
-                title: 'View Sync History'
+                title: 'View Sync History',
+                ignoreFocusOut: true
             });
 
             if (!selectedProfile) {
@@ -78,7 +79,8 @@ export class HubHistoryCommands {
             // Show history
             const selectedEntry = await vscode.window.showQuickPick(historyItems, {
                 placeHolder: 'Select a history entry to view details',
-                title: `Sync History: ${selectedProfile.profile.profileId}`
+                title: `Sync History: ${selectedProfile.profile.profileId}`,
+                ignoreFocusOut: true
             });
 
             if (selectedEntry) {
@@ -124,7 +126,8 @@ export class HubHistoryCommands {
 
             const selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: 'Select a profile to rollback',
-                title: 'Rollback Profile'
+                title: 'Rollback Profile',
+                ignoreFocusOut: true
             });
 
             if (!selectedProfile) {
@@ -151,7 +154,8 @@ export class HubHistoryCommands {
             // Show history
             const selectedEntry = await vscode.window.showQuickPick(historyItems, {
                 placeHolder: 'Select a history entry to rollback to',
-                title: `Rollback: ${selectedProfile.profile.profileId}`
+                title: `Rollback: ${selectedProfile.profile.profileId}`,
+                ignoreFocusOut: true
             });
 
             if (!selectedEntry) {
@@ -228,7 +232,8 @@ export class HubHistoryCommands {
 
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: 'Select a profile to clear history',
-                title: 'Clear Sync History'
+                title: 'Clear Sync History',
+                ignoreFocusOut: true
             });
 
             if (!selected) {

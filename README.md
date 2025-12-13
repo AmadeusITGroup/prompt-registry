@@ -208,6 +208,7 @@ Connect to various prompt sources:
 - **Version Tracking**: Track installed versions with semantic versioning
 - **Version Consolidation**: Multiple versions of the same bundle are grouped, showing only the latest
 - **Update Detection**: Automatically detect when newer versions are available
+- **Automatic Updates**: Background updates with configurable frequency (daily/weekly/manual)
 - **Auto-Sync**: Automatic synchronization with GitHub Copilot
 - **Conflict Resolution**: Handle duplicate bundles gracefully
 
@@ -469,12 +470,50 @@ Right-click installed bundle → "Check for Updates"
 
 # Update to latest version
 Click "Update" button in marketplace or tree view
+
+# Update all bundles at once
+Ctrl+Shift+P → "Prompt Registry: Update All Bundles"
 ```
 
 **Update Indicators:**
 - 🔄 **Update Available** - Newer version detected
 - ✅ **Up to Date** - Latest version installed
 - 📦 **Not Installed** - Bundle not yet installed
+
+#### Automatic Updates
+
+Enable background updates to keep bundles current without manual intervention:
+
+```bash
+# Configure in Settings
+File → Preferences → Settings → Extensions → Prompt Registry
+```
+
+**Auto-Update Settings:**
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `promptregistry.updateCheck.enabled` | Enable automatic update checks | `true` |
+| `promptregistry.updateCheck.frequency` | Check frequency: `daily`, `weekly`, or `manual` | `daily` |
+| `promptregistry.updateCheck.notificationPreference` | Notifications: `all`, `critical`, or `none` | `all` |
+| `promptregistry.updateCheck.autoUpdate` | Install updates automatically in background | `false` |
+| `promptregistry.updateCheck.cacheTTL` | Cache duration for update checks (ms) | `300000` |
+
+**How It Works:**
+1. On activation, the extension waits 5 seconds before checking for updates
+2. Updates are checked according to the configured frequency
+3. When updates are found, a notification appears with "Update Now" option
+4. If auto-update is enabled, updates install silently in the background
+5. Failed auto-updates trigger a notification with retry option
+
+**Per-Bundle Auto-Update:**
+```bash
+# Enable auto-update for a specific bundle
+Right-click bundle → "Enable Auto-Update"
+
+# Disable auto-update for a specific bundle
+Right-click bundle → "Disable Auto-Update"
+```
 
 ### Working with Profiles
 
@@ -833,6 +872,11 @@ Access via `File → Preferences → Settings → Extensions → Prompt Registry
 | `promptRegistry.cacheTimeout` | Bundle cache TTL (minutes) | `5` |
 | `promptRegistry.defaultScope` | Default installation scope | `user` |
 | `promptRegistry.showNotifications` | Show success notifications | `true` |
+| `promptregistry.updateCheck.enabled` | Enable automatic update checks | `true` |
+| `promptregistry.updateCheck.frequency` | Check frequency: `daily`, `weekly`, `manual` | `daily` |
+| `promptregistry.updateCheck.notificationPreference` | Notification level: `all`, `critical`, `none` | `all` |
+| `promptregistry.updateCheck.autoUpdate` | Auto-install updates in background | `false` |
+| `promptregistry.updateCheck.cacheTTL` | Update check cache TTL (milliseconds) | `300000` |
 
 ### Source Configuration
 
@@ -994,7 +1038,7 @@ prompt-registry/
 - ✅ Bundle versioning with semantic version support
 - ✅ Version consolidation (group multiple versions)
 - ✅ Update detection and notifications
-- 🔄 Automatic bundle updates
+- ✅ Automatic bundle updates (background updates with configurable frequency)
 - 🔄 Version rollback
 - 🔄 Dependency management
 - 🔄 Bundle analytics

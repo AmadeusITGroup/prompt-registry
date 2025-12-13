@@ -1,52 +1,32 @@
 import * as vscode from 'vscode';
+import { NotificationManager } from '../services/NotificationManager';
 import { Logger } from '../utils/logger';
 
 /**
- * Notification service for the Prompt Registry extension
+ * Specialized notification handler for extension self-updates and installation
+ * Uses generic NotificationManager for display
  */
-export class Notifications {
-    private static instance: Notifications;
-    private readonly logger: Logger;
-
+export class ExtensionNotifications {
+    private static instance: ExtensionNotifications;
+    private notificationManager: NotificationManager;
+    private logger: Logger;
+    
     private constructor() {
+        this.notificationManager = NotificationManager.getInstance();
         this.logger = Logger.getInstance();
     }
-
-    public static getInstance(): Notifications {
-        if (!Notifications.instance) {
-            Notifications.instance = new Notifications();
+    
+    public static getInstance(): ExtensionNotifications {
+        if (!ExtensionNotifications.instance) {
+            ExtensionNotifications.instance = new ExtensionNotifications();
         }
-        return Notifications.instance;
+        return ExtensionNotifications.instance;
     }
-
+    
     /**
-     * Show information notification
+     * Show extension update notification
      */
-    public async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
-        this.logger.info(`Notification (Info): ${message}`);
-        return await vscode.window.showInformationMessage(message, ...actions);
-    }
-
-    /**
-     * Show warning notification
-     */
-    public async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
-        this.logger.warn(`Notification (Warning): ${message}`);
-        return await vscode.window.showWarningMessage(message, ...actions);
-    }
-
-    /**
-     * Show error notification
-     */
-    public async showError(message: string, ...actions: string[]): Promise<string | undefined> {
-        this.logger.error(`Notification (Error): ${message}`);
-        return await vscode.window.showErrorMessage(message, ...actions);
-    }
-
-    /**
-     * Show update notification
-     */
-    public async showUpdateNotification(
+    async showUpdateNotification(
         currentVersion: string,
         newVersion: string,
         scope?: string
@@ -54,7 +34,7 @@ export class Notifications {
         const scopeText = scope ? ` (${scope})` : '';
         const message = `Prompt Registry update available${scopeText}: ${currentVersion} → ${newVersion}`;
         
-        const action = await this.showInfo(message, 'Update Now', 'Dismiss');
+        const action = await this.notificationManager.showInfo(message, 'Update Now', 'Dismiss');
         
         switch (action) {
             case 'Update Now':
@@ -65,18 +45,18 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show installation success notification
      */
-    public async showInstallationSuccess(
+    async showInstallationSuccess(
         version: string,
         scope: string,
         path: string
     ): Promise<'show' | 'dismiss' | undefined> {
         const message = `Prompt Registry v${version} installed successfully in ${scope} scope!`;
         
-        const action = await this.showInfo(message, 'Show in Explorer', 'Dismiss');
+        const action = await this.notificationManager.showInfo(message, 'Show in Explorer', 'Dismiss');
         
         switch (action) {
             case 'Show in Explorer':
@@ -88,17 +68,17 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show update success notification
      */
-    public async showUpdateSuccess(
+    async showUpdateSuccess(
         version: string,
         scope: string
     ): Promise<'details' | 'dismiss' | undefined> {
         const message = `Prompt Registry updated to v${version} in ${scope} scope!`;
         
-        const action = await this.showInfo(message, 'Show Details', 'Dismiss');
+        const action = await this.notificationManager.showInfo(message, 'Show Details', 'Dismiss');
         
         switch (action) {
             case 'Show Details':
@@ -110,16 +90,16 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show uninstall confirmation
      */
-    public async showUninstallConfirmation(
+    async showUninstallConfirmation(
         scope: string
     ): Promise<'confirm' | 'cancel' | undefined> {
         const message = `Are you sure you want to uninstall Prompt Registry from ${scope} scope? This action cannot be undone.`;
         
-        const action = await this.showWarning(message, 'Uninstall', 'Cancel');
+        const action = await this.notificationManager.showWarning(message, 'Uninstall', 'Cancel');
         
         switch (action) {
             case 'Uninstall':
@@ -130,16 +110,16 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show installation error notification
      */
-    public async showInstallationError(
+    async showInstallationError(
         error: string
     ): Promise<'retry' | 'logs' | 'dismiss' | undefined> {
         const message = `Failed to install Prompt Registry: ${error}`;
         
-        const action = await this.showError(message, 'Retry', 'Show Logs', 'Dismiss');
+        const action = await this.notificationManager.showError(message, 'Retry', 'Show Logs', 'Dismiss');
         
         switch (action) {
             case 'Retry':
@@ -154,16 +134,16 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show update error notification
      */
-    public async showUpdateError(
+    async showUpdateError(
         error: string
     ): Promise<'retry' | 'logs' | 'dismiss' | undefined> {
         const message = `Failed to update Prompt Registry: ${error}`;
         
-        const action = await this.showError(message, 'Retry', 'Show Logs', 'Dismiss');
+        const action = await this.notificationManager.showError(message, 'Retry', 'Show Logs', 'Dismiss');
         
         switch (action) {
             case 'Retry':
@@ -178,14 +158,14 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show connectivity error notification
      */
-    public async showConnectivityError(): Promise<'retry' | 'dismiss' | undefined> {
+    async showConnectivityError(): Promise<'retry' | 'dismiss' | undefined> {
         const message = 'Unable to connect to GitHub. Please check your internet connection.';
         
-        const action = await this.showError(message, 'Retry', 'Dismiss');
+        const action = await this.notificationManager.showError(message, 'Retry', 'Dismiss');
         
         switch (action) {
             case 'Retry':
@@ -196,27 +176,41 @@ export class Notifications {
                 return undefined;
         }
     }
-
+    
     /**
      * Show first install welcome notification
      */
-    public async showWelcomeNotification(): Promise<'install' | 'learn' | 'dismiss' | undefined> {
-        const message = 'Welcome to Prompt Registry! Get started by adding the sources of the collections of prompts.';
+    async showWelcomeNotification(): Promise<'install' | 'learn' | 'dismiss' | undefined> {
+        // Currently disabled - returning undefined
         return undefined;
-        
-        // const action = await this.showInfo(message, 'Add Source Now', 'Learn More', 'Dismiss');
-        
-        // switch (action) {
-        //     case 'Install Now':
-        //         vscode.commands.executeCommand('promptregistry.enhancedInstall');
-        //         return 'install';
-        //     case 'Learn More':
-        //         vscode.commands.executeCommand('promptregistry.showHelp');
-        //         return 'learn';
-        //     case 'Dismiss':
-        //         return 'dismiss';
-        //     default:
-        //         return undefined;
-        // }
     }
+
+    /**
+     * Show generic information notification
+     * Provided for backward compatibility with existing extension code
+     * New code should use NotificationManager directly for better separation of concerns
+     */
+    async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
+        return await this.notificationManager.showInfo(message, ...actions);
+    }
+    
+    /**
+     * Show generic warning notification
+     * Provided for backward compatibility with existing extension code
+     * New code should use NotificationManager directly for better separation of concerns
+     */
+    async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
+        return await this.notificationManager.showWarning(message, ...actions);
+    }
+    
+    /**
+     * Show generic error notification
+     * Provided for backward compatibility with existing extension code
+     * New code should use NotificationManager directly for better separation of concerns
+     */
+    async showError(message: string, ...actions: string[]): Promise<string | undefined> {
+        return await this.notificationManager.showError(message, ...actions);
+    }
+    
+
 }

@@ -19,6 +19,7 @@ import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { HubManager } from './HubManager';
+import { AutoUpdateService } from './AutoUpdateService';
 import {
     RegistrySource,
     Bundle,
@@ -30,9 +31,12 @@ import {
     BundleUpdate,
     ProfileBundle,
     SourceType,
+    SourceSyncedEvent,
+    AutoUpdatePreferenceChangedEvent,
 } from '../types/registry';
 import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
 
 /**
  * Results from auto-update operations
@@ -51,6 +55,7 @@ export class RegistryManager {
     private static instance: RegistryManager;
     private storage: RegistryStorage;
     private hubManager?: HubManager;
+    private _autoUpdateService?: AutoUpdateService;
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
@@ -71,6 +76,8 @@ export class RegistryManager {
     private _onSourceAdded = new vscode.EventEmitter<RegistrySource>();
     private _onSourceRemoved = new vscode.EventEmitter<string>();
     private _onSourceUpdated = new vscode.EventEmitter<string>();
+    private _onSourceSynced = new vscode.EventEmitter<SourceSyncedEvent>();
+    private _onAutoUpdatePreferenceChanged = new vscode.EventEmitter<AutoUpdatePreferenceChangedEvent>();
 
 
     // Public event accessors
@@ -87,6 +94,8 @@ export class RegistryManager {
     readonly onSourceAdded = this._onSourceAdded.event;
     readonly onSourceRemoved = this._onSourceRemoved.event;
     readonly onSourceUpdated = this._onSourceUpdated.event;
+    readonly onSourceSynced = this._onSourceSynced.event;
+    readonly onAutoUpdatePreferenceChanged = this._onAutoUpdatePreferenceChanged.event;
 
     private constructor(private context: vscode.ExtensionContext) {
         this.storage = new RegistryStorage(context);
@@ -116,12 +125,59 @@ export class RegistryManager {
 	}
 
     /**
+     * Set AutoUpdateService instance for auto-update functionality
+     */
+    setAutoUpdateService(autoUpdateService: AutoUpdateService): void {
+        this._autoUpdateService = autoUpdateService;
+    }
+
+    /**
+     * Get AutoUpdateService instance
+     */
+    get autoUpdateService(): AutoUpdateService | undefined {
+        return this._autoUpdateService;
+    }
+
+    /**
+     * Enable auto-update for a bundle (facade method)
+     */
+    async enableAutoUpdate(bundleId: string): Promise<void> {
+        if (!this._autoUpdateService) {
+            throw new Error('Auto-update service is not available. Please restart VS Code.');
+        }
+        await this._autoUpdateService.setAutoUpdate(bundleId, true);
+        this._onAutoUpdatePreferenceChanged.fire({ bundleId, enabled: true });
+    }
+
+    /**
+     * Disable auto-update for a bundle (facade method)
+     */
+    async disableAutoUpdate(bundleId: string): Promise<void> {
+        if (!this._autoUpdateService) {
+            throw new Error('Auto-update service is not available. Please restart VS Code.');
+        }
+        await this._autoUpdateService.setAutoUpdate(bundleId, false);
+        this._onAutoUpdatePreferenceChanged.fire({ bundleId, enabled: false });
+    }
+
+    /**
+     * Check if auto-update is enabled for a bundle (facade method)
+     */
+    async isAutoUpdateEnabled(bundleId: string): Promise<boolean> {
+        if (!this._autoUpdateService) {
+            return false;
+        }
+        return await this._autoUpdateService.isAutoUpdateEnabled(bundleId);
+    }
+
+    /**
      * Get singleton instance
      */
     static getInstance(context?: vscode.ExtensionContext): RegistryManager {
         if (!RegistryManager.instance && context) {
             RegistryManager.instance = new RegistryManager(context);
-        }        if (!RegistryManager.instance) {
+        }
+        if (!RegistryManager.instance) {
             throw new Error('RegistryManager not initialized. Provide context on first call.');
         }
         return RegistryManager.instance;
@@ -135,6 +191,14 @@ export class RegistryManager {
         await this.storage.initialize();
         await this.loadAdapters();
         this.logger.info('Prompt Registry initialized successfully');
+    }
+
+    /**
+     * Get the storage instance
+     * Used by commands to access storage functionality like update preferences
+     */
+    getStorage(): RegistryStorage {
+        return this.storage;
     }
 
     /**
@@ -309,6 +373,9 @@ export class RegistryManager {
             // Other sources: Default to cache-only behavior
             this.logger.info(`[${source.type}] Cache updated for source '${sourceId}'. Using cache-only behavior.`);
         }
+
+        // Fire source synced event
+        this._onSourceSynced.fire({ sourceId, bundleCount: bundles.length });
     }
 
     /**
@@ -473,7 +540,7 @@ export class RegistryManager {
     async forceAuthentication(): Promise<void> {
         this.logger.info('Forcing authentication for all adapters...');
         const promises: Promise<void>[] = [];
-        
+
         for (const [sourceId, adapter] of this.adapters.entries()) {
             if (adapter.forceAuthentication) {
                 promises.push(
@@ -483,7 +550,7 @@ export class RegistryManager {
                 );
             }
         }
-        
+
         await Promise.all(promises);
         this.logger.info('Authentication refresh completed');
     }
@@ -593,18 +660,35 @@ export class RegistryManager {
         // Try exact match first
         let bundle = bundles.find(b => b.id === bundleId);
         
-        // If not found and bundleId looks like an identity (no version), try identity matching for GitHub bundles
-        if (!bundle && !bundleId.match(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/)) {
-            // This might be a bundle identity, try to find a matching GitHub bundle
+        // If not found, try identity matching for GitHub bundles
+        if (!bundle) {
             const sources = await this.storage.getSources();
-            bundle = bundles.find(b => {
-                const source = sources.find(s => s.id === b.sourceId);
-                if (source?.type === 'github') {
-                    const identity = VersionManager.extractBundleIdentity(b.id, 'github');
-                    return identity === bundleId;
-                }
-                return false;
-            });
+
+            // Check if bundleId has version suffix (versioned ID case)
+            const hasVersionSuffix = bundleId.match(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/);
+
+            if (hasVersionSuffix) {
+                // Extract identity from versioned bundleId and find matching bundle
+                bundle = bundles.find(b => {
+                    const source = sources.find(s => s.id === b.sourceId);
+                    if (source?.type === 'github') {
+                        const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, 'github');
+                        const sourceIdentity = VersionManager.extractBundleIdentity(b.id, 'github');
+                        return bundleIdentity === sourceIdentity;
+                    }
+                    return false;
+                });
+            } else {
+                // bundleId is already an identity, find matching GitHub bundle
+                bundle = bundles.find(b => {
+                    const source = sources.find(s => s.id === b.sourceId);
+                    if (source?.type === 'github') {
+                        const identity = VersionManager.extractBundleIdentity(b.id, 'github');
+                        return identity === bundleId;
+                    }
+                    return false;
+                });
+            }
         }
         
         if (!bundle) {
@@ -632,14 +716,19 @@ export class RegistryManager {
         // Download and install
         const installation = await this.downloadAndInstall(bundle, source, installOptions);
         
-        // Record installation
+        // Record installation FIRST (before cleanup) to ensure metadata is safe
+        // If anything fails here, old versions remain and can be used as fallback
         await this.storage.recordInstallation(installation);
-        
+
+        // Clean up old versions AFTER successful recording
+        // This ensures we don't lose the old version if recording fails
+        await this.cleanupOldVersions(bundle, options.scope);
+
         if (!silent) {
             this._onBundleInstalled.fire(installation);
         }
         this.logger.info(`Bundle '${bundleId}' installed successfully`);
-        
+
         return installation;
     }
 
@@ -648,13 +737,13 @@ export class RegistryManager {
      */
     async installBundles(bundles: {bundleId: string, options: InstallOptions}[]): Promise<void> {
         const installed: InstalledBundle[] = [];
-        const CONCURRENCY_LIMIT = 5;
+        const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
 
         this.logger.info(`Batch installing ${bundles.length} bundles...`);
 
         for (let i = 0; i < bundles.length; i += CONCURRENCY_LIMIT) {
             const chunk = bundles.slice(i, i + CONCURRENCY_LIMIT);
-            
+
             const results = await Promise.all(chunk.map(async (b) => {
                 try {
                     return await this.installBundle(b.bundleId, b.options, true);
@@ -674,6 +763,52 @@ export class RegistryManager {
         if (installed.length > 0) {
             this._onBundlesInstalled.fire(installed);
             this.logger.info(`Batch installation complete: ${installed.length}/${bundles.length} bundles installed`);
+        }
+    }
+
+    /**
+     * Clean up old versions of a bundle when a new version is installed
+     * This handles downgrades and version changes by removing previous installation records
+     *
+     * @param bundle The newly installed bundle
+     * @param scope The installation scope (user or workspace)
+     */
+    private async cleanupOldVersions(bundle: Bundle, scope: 'user' | 'workspace'): Promise<void> {
+        try {
+            // Get source information to determine sourceType
+            const source = await this.getSourceForBundle(bundle);
+            const sourceType = source.type;
+
+            // Get the base bundle identity (without version suffix)
+            const baseIdentity = VersionManager.extractBundleIdentity(bundle.id, sourceType);
+
+            // Get all installed bundles in this scope
+            // OPTIMIZATION: Filter early by sourceId to reduce iterations
+            const allInstalled = await this.storage.getInstalledBundles(scope);
+            const candidateBundles = allInstalled.filter(installed => installed.sourceId === bundle.sourceId);
+
+            // Find all installations that match this bundle's identity
+            const oldInstallations = candidateBundles.filter(installed => {
+                // Extract identity from the installed bundle ID
+                const installedSourceType = (installed.sourceType as SourceType) || 'github';
+                const installedIdentity = VersionManager.extractBundleIdentity(installed.bundleId, installedSourceType);
+
+                // Match if identities are the same and version is different
+                return installedIdentity === baseIdentity && installed.version !== bundle.version;
+            });
+
+            // Remove old versions
+            for (const oldInstall of oldInstallations) {
+                this.logger.debug(`Removing old version ${oldInstall.version} of bundle ${baseIdentity}`);
+                await this.storage.removeInstallation(oldInstall.bundleId, scope);
+            }
+
+            if (oldInstallations.length > 0) {
+                this.logger.info(`Cleaned up ${oldInstallations.length} old version(s) of bundle ${baseIdentity}`);
+            }
+        } catch (error) {
+            // Log but don't fail if cleanup fails - the new version is already installed
+            this.logger.warn(`Failed to cleanup old versions: ${(error as Error).message}`);
         }
     }
 
@@ -884,13 +1019,13 @@ export class RegistryManager {
      */
     async uninstallBundles(bundleIds: string[], scope: 'user' | 'workspace' = 'user'): Promise<void> {
         const uninstalled: string[] = [];
-        const CONCURRENCY_LIMIT = 5;
+        const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
 
         this.logger.info(`Batch uninstalling ${bundleIds.length} bundles...`);
 
         for (let i = 0; i < bundleIds.length; i += CONCURRENCY_LIMIT) {
             const chunk = bundleIds.slice(i, i + CONCURRENCY_LIMIT);
-            
+
             const results = await Promise.all(chunk.map(async (id) => {
                 try {
                     await this.uninstallBundle(id, scope, true);
@@ -1012,7 +1147,28 @@ export class RegistryManager {
 
         for (const bundle of installed) {
             try {
-                const latest = await this.getBundleDetails(bundle.bundleId);
+                // Try to get bundle details, handling versioned IDs that may not exist in consolidated list
+                let latest: Bundle;
+                try {
+                    latest = await this.getBundleDetails(bundle.bundleId);
+                } catch (error) {
+                    // If versioned ID not found, try extracting identity for GitHub bundles
+                    const sources = await this.storage.getSources();
+                    // Try both scopes to find the installed bundle
+                    let installedBundle = await this.storage.getInstalledBundle(bundle.bundleId, 'user');
+                    if (!installedBundle) {
+                        installedBundle = await this.storage.getInstalledBundle(bundle.bundleId, 'workspace');
+                    }
+                    const source = sources.find(s => s.id === installedBundle?.sourceId);
+
+                    if (source?.type === 'github') {
+                        const identity = VersionManager.extractBundleIdentity(bundle.bundleId, 'github');
+                        this.logger.debug(`Versioned bundle '${bundle.bundleId}' not found, trying identity '${identity}'`);
+                        latest = await this.getBundleDetails(identity);
+                    } else {
+                        throw error; // Re-throw if not a GitHub bundle
+                    }
+                }
                 
                 if (latest.version !== bundle.version) {
                     updates.push({
@@ -1338,11 +1494,11 @@ export class RegistryManager {
         
         const allSources = await this.storage.getSources();
         const installed: InstalledBundle[] = [];
-        const CONCURRENCY_LIMIT = 5;
-        
+        const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
+
         for (let i = 0; i < profile.bundles.length; i += CONCURRENCY_LIMIT) {
             const chunk = profile.bundles.slice(i, i + CONCURRENCY_LIMIT);
-            
+
             const results = await Promise.all(chunk.map(async (bundleRef) => {
                 progress.report({ message: `Installing ${bundleRef.id}...` });
                 try {
@@ -1363,7 +1519,7 @@ export class RegistryManager {
         if (installed.length > 0) {
             this._onBundlesInstalled.fire(installed);
         }
-        
+
         this.logger.info(`Profile bundle installation complete: ${installed.length} installed`);
     }
 
@@ -1435,13 +1591,13 @@ export class RegistryManager {
 
         // Record installation and fire event
         await this.storage.recordInstallation(installation);
-        
+
         if (!silent) {
             this._onBundleInstalled.fire(installation);
         }
         
         this.logger.info(`Successfully installed: ${matchingBundle.id}`);
-        
+
         return installation;
     }
 
@@ -1485,7 +1641,7 @@ export class RegistryManager {
         if (!profile) {
             throw new Error(`Profile not found: ${profileId}`);
         }
-        
+
         // Uninstall bundles associated with this profile
         const installedBundles = await this.storage.getInstalledBundles();
         const profileBundles = installedBundles.filter(b => b.profileId === profileId);
@@ -1687,17 +1843,51 @@ export class RegistryManager {
     }
 
     /**
+     * Get bundle name by ID
+     * Looks up the bundle name from installed bundles or bundle metadata
+     */
+    async getBundleName(bundleId: string): Promise<string> {
+        try {
+            // First try to get from installed bundles (user scope)
+            let installed = await this.storage.getInstalledBundle(bundleId, 'user');
+
+            // If not in user scope, try workspace scope
+            installed ??= await this.storage.getInstalledBundle(bundleId, 'workspace');
+
+            // If found in installed bundles, get name from metadata or manifest description
+            if (installed?.manifest?.metadata?.description) {
+                // Try to extract a clean name from the description or use bundleId
+                // For now, we'll try to get it from bundle details
+                const bundle = await this.getBundleDetails(bundleId);
+                return bundle?.name || bundleId;
+            }
+
+            // Try to get from bundle details
+            const bundle = await this.getBundleDetails(bundleId);
+            return bundle?.name || bundleId;
+        } catch (error) {
+            this.logger.debug(`Could not resolve bundle name for '${bundleId}': ${error}`);
+            return bundleId;
+        }
+    }
+
+    /**
      * Dispose resources
      */
     dispose(): void {
         this._onBundleInstalled.dispose();
         this._onBundleUninstalled.dispose();
         this._onBundleUpdated.dispose();
+        this._onBundlesInstalled.dispose();
+        this._onBundlesUninstalled.dispose();
         this._onProfileActivated.dispose();
         this._onProfileCreated.dispose();
         this._onProfileUpdated.dispose();
         this._onProfileDeleted.dispose();
         this._onSourceAdded.dispose();
         this._onSourceRemoved.dispose();
+        this._onSourceUpdated.dispose();
+        this._onSourceSynced.dispose();
+        this._onAutoUpdatePreferenceChanged.dispose();
     }
 }

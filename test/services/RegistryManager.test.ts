@@ -12,6 +12,7 @@ import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { RegistrySource } from '../../src/types/registry';
 import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
+import { BundleBuilder, TEST_SOURCE_IDS } from '../helpers/bundleTestHelpers';
 
 suite('RegistryManager - Settings Export/Import Behavior', () => {
     let sandbox: sinon.SinonSandbox;
@@ -687,5 +688,135 @@ suite('RegistryManager - Version Change Installation', () => {
         const recordedInstallation = mockStorage.recordInstallation.firstCall.args[0];
         assert.strictEqual(recordedInstallation.version, '1.0.15', 'Should install downgraded version 1.0.15');
         assert.ok(recordedInstallation.bundleId.includes('1.0.15'), 'Bundle ID should reflect downgraded version');
+    });
+});
+
+suite('RegistryManager - Bundle Resolution', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let registryManager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        registryManager = RegistryManager.getInstance(mockContext);
+        
+        // Create and inject mock storage using the existing pattern
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        (registryManager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should resolve bundle by versioned ID via identity matching', async () => {
+        // Arrange - The scenario where update check returns versioned ID but sources have consolidated ID
+        const versionedBundleId = 'amadeus-airlines-solutions-workflow-instructions-1.0.17';
+        const identityBundleId = 'amadeus-airlines-solutions-workflow-instructions';
+        
+        const sourceBundle = BundleBuilder.fromSource(identityBundleId, 'GITHUB')
+            .withVersion('1.0.18')
+            .build();
+        sourceBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
+        
+        mockStorage.getCachedBundleMetadata.resolves(undefined);
+        mockStorage.getSources.resolves([{
+            id: TEST_SOURCE_IDS.GITHUB,
+            type: 'github',
+            name: 'Test Source',
+            url: 'https://github.com/test/repo',
+            enabled: true,
+            priority: 1
+        }]);
+        
+        sandbox.stub(registryManager, 'searchBundles').resolves([sourceBundle]);
+
+        // Act - This happens when user clicks "View Details" after update check
+        const result = await registryManager.getBundleDetails(versionedBundleId);
+
+        // Assert - Should find the bundle via identity matching
+        assert.strictEqual(result.version, '1.0.18');
+        assert.ok(result.id.includes('amadeus-airlines-solutions-workflow-instructions'));
+    });
+
+    test('should resolve bundle by identity when source has versioned ID', async () => {
+        // Arrange - Test the reverse case: identity -> versioned bundle
+        const identityBundleId = 'amadeus-airlines-solutions-workflow-instructions';
+        
+        const versionedBundle = BundleBuilder.fromSource(identityBundleId, 'GITHUB')
+            .withVersion('1.0.18')
+            .build();
+        versionedBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
+        
+        mockStorage.getCachedBundleMetadata.resolves(undefined);
+        mockStorage.getSources.resolves([{
+            id: TEST_SOURCE_IDS.GITHUB,
+            type: 'github',
+            name: 'Test Source',
+            url: 'https://github.com/test/repo',
+            enabled: true,
+            priority: 1
+        }]);
+        
+        sandbox.stub(registryManager, 'searchBundles').resolves([versionedBundle]);
+
+        // Act
+        const result = await registryManager.getBundleDetails(identityBundleId);
+
+        // Assert - Should find the versioned bundle via identity matching
+        assert.strictEqual(result.version, '1.0.18');
+        assert.ok(result.id.includes('amadeus-airlines-solutions-workflow-instructions'));
+    });
+
+    test('should handle exact ID matches without identity matching', async () => {
+        // Arrange - Test that exact matches still work
+        const bundleId = 'exact-match-bundle-1.0.0';
+        
+        const exactBundle = BundleBuilder.fromSource('exact-match-bundle', 'GITHUB')
+            .withVersion('1.0.0')
+            .build();
+        exactBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
+        
+        mockStorage.getCachedBundleMetadata.resolves(undefined);
+        mockStorage.getSources.resolves([{
+            id: TEST_SOURCE_IDS.GITHUB,
+            type: 'github',
+            name: 'Test Source',
+            url: 'https://github.com/test/repo',
+            enabled: true,
+            priority: 1
+        }]);
+        
+        sandbox.stub(registryManager, 'searchBundles').resolves([exactBundle]);
+
+        // Act
+        const result = await registryManager.getBundleDetails(bundleId);
+
+        // Assert - Should find exact match without needing identity matching
+        assert.strictEqual(result.version, '1.0.0');
+        assert.ok(result.id.includes('exact-match-bundle'));
     });
 });
