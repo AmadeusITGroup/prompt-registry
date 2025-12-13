@@ -117,6 +117,11 @@ const vscode = {
     },
     withProgress: (options, task) => task({ report: () => {} })
   },
+  commands: {
+    registerCommand: (command, callback) => ({ dispose: () => {} }),
+    executeCommand: (command, ...args) => Promise.resolve(undefined),
+    getCommands: () => Promise.resolve([])
+  },
   authentication: {
     // Mock authentication API for GitHub tests
     getSession: async () => undefined,
@@ -181,6 +186,11 @@ const vscode = {
     Global: 1,
     Workspace: 2,
     WorkspaceFolder: 3
+  },
+  ProgressLocation: {
+    SourceControl: 1,
+    Window: 10,
+    Notification: 15
   }
 };
 

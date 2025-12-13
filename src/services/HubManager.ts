@@ -146,9 +146,14 @@ export class HubManager {
         } catch (error) {
             throw new Error(`Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`);
         }
-
-        // Save to storage
+        
+        // Save to storage first
         await this.storage.saveHub(hubId, config, reference);
+        
+        // Load hub sources into RegistryManager
+        if (this.registryManager) {
+            await this.loadHubSources(hubId);
+        }
         
         this._onHubImported.fire(hubId);
 
@@ -258,10 +263,15 @@ export class HubManager {
             throw new Error(`Hub validation failed after sync: ${validation.errors.join(', ')}`);
         }
     
-        this._onHubSynced.fire(hubId);
-
         // Update storage
         await this.storage.saveHub(hubId, config, existing.reference);
+        
+        // Reload hub sources into RegistryManager
+        if (this.registryManager) {
+            await this.loadHubSources(hubId);
+        }
+        
+        this._onHubSynced.fire(hubId);
     }
 
     /**
@@ -625,11 +635,165 @@ export class HubManager {
             if (!hub) {
                 throw new Error(`Hub not found: ${hubId}`);
             }
+            
+            // Load hub sources into RegistryManager when activating
+            if (this.registryManager) {
+                await this.loadHubSources(hubId);
+            }
         }
 
         // Set or clear active hub
         await this.storage.setActiveHubId(hubId);
         this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
+    }
+
+    /**
+     * Check if a source is a duplicate based on URL and config
+     * Compares URL, type, branch, and collectionsPath to determine if sources are identical
+     * @param source Source to check
+     * @param existingSources List of existing sources
+     * @returns The existing duplicate source or undefined
+     */
+    private findDuplicateSource(
+        source: HubSource,
+        existingSources: import('../types/registry').RegistrySource[]
+    ): import('../types/registry').RegistrySource | undefined {
+        return existingSources.find((existing: import('../types/registry').RegistrySource) => {
+            // Must have same type and URL
+            if (existing.type !== source.type || existing.url !== source.url) {
+                return false;
+            }
+            
+            // For sources with config, compare relevant fields
+            const existingConfig = existing.config || {};
+            const sourceConfig = source.config || {};
+            
+            // Compare branch (for git-based sources)
+            const existingBranch = existingConfig.branch || 'main';
+            const sourceBranch = sourceConfig.branch || 'main';
+            if (existingBranch !== sourceBranch) {
+                return false;
+            }
+            
+            // Compare collectionsPath (for awesome-copilot sources)
+            const existingPath = existingConfig.collectionsPath || 'collections';
+            const sourcePath = sourceConfig.collectionsPath || 'collections';
+            if (existingPath !== sourcePath) {
+                return false;
+            }
+            
+            // If all criteria match, it's a duplicate
+            return true;
+        });
+    }
+
+    /**
+     * Load hub sources into RegistryManager
+     * Converts HubSource objects to RegistrySource and adds them to the registry
+     * Skips sources that are duplicates (same URL, type, branch, and collectionsPath)
+     * @param hubId Hub identifier
+     */
+    async loadHubSources(hubId: string): Promise<void> {
+        if (!this.registryManager) {
+            this.logger.warn('RegistryManager not available, skipping source loading');
+            return;
+        }
+
+        this.logger.info(`Loading sources from hub: ${hubId}`);
+        
+        try {
+            const hubData = await this.storage.loadHub(hubId);
+            const hubSources = hubData.config.sources || [];
+            
+            this.logger.info(`Found ${hubSources.length} sources in hub ${hubId}`);
+            
+            // Get existing sources to avoid duplicates
+            const existingSources = await this.registryManager.listSources();
+            
+            let addedCount = 0;
+            let skippedCount = 0;
+            let updatedCount = 0;
+            
+            for (const hubSource of hubSources) {
+                // Skip disabled sources
+                if (!hubSource.enabled) {
+                    this.logger.debug(`Skipping disabled source: ${hubSource.id}`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Create unique source ID by prefixing with hub ID
+                const sourceId = `hub-${hubId}-${hubSource.id}`;
+                
+                // Check if source with same ID already exists (from this hub)
+                const existingSourceById = existingSources.find((s: import('../types/registry').RegistrySource) => s.id === sourceId);
+                
+                if (existingSourceById) {
+                    // Update existing source from same hub
+                    this.logger.info(`Updating existing hub source: ${sourceId}`);
+                    await this.registryManager.updateSource(sourceId, {
+                        name: hubSource.name,
+                        type: hubSource.type,
+                        url: hubSource.url,
+                        enabled: hubSource.enabled,
+                        priority: hubSource.priority,
+                        private: hubSource.private,
+                        token: hubSource.token,
+                        metadata: hubSource.metadata,
+                        config: hubSource.config,
+                        hubId: hubId
+                    });
+                    updatedCount++;
+                    continue;
+                }
+                
+                // Check if duplicate source already exists (same URL + config)
+                const duplicateSource = this.findDuplicateSource(hubSource, existingSources);
+                
+                if (duplicateSource) {
+                    this.logger.info(
+                        `Skipping duplicate source: ${hubSource.name} ` +
+                        `(already exists as "${duplicateSource.name}" with ID: ${duplicateSource.id})`
+                    );
+                    this.logger.debug(
+                        `Duplicate detected - URL: ${hubSource.url}, ` +
+                        `Branch: ${hubSource.config?.branch || 'main'}, ` +
+                        `CollectionsPath: ${hubSource.config?.collectionsPath || 'collections'}`
+                    );
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Add new source
+                this.logger.info(`Adding new hub source: ${sourceId} (${hubSource.name})`);
+                
+                // Convert HubSource to RegistrySource
+                const registrySource: import('../types/registry').RegistrySource = {
+                    id: sourceId,
+                    name: hubSource.name,
+                    type: hubSource.type,
+                    url: hubSource.url,
+                    enabled: hubSource.enabled,
+                    priority: hubSource.priority,
+                    private: hubSource.private,
+                    token: hubSource.token,
+                    metadata: hubSource.metadata,
+                    config: hubSource.config,
+                    hubId: hubId
+                };
+                
+                await this.registryManager.addSource(registrySource);
+                addedCount++;
+            }
+            
+            this.logger.info(
+                `Hub source loading complete for ${hubId}: ` +
+                `${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped`
+            );
+        } catch (error) {
+            this.logger.error(`Failed to load sources from hub ${hubId}`, error as Error);
+            throw error;
+        }
     }
 
     /**

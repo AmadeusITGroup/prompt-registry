@@ -112,11 +112,43 @@ export class HubCommands {
                     try {
                         const importedHubId = await this.hubManager.importHub(reference, hubId || undefined);
                         
-                        progress.report({ message: 'Creating profiles...' });
-                        
-                        // Load the hub and create profiles
+                        // Load the hub
                         const importedHubConfig = await this.hubManager.loadHub(importedHubId);
+
+                        // Sync sources from hub
+                        if (importedHubConfig.config.sources && importedHubConfig.config.sources.length > 0) {
+                            progress.report({ message: 'Importing sources...' });
+                            try {
+                                const existingSources = await this.registryManager.listSources();
+                                
+                                for (const sourceConfig of importedHubConfig.config.sources) {
+                                    // Check if source already exists
+                                    const existing = existingSources.find(s => s.id === sourceConfig.id);
+                                    
+                                    if (existing) {
+                                        this.logger.info(`Source ${sourceConfig.id} already exists, skipping import from hub.`);
+                                    } else {
+                                        try {
+                                            // Inject hubId to track provenance
+                                            const sourceToAdd = {
+                                                ...sourceConfig,
+                                                hubId: importedHubId
+                                            };
+                                            await this.registryManager.addSource(sourceToAdd);
+                                            this.logger.info(`Imported source ${sourceConfig.id} from hub`);
+                                        } catch (error) {
+                                            this.logger.error(`Failed to import source ${sourceConfig.id}`, error as Error);
+                                        }
+                                    }
+                                }
+                                this.logger.info(`Processed ${importedHubConfig.config.sources.length} sources from hub`);
+                            } catch (error) {
+                                this.logger.error('Failed to sync sources from hub', error as Error);
+                            }
+                        }
+                        
                         if (importedHubConfig.config.profiles && importedHubConfig.config.profiles.length > 0) {
+                            progress.report({ message: 'Creating profiles...' });
                             for (const profileConfig of importedHubConfig.config.profiles) {
                                 try {
                                     await this.registryManager.createProfile({
