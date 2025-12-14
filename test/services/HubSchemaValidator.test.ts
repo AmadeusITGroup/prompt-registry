@@ -330,4 +330,35 @@ suite('HubSchemaValidator - TDD', () => {
             assert.ok(result !== undefined);
         });
     });
+
+    suite('Profile path validation', () => {
+        test('should accept optional path in profiles', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.profiles[0].path = ['Folder', 'Subfolder'];
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, 'Profile path should be valid');
+        });
+
+        test('should reject path with invalid characters', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.profiles[0].path = ['Invalid/Character'];
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('path') || e.includes('pattern')));
+        });
+
+        test('should reject path that is not an array', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.profiles[0].path = 'Not an array';
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('path') || e.includes('array')));
+        });
+    });
 });

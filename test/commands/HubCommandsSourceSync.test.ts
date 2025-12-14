@@ -20,12 +20,31 @@ class MockRegistryManager {
 // Mock HubManager
 class MockHubManager {
     private hubConfig: HubConfig;
+    private registryManager: any;
 
-    constructor(config: HubConfig) {
+    constructor(config: HubConfig, registryManager?: any) {
         this.hubConfig = config;
+        this.registryManager = registryManager;
     }
 
-    async importHub(reference: any, hubId?: string) { return 'test-hub-id'; }
+    async importHub(reference: any, hubId?: string) { 
+        // Simulate loadHubSources behavior - add sources with prefixed IDs
+        if (this.registryManager && this.hubConfig.sources) {
+            for (const source of this.hubConfig.sources) {
+                const prefixedId = `hub-${hubId || 'test-hub-id'}-${source.id}`;
+                const existingSources = await this.registryManager.listSources();
+                const exists = existingSources.some((s: any) => s.id === prefixedId);
+                if (!exists) {
+                    await this.registryManager.addSource({
+                        ...source,
+                        id: prefixedId,
+                        hubId: hubId || 'test-hub-id'
+                    });
+                }
+            }
+        }
+        return 'test-hub-id'; 
+    }
     async loadHub(hubId: string) { 
         return { 
             config: this.hubConfig,
@@ -33,6 +52,7 @@ class MockHubManager {
         }; 
     }
     async listHubs() { return []; }
+    async setActiveHub(hubId: string) { }
 }
 
 suite('HubCommands Source Sync', () => {
@@ -102,8 +122,8 @@ suite('HubCommands Source Sync', () => {
             ]
         };
 
-        mockHubManager = new MockHubManager(hubConfig);
         mockRegistryManager = new MockRegistryManager();
+        mockHubManager = new MockHubManager(hubConfig, mockRegistryManager);
         
         context = {
             subscriptions: [],
@@ -130,27 +150,29 @@ suite('HubCommands Source Sync', () => {
 
         assert.strictEqual(result, 'test-hub-id', 'Import should succeed and return ID');
 
-        // Verify sources were added to registry
+        // Verify sources were added to registry (now with prefixed IDs from HubManager.loadHubSources)
         assert.strictEqual(mockRegistryManager.sources.length, 2, 'Should have added 2 sources');
         
-        const source1 = mockRegistryManager.sources.find((s: any) => s.id === 'source-1');
-        assert.ok(source1, 'Source 1 should be present');
+        // Sources now have prefixed IDs: hub-{hubId}-{sourceId}
+        const source1 = mockRegistryManager.sources.find((s: any) => s.id === 'hub-test-hub-id-source-1');
+        assert.ok(source1, 'Source 1 should be present with prefixed ID');
         assert.strictEqual(source1.hubId, 'test-hub-id', 'Source should have hubId injected');
         
-        const source2 = mockRegistryManager.sources.find((s: any) => s.id === 'source-2');
-        assert.ok(source2, 'Source 2 should be present');
+        const source2 = mockRegistryManager.sources.find((s: any) => s.id === 'hub-test-hub-id-source-2');
+        assert.ok(source2, 'Source 2 should be present with prefixed ID');
         assert.strictEqual(source2.hubId, 'test-hub-id', 'Source should have hubId injected');
     });
 
     test('should skip existing sources when importing a hub', async () => {
-        // Pre-populate registry with one source
+        // Pre-populate registry with one source (with prefixed ID as HubManager would create)
         mockRegistryManager.sources.push({
-            id: 'source-1',
+            id: 'hub-test-hub-id-source-1',
             name: 'Existing Source 1',
             type: 'github',
             url: 'https://github.com/owner/repo1',
             enabled: true,
-            priority: 1
+            priority: 1,
+            hubId: 'test-hub-id'
         });
 
         // Mock user input
@@ -160,15 +182,15 @@ suite('HubCommands Source Sync', () => {
 
         await commands.importHub();
 
-        // Verify total sources (1 existing + 1 new)
+        // Verify total sources (1 existing + 1 new = 2)
         assert.strictEqual(mockRegistryManager.sources.length, 2, 'Should have 2 sources total');
         
-        // Verify source-2 was added
-        const source2 = mockRegistryManager.sources.find((s: any) => s.id === 'source-2');
-        assert.ok(source2, 'Source 2 should be added');
+        // Verify source-2 was added with prefixed ID
+        const source2 = mockRegistryManager.sources.find((s: any) => s.id === 'hub-test-hub-id-source-2');
+        assert.ok(source2, 'Source 2 should be added with prefixed ID');
     });
 
-    test('should sync profiles when importing a hub', async () => {
+    test('should not create local profile copies when importing a hub', async () => {
         // Mock user input
         showQuickPickStub.resolves({ value: 'local' });
         showOpenDialogStub.resolves([vscode.Uri.file('/tmp/hub-config.yml')]);
@@ -177,7 +199,6 @@ suite('HubCommands Source Sync', () => {
         await commands.importHub();
 
         // Verify profiles were added to registry
-        assert.strictEqual(mockRegistryManager.profiles.length, 1, 'Should have added 1 profile');
-        assert.strictEqual(mockRegistryManager.profiles[0].id, 'profile-1', 'Profile 1 should be present');
+        assert.strictEqual(mockRegistryManager.profiles.length, 0, 'Should not create local profile copies');
     });
 });

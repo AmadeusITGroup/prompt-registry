@@ -14,8 +14,8 @@ import { promisify } from 'util';
 import { HubStorage, LoadHubResult } from '../storage/HubStorage';
 import { Logger } from '../utils/logger';
 import { SchemaValidator, ValidationResult } from './SchemaValidator';
-import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog } from '../types/hub';
 import { RegistrySource } from '../types/registry';
+import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog, ProfileWithUpdates } from '../types/hub';
 
 const execAsync = promisify(exec);
 
@@ -72,6 +72,7 @@ export class HubManager {
     private _onHubImported = new vscode.EventEmitter<string>();
     private _onHubDeleted = new vscode.EventEmitter<string>();
     private _onHubSynced = new vscode.EventEmitter<string>();
+    private _onFavoritesChanged = new vscode.EventEmitter<void>();
 
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
@@ -86,6 +87,7 @@ export class HubManager {
     readonly onHubImported = this._onHubImported.event;
     readonly onHubDeleted = this._onHubDeleted.event;
     readonly onHubSynced = this._onHubSynced.event;
+    readonly onFavoritesChanged = this._onFavoritesChanged.event;
 
     constructor(
         storage: HubStorage, 
@@ -243,8 +245,57 @@ export class HubManager {
      * @param hubId Hub identifier to delete
      */
     async deleteHub(hubId: string): Promise<void> {
+        // Cleanup resources linked to this hub before deleting
+        await this.cleanupHubResources(hubId);
+        
         await this.storage.deleteHub(hubId);
         this._onHubDeleted.fire(hubId);
+    }
+
+    /**
+     * Cleanup resources linked to a hub (sources, profiles, favorites)
+     * Called when hub is deleted or switched away from
+     * @param hubId Hub identifier to cleanup
+     */
+    private async cleanupHubResources(hubId: string): Promise<void> {
+        this.logger.info(`Cleaning up resources for hub: ${hubId}`);
+
+        // 1. Remove favorites for this hub
+        const favorites = await this.getFavoriteProfiles();
+        if (favorites[hubId]) {
+            delete favorites[hubId];
+            await this.storage.saveFavoriteProfiles(favorites);
+            this._onFavoritesChanged.fire();
+            this.logger.info(`Removed favorites for hub: ${hubId}`);
+        }
+
+        // 2. Deactivate and remove sources linked to this hub
+        if (this.registryManager) {
+            const sources = await this.registryManager.listSources();
+            for (const source of sources) {
+                if (source.hubId === hubId) {
+                    try {
+                        await this.registryManager.removeSource(source.id);
+                        this.logger.info(`Removed source ${source.id} linked to hub ${hubId}`);
+                    } catch (error) {
+                        this.logger.warn(`Failed to remove source ${source.id}`, error as Error);
+                    }
+                }
+            }
+
+            // 3. Deactivate profiles linked to this hub
+            const profiles = await this.registryManager.listProfiles();
+            for (const profile of profiles) {
+                if (profile.hubId === hubId && profile.active) {
+                    try {
+                        await this.registryManager.updateProfile(profile.id, { active: false });
+                        this.logger.info(`Deactivated profile ${profile.id} linked to hub ${hubId}`);
+                    } catch (error) {
+                        this.logger.warn(`Failed to deactivate profile ${profile.id}`, error as Error);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -403,60 +454,60 @@ export class HubManager {
         }
     }
 
-        /**
-         * Get authentication token using fallback chain:
-         * 1. VSCode GitHub API (if user is logged in)
-         * 2. gh CLI (if installed and authenticated)
-         * 3. Explicit token from source configuration
-         */
-        private async getAuthenticationToken(): Promise<string | undefined> {
-            // Return cached token if already resolved
-            if (this.authToken !== undefined) {
-                this.logger.debug(`[HubManager] Using cached token (method: ${this.authMethod})`);
+    /**
+     * Get authentication token using fallback chain:
+     * 1. VSCode GitHub API (if user is logged in)
+     * 2. gh CLI (if installed and authenticated)
+     * 3. Explicit token from source configuration
+     */
+    private async getAuthenticationToken(): Promise<string | undefined> {
+        // Return cached token if already resolved
+        if (this.authToken !== undefined) {
+            this.logger.debug(`[HubManager] Using cached token (method: ${this.authMethod})`);
+            return this.authToken;
+        }
+
+        this.logger.info('[HubManager] Attempting authentication...');
+
+        // Try VSCode GitHub authentication first
+        try {
+            this.logger.debug('[HubManager] Trying VSCode GitHub authentication...');
+            const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+            if (session) {
+                this.authToken = session.accessToken;
+                this.authMethod = 'vscode';
+                this.logger.info('[HubManager] ✓ Using VSCode GitHub authentication');
+                this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
                 return this.authToken;
             }
-    
-            this.logger.info('[HubManager] Attempting authentication...');
-    
-            // Try VSCode GitHub authentication first
-            try {
-                this.logger.debug('[HubManager] Trying VSCode GitHub authentication...');
-                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-                if (session) {
-                    this.authToken = session.accessToken;
-                    this.authMethod = 'vscode';
-                    this.logger.info('[HubManager] ✓ Using VSCode GitHub authentication');
-                    this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
-                    return this.authToken;
-                }
-                this.logger.debug('[HubManager] VSCode auth session not found');
-            } catch (error) {
-                this.logger.warn(`[HubManager] VSCode auth failed: ${error}`);
-            }
-    
-            // Try gh CLI authentication
-            try {
-                this.logger.debug('[HubManager] Trying gh CLI authentication...');
-                const { stdout } = await execAsync('gh auth token');
-                const token = stdout.trim();
-                if (token && token.length > 0) {
-                    this.authToken = token;
-                    this.authMethod = 'gh-cli';
-                    this.logger.info('[HubManager] ✓ Using gh CLI authentication');
-                    this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
-                    return this.authToken;
-                }
-                this.logger.debug('[HubManager] gh CLI returned empty token');
-            } catch (error) {
-                this.logger.warn(`[HubManager] gh CLI auth failed: ${error}`);
-            }
-    
-    
-            // No authentication available
-            this.authMethod = 'none';
-            this.logger.warn('[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
-            return undefined;
+            this.logger.debug('[HubManager] VSCode auth session not found');
+        } catch (error) {
+            this.logger.warn(`[HubManager] VSCode auth failed: ${error}`);
         }
+
+        // Try gh CLI authentication
+        try {
+            this.logger.debug('[HubManager] Trying gh CLI authentication...');
+            const { stdout } = await execAsync('gh auth token');
+            const token = stdout.trim();
+            if (token && token.length > 0) {
+                this.authToken = token;
+                this.authMethod = 'gh-cli';
+                this.logger.info('[HubManager] ✓ Using gh CLI authentication');
+                this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
+                return this.authToken;
+            }
+            this.logger.debug('[HubManager] gh CLI returned empty token');
+        } catch (error) {
+            this.logger.warn(`[HubManager] gh CLI auth failed: ${error}`);
+        }
+
+
+        // No authentication available
+        this.authMethod = 'none';
+        this.logger.warn('[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        return undefined;
+    }
 
     /**
      * Fetch hub config from URL
@@ -522,7 +573,9 @@ export class HubManager {
      */
     private async fetchFromGitHub(location: string, ref?: string): Promise<HubConfig> {
         const branch = ref || 'main';
-        const url = `https://raw.githubusercontent.com/${location}/${branch}/hub-config.yml`;
+        // Add timestamp to bypass GitHub raw content cache
+        const timestamp = Date.now();
+        const url = `https://raw.githubusercontent.com/${location}/${branch}/hub-config.yml?t=${timestamp}`;
 
         return this.fetchFromUrl(url);
     }
@@ -557,7 +610,23 @@ export class HubManager {
         if (!hub) {
             throw new Error(`Hub not found: ${hubId}`);
         }
-        return hub.config.profiles || [];
+        
+        const profiles = hub.config.profiles || [];
+        
+        // Enrich with activation state
+        try {
+            const activeState = await this.storage.getActiveProfileForHub(hubId);
+            if (activeState) {
+                return profiles.map(profile => ({
+                    ...profile,
+                    active: activeState.profileId === profile.id
+                }));
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error as Error);
+        }
+        
+        return profiles;
     }
 
     /**
@@ -629,7 +698,15 @@ export class HubManager {
      * Set the currently active hub
      * @param hubId Hub identifier to set as active
      */
-        async setActiveHub(hubId: string | null): Promise<void> {
+    async setActiveHub(hubId: string | null): Promise<void> {
+        // Get current active hub to check if we're switching
+        const currentActiveHubId = await this.storage.getActiveHubId();
+        
+        // Cleanup previous hub if switching to a different one
+        if (currentActiveHubId && currentActiveHubId !== hubId) {
+            await this.cleanupHubResources(currentActiveHubId);
+        }
+
         if (hubId !== null) {
             // Verify hub exists when setting (not clearing)
             const hub = await this.getHub(hubId);
@@ -1177,7 +1254,7 @@ export class HubManager {
             metadataChanged.description = true;
         }
 
-        const changes: import('../types/hub').ProfileChanges = {};
+        const changes: ProfileChanges = {};
         if (bundlesAdded.length > 0) {
             changes.bundlesAdded = bundlesAdded;
         }
@@ -1224,27 +1301,105 @@ export class HubManager {
     /**
      * Get list of profiles with pending updates
      */
-    async getProfilesWithUpdates(hubId: string): Promise<import('../types/hub').ProfileWithUpdates[]> {
-        const hub = await this.getHub(hubId);
+    async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
+        const hub = await this.getHubInfo(hubId);
         if (!hub) {
             return [];
         }
 
-        const result: import('../types/hub').ProfileWithUpdates[] = [];
+        const result: ProfileWithUpdates[] = [];
         
-        for (const profile of hub.config.profiles) {
-            const hasChanges = await this.hasProfileChanges(hubId, profile.id);
-            if (hasChanges) {
-                const changes = await this.getProfileChanges(hubId, profile.id);
+        // Check active profile for updates
+        const activeState = await this.getActiveProfile(hubId);
+        if (activeState) {
+            const changes = await this.getProfileChanges(hubId, activeState.profileId);
+            
+            if (changes && (
+                (changes.bundlesAdded && changes.bundlesAdded.length > 0) ||
+                (changes.bundlesRemoved && changes.bundlesRemoved.length > 0) ||
+                (changes.bundlesUpdated && changes.bundlesUpdated.length > 0) ||
+                (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0)
+            )) {
                 result.push({
-                    profileId: profile.id,
+                    profileId: activeState.profileId,
                     hasChanges: true,
-                    changes: changes || undefined
+                    changes: changes
                 });
             }
         }
-
+        
         return result;
+    }
+
+    /**
+     * Check if a profile is favorited
+     * @param hubId Hub identifier
+     * @param profileId Profile identifier
+     */
+    async isProfileFavorite(hubId: string, profileId: string): Promise<boolean> {
+        const favorites = await this.storage.getFavoriteProfiles();
+        return favorites[hubId]?.includes(profileId) || false;
+    }
+
+    /**
+     * Get favorite profiles
+     * @returns Map of hub ID to list of profile IDs
+     */
+    async getFavoriteProfiles(): Promise<Record<string, string[]>> {
+        return this.storage.getFavoriteProfiles();
+    }
+
+    /**
+     * Toggle profile favorite status
+     * @param hubId Hub identifier
+     * @param profileId Profile identifier
+     */
+    async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
+        const favorites = await this.getFavoriteProfiles();
+        const hubFavorites = favorites[hubId] || [];
+        
+        const index = hubFavorites.indexOf(profileId);
+        if (index === -1) {
+            // Add to favorites
+            hubFavorites.push(profileId);
+        } else {
+            // Remove from favorites
+            hubFavorites.splice(index, 1);
+        }
+        
+        favorites[hubId] = hubFavorites;
+        
+        // Clean up empty hubs
+        if (favorites[hubId].length === 0) {
+            delete favorites[hubId];
+        }
+        
+        await this.storage.saveFavoriteProfiles(favorites);
+        this._onFavoritesChanged.fire();
+    }
+
+    /**
+     * Cleanup orphaned favorites - remove favorites for hubs that no longer exist
+     * This handles stale data from hubs that were deleted before cleanup logic was implemented
+     */
+    async cleanupOrphanedFavorites(): Promise<void> {
+        const favorites = await this.getFavoriteProfiles();
+        const existingHubs = await this.listHubs();
+        const existingHubIds = new Set(existingHubs.map(h => h.id));
+        
+        let changed = false;
+        for (const hubId of Object.keys(favorites)) {
+            if (!existingHubIds.has(hubId)) {
+                this.logger.info(`Removing orphaned favorites for non-existent hub: ${hubId}`);
+                delete favorites[hubId];
+                changed = true;
+            }
+        }
+        
+        if (changed) {
+            await this.storage.saveFavoriteProfiles(favorites);
+            this._onFavoritesChanged.fire();
+        }
     }
 
     /**

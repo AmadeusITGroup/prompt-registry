@@ -1128,9 +1128,11 @@ export class RegistryManager {
         // If write fails, the old record remains intact
         this.logger.debug(`Recording new installation for '${updated.bundleId}' v${updated.version}`);
         await this.storage.recordInstallation(updated);
-        
-        this.logger.debug(`Removing old installation record for '${bundleId}' from ${current.scope} scope`);
-        await this.storage.removeInstallation(bundleId, current.scope);
+
+        if (updated.bundleId !== current.bundleId) {
+            this.logger.debug(`Removing old installation record for '${current.bundleId}' from ${current.scope} scope`);
+            await this.storage.removeInstallation(current.bundleId, current.scope);
+        }
         
         this._onBundleUpdated.fire(updated);
         this.logger.info(`Bundle '${bundleId}' updated from v${current.version} to v${bundle.version}`);
@@ -1305,6 +1307,13 @@ export class RegistryManager {
         this._onProfileDeleted.fire(profileId);
         
         this.logger.info(`Profile '${profileId}' deleted successfully`);
+    }
+
+    /**
+     * List only local profiles (from storage, excludes hub profiles)
+     */
+    async listLocalProfiles(): Promise<Profile[]> {
+        return await this.storage.getProfiles();
     }
 
     /**

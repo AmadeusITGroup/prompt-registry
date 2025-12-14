@@ -33,6 +33,35 @@ module.exports = {
       return await task(progress);
     }
   },
+  // Add missing TreeView related mocks
+  TreeItem: class {
+    constructor(label, collapsibleState) {
+      this.label = label;
+      this.collapsibleState = collapsibleState;
+    }
+  },
+  TreeItemCollapsibleState: {
+    None: 0,
+    Collapsed: 1,
+    Expanded: 2
+  },
+  EventEmitter: class {
+    constructor() {
+      this.event = (listener) => ({ dispose: () => {} });
+    }
+    fire(data) {}
+    dispose() {}
+  },
+  ThemeIcon: class {
+    constructor(id) {
+      this.id = id;
+    }
+  },
+  Uri: {
+    file: (path) => ({ fsPath: path, scheme: 'file' }),
+    parse: (path) => ({ fsPath: path, scheme: 'file' }),
+    joinPath: (base, ...segments) => ({ fsPath: base.fsPath + '/' + segments.join('/'), scheme: 'file' })
+  },
   env: {
     appName: 'Visual Studio Code',
     appRoot: '/mock/app/root',

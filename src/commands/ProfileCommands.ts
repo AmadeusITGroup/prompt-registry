@@ -15,6 +15,140 @@ const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
 
 /**
+ * Profile Icons with search keywords
+ */
+const PROFILE_ICONS = [
+    // Software & Development
+    { icon: '🚀', label: 'Rocket', tags: 'launch, deploy, speed, fast, startup' },
+    { icon: '📦', label: 'Package', tags: 'bundle, build, delivery, box, container' },
+    { icon: '💻', label: 'Computer', tags: 'code, dev, programming, tech, laptop, work' },
+    { icon: '🖥️', label: 'Desktop', tags: 'screen, monitor, pc, work' },
+    { icon: '⌨️', label: 'Keyboard', tags: 'type, input, code, writing' },
+    { icon: '�', label: 'Floppy', tags: 'save, storage, legacy, disk' },
+    { icon: '💿', label: 'Disc', tags: 'cd, dvd, storage, data, media' },
+    { icon: '�', label: 'Plug', tags: 'api, connect, integration, power' },
+    { icon: '📡', label: 'Satellite', tags: 'communication, signal, remote, broadcast' },
+    { icon: '☁️', label: 'Cloud', tags: 'server, host, remote, sky, aws, azure' },
+    { icon: '🌐', label: 'Web', tags: 'internet, browser, globe, world, http' },
+    { icon: '🐛', label: 'Bug', tags: 'debug, issue, fix, error, qa, test' },
+    { icon: '🦠', label: 'Microbe', tags: 'virus, bug, issue, small' },
+    { icon: '🔧', label: 'Wrench', tags: 'tools, fix, settings, config' },
+    { icon: '🔨', label: 'Hammer', tags: 'build, construct, fix' },
+    { icon: '🛠️', label: 'Tools', tags: 'utility, settings, fix, repair, maintenance' },
+    { icon: '⚙️', label: 'Gear', tags: 'settings, config, options, engine' },
+    { icon: '⛓️', label: 'Chains', tags: 'link, connect, blockchain, security' },
+    { icon: '🧬', label: 'DNA', tags: 'core, structure, biology, life' },
+    { icon: '⚛️', label: 'Atom', tags: 'react, physics, science, core' },
+    { icon: '�', label: 'Snake', tags: 'python, script, reptile' },
+    { icon: '☕', label: 'Coffee', tags: 'java, break, drink, hot' },
+    { icon: '�', label: 'Elephant', tags: 'php, large, database, postgres' },
+    { icon: '🐳', label: 'Whale', tags: 'docker, container, sea, ocean' },
+    { icon: '🐙', label: 'Octopus', tags: 'github, git, complex, sea' },
+    { icon: '🐧', label: 'Penguin', tags: 'linux, open source, cold' },
+    { icon: '🤖', label: 'Robot', tags: 'bot, ai, automation, smart, android' },
+    { icon: '🧠', label: 'Brain', tags: 'intelligence, smart, logic, think, ai, ml' },
+    { icon: '�️', label: 'Joystick', tags: 'game, play, control, fun' },
+    { icon: '📱', label: 'Mobile', tags: 'phone, app, device, responsive' },
+
+    // Security & Access
+    { icon: '🔒', label: 'Lock', tags: 'security, protect, auth, safe, private' },
+    { icon: '🔓', label: 'Unlock', tags: 'open, access, public, insecure' },
+    { icon: '🔑', label: 'Key', tags: 'lock, access, secret, auth, password' },
+    { icon: '🛡️', label: 'Shield', tags: 'security, protect, guard, safe, firewall' },
+    { icon: '�️', label: 'Eye', tags: 'vision, monitor, watch, see, view' },
+    { icon: '🚧', label: 'Barrier', tags: 'block, construction, wip, stop' },
+
+    // Business, Product & Analytics
+    { icon: '📊', label: 'Chart', tags: 'data, analytics, stats, graph, report, bi' },
+    { icon: '📈', label: 'Chart Up', tags: 'growth, profit, success, trend, increase' },
+    { icon: '📉', label: 'Chart Down', tags: 'loss, decrease, trend, drop' },
+    { icon: '📋', label: 'Clipboard', tags: 'plan, checklist, task, todo, audit' },
+    { icon: '📅', label: 'Calendar', tags: 'date, plan, schedule, event, time' },
+    { icon: '📝', label: 'Memo', tags: 'note, write, draft, text, docs' },
+    { icon: '�', label: 'Folder', tags: 'file, organize, group, directory' },
+    { icon: '📇', label: 'Card Index', tags: 'contacts, data, organize' },
+    { icon: '📌', label: 'Pushpin', tags: 'pin, sticky, note, location' },
+    { icon: '🎨', label: 'Palette', tags: 'design, art, creative, ui, ux, color' },
+    { icon: '�', label: 'Bulb', tags: 'idea, solution, light, think, innovation' },
+    { icon: '📢', label: 'Megaphone', tags: 'announce, shout, news, marketing, promo' },
+    { icon: '💰', label: 'Money', tags: 'finance, cash, dollar, price, cost, budget' },
+    { icon: '💳', label: 'Credit Card', tags: 'payment, buy, finance' },
+    { icon: '🧾', label: 'Receipt', tags: 'bill, proof, transaction' },
+    { icon: '🛒', label: 'Cart', tags: 'shop, store, buy, ecommerce, retail' },
+    { icon: '🛍️', label: 'Bags', tags: 'shopping, retail, buy' },
+    { icon: '🎁', label: 'Gift', tags: 'present, reward, bonus, package' },
+    { icon: '🤝', label: 'Handshake', tags: 'deal, partner, agree, meeting' },
+    { icon: '👥', label: 'Team', tags: 'people, group, users, collab' },
+    { icon: '�', label: 'User', tags: 'person, profile, account, customer' },
+    { icon: '🏢', label: 'Office', tags: 'building, work, company, enterprise' },
+    { icon: '🏗️', label: 'Building', tags: 'architecture, construct, wip, structure' },
+    
+    // Travel (Amadeus Core)
+    { icon: '✈️', label: 'Airplane', tags: 'flight, fly, travel, trip, airport' },
+    { icon: '🛫', label: 'Departure', tags: 'takeoff, leave, start, flight' },
+    { icon: '🛬', label: 'Arrival', tags: 'landing, arrive, end, flight' },
+    { icon: '🎫', label: 'Ticket', tags: 'pass, entry, booking, reservation' },
+    { icon: '🛂', label: 'Passport', tags: 'control, border, id, travel' },
+    { icon: '🧳', label: 'Luggage', tags: 'baggage, suitcase, trip, pack' },
+    { icon: '🏨', label: 'Hotel', tags: 'sleep, accommodation, stay, booking' },
+    { icon: '🛌', label: 'Bed', tags: 'sleep, rest, hotel, room' },
+    { icon: '🗺️', label: 'Map', tags: 'location, guide, navigation, world' },
+    { icon: '🧭', label: 'Compass', tags: 'direction, guide, explore, nav' },
+    { icon: '🏖️', label: 'Beach', tags: 'vacation, holiday, sun, sea, leisure' },
+    { icon: '⛰️', label: 'Mountain', tags: 'nature, hike, view, landscape' },
+    { icon: '🏙️', label: 'City', tags: 'urban, town, buildings, skyline' },
+    { icon: '🏝️', label: 'Island', tags: 'vacation, sea, land, tropical' },
+    { icon: '�', label: 'Globe', tags: 'world, earth, international, travel' },
+
+    // Transport (Rail, Car, Cruise)
+    { icon: '🚗', label: 'Car', tags: 'rental, drive, vehicle, auto, road' },
+    { icon: '�', label: 'Taxi', tags: 'cab, ride, transport, car' },
+    { icon: '🚌', label: 'Bus', tags: 'transport, public, ride' },
+    { icon: '🏎️', label: 'Race Car', tags: 'speed, fast, sport' },
+    { icon: '🚓', label: 'Police', tags: 'security, guard, law' },
+    { icon: '🚑', label: 'Ambulance', tags: 'health, medical, emergency' },
+    { icon: '🚚', label: 'Truck', tags: 'delivery, cargo, transport, logistics' },
+    { icon: '�', label: 'Locomotive', tags: 'train, steam, old, rail' },
+    { icon: '🚆', label: 'Train', tags: 'rail, transport, commute, station' },
+    { icon: '🚄', label: 'Fast Train', tags: 'speed, rail, modern, travel' },
+    { icon: '🚋', label: 'Tram', tags: 'city, rail, transport' },
+    { icon: '🚇', label: 'Metro', tags: 'subway, underground, tube, rail' },
+    { icon: '🚢', label: 'Ship', tags: 'cruise, boat, sea, ocean, travel' },
+    { icon: '�️', label: 'Cruise Ship', tags: 'passenger, holiday, sea, boat' },
+    { icon: '🚤', label: 'Speedboat', tags: 'fast, sea, fun' },
+    { icon: '⚓', label: 'Anchor', tags: 'sea, ship, port, marine' },
+    { icon: '⛽', label: 'Fuel', tags: 'gas, station, energy, car' },
+    { icon: '🚦', label: 'Traffic Light', tags: 'signal, road, stop, go' },
+    { icon: '�', label: 'Stop', tags: 'sign, halt, warning' },
+
+    // Science & QA
+    { icon: '🔬', label: 'Microscope', tags: 'science, research, test, analysis, lab' },
+    { icon: '🧪', label: 'Test Tube', tags: 'experiment, chemistry, lab, test' },
+    { icon: '🌡️', label: 'Thermometer', tags: 'temperature, measure, heat, cold' },
+    { icon: '🎯', label: 'Target', tags: 'goal, objective, focus, aim, accuracy' },
+    { icon: '✅', label: 'Check', tags: 'done, success, pass, qa, verify' },
+    { icon: '❎', label: 'Cross', tags: 'fail, error, wrong, delete' },
+    { icon: '⚠️', label: 'Warning', tags: 'alert, caution, danger, issue' },
+    { icon: '❓', label: 'Question', tags: 'help, ask, unknown, query' },
+
+    // Misc
+    { icon: '⚡', label: 'Zap', tags: 'power, energy, instant, fast, electric' },
+    { icon: '🌟', label: 'Star', tags: 'favorite, special, featured, top, rating' },
+    { icon: '🔥', label: 'Fire', tags: 'hot, trending, urgent, burn' },
+    { icon: '🎓', label: 'Cap', tags: 'education, school, student, learn, degree' },
+    { icon: '🎪', label: 'Circus', tags: 'fun, event, play, show' },
+    { icon: '🎭', label: 'Masks', tags: 'role, persona, acting, theater' },
+    { icon: '�', label: 'Gem', tags: 'ruby, crystal, value, rich' },
+    { icon: '🕰️', label: 'Clock', tags: 'time, wait, schedule, deadline' },
+    { icon: '⏱️', label: 'Stopwatch', tags: 'timer, race, speed, measure' },
+    { icon: '🏆', label: 'Trophy', tags: 'winner, award, success, top' },
+    { icon: '🥇', label: 'Medal', tags: 'first, winner, gold' },
+    { icon: '🎵', label: 'Music', tags: 'note, sound, audio, play' },
+    { icon: '🍔', label: 'Burger', tags: 'food, lunch, eat' },
+    { icon: '🍕', label: 'Pizza', tags: 'food, lunch, eat' },
+];
+
+/**
  * Profile Commands Handler
  */
 export class ProfileCommands {
@@ -57,17 +191,7 @@ export class ProfileCommands {
             }) || '';
 
             // Step 3: Select icon
-            const icons = ['🚀', '📦', '💻', '🎨', '🔬', '📊', '🏗️', '🎯', '⚡', '🌟'];
-            const iconPick = await vscode.window.showQuickPick(
-                icons.map(icon => ({ label: icon, description: icon })),
-                {
-                    placeHolder: 'Select an icon for the profile',
-                    title: 'Profile Icon',
-                    ignoreFocusOut: true
-                }
-            );
-
-            const icon = iconPick?.label || '📦';
+            const icon = await this.selectIcon('Profile Icon') || '📦';
 
             // Step 4: Select bundles
             const bundles = await this.selectBundles();
@@ -338,15 +462,21 @@ export class ProfileCommands {
 
     /**
      * Delete a profile
+     * For local profiles: deletes the profile
+     * For hub profiles (in favorites view): deactivates and removes from favorites
      */
     async deleteProfile(profileId?: string | any): Promise<void> {
         try {
             let targetProfileId: string | undefined;
+            let hubId: string | undefined;
+            let profileData: any;
             
-            // Extract profile ID from tree item if object is passed
+            // Extract profile ID and hubId from tree item if object is passed
             if (profileId && typeof profileId === 'object' && 'data' in profileId && profileId.data) {
-                targetProfileId = profileId.data.id;
-                this.logger.info(`Deleting profile from tree item: ${targetProfileId}`);
+                profileData = profileId.data;
+                targetProfileId = profileData.id;
+                hubId = profileData.hubId;
+                this.logger.info(`Deleting profile from tree item: ${targetProfileId}, hubId: ${hubId}`);
             } else if (typeof profileId === 'string') {
                 targetProfileId = profileId;
             }
@@ -389,17 +519,9 @@ export class ProfileCommands {
                 return;
             }
 
-            // Check if profile is from active hub (read-only)
-            const isHubProfile = await this.registryManager.isHubProfile(targetProfileId!);
-            if (isHubProfile) {
-                vscode.window.showWarningMessage(
-                    `Profile "${profile.name}" is managed by the active hub configuration and cannot be deleted directly. To remove it, switch to a different hub or modify the hub configuration.`,
-                    'OK'
-                );
-                return;
-            }
-
-            // Confirm deletion
+            // Confirm deletion for local profiles
+            // Note: If profile exists in registryManager.listProfiles(), it's a local profile and can be deleted.
+            // The isHubProfile check was removed because local copies of hub profiles should be deletable.
             const confirmation = await vscode.window.showWarningMessage(
                 `Are you sure you want to delete profile "${profile.name}"?`,
                 { modal: true },
@@ -664,6 +786,27 @@ export class ProfileCommands {
     }
 
     /**
+     * Select an icon from the expanded list
+     */
+    private async selectIcon(title: string): Promise<string | undefined> {
+        const items = PROFILE_ICONS.map(i => ({
+            label: `${i.icon} ${i.label}`,
+            description: i.tags,
+            detail: 'Search by keywords',
+            iconChar: i.icon
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select an icon (type to search by keywords)',
+            title: title,
+            matchOnDescription: true,
+            ignoreFocusOut: true
+        });
+
+        return selected ? selected.iconChar : undefined;
+    }
+
+    /**
      * Generate profile ID from name
      */
     private generateProfileId(name: string): string {
@@ -726,19 +869,10 @@ export class ProfileCommands {
      * Change profile icon
      */
     private async changeIcon(profileId: string): Promise<void> {
-        const icons = ['🚀', '📦', '💻', '🎨', '🔬', '📊', '🏗️', '🎯', '⚡', '🌟', '🔥', '💡', '🎪', '🎭'];
+        const selectedIcon = await this.selectIcon('Change Profile Icon');
 
-        const selected = await vscode.window.showQuickPick(
-            icons.map(icon => ({ label: icon, description: icon })),
-            {
-                placeHolder: 'Select new icon',
-                title: 'Change Profile Icon',
-                ignoreFocusOut: true
-            }
-        );
-
-        if (selected) {
-            await this.registryManager.updateProfile(profileId, { icon: selected.label });
+        if (selectedIcon) {
+            await this.registryManager.updateProfile(profileId, { icon: selectedIcon });
             vscode.window.showInformationMessage('Profile icon updated');
         }
     }

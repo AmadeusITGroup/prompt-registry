@@ -247,6 +247,16 @@
                 }
               }
             }
+          },
+          "path": {
+            "type": "array",
+            "description": "Optional path hierarchy for organizing this profile in the UI",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "pattern": "^[a-zA-Z0-9-_]+$"
+            }
           }
         }
       }

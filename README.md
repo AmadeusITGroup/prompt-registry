@@ -522,6 +522,35 @@ Right-click bundle → "Disable Auto-Update"
 
 Profiles help organize bundles by project, team, or environment.
 
+#### Shared Profiles vs Favorites
+
+In the **Registry Explorer**, profiles can come from two places:
+
+- **Shared profiles (from a Hub)**: centrally managed profiles that your organization/team publishes.
+- **Local profiles**: profiles you create and manage locally.
+
+The Explorer offers two complementary profile views:
+
+- **Shared Profiles**: the full catalog of available hub profiles (grouped by hub).
+- **Favorites**: a focused *daily working set* containing only the hub profiles you marked as favorite, plus your local profiles.
+
+Use the **⭐ Toggle Favorites View** button to switch between **Shared Profiles** and **Favorites**.
+
+![Registry Explorer - Shared Profiles view](./docs/assets/registry-explorer-shared-profiles.png)
+
+![Registry Explorer - Favorites view](./docs/assets/registry-explorer-favorites.png)
+
+**Typical workflow:** browse the full catalog in **Shared Profiles**, favorite the few profiles you use regularly, then switch to **Favorites** for day-to-day work.
+
+Favorites contains an **Active Profile** section, your favorited hub profiles (grouped by hub), and a **Local Profiles** section.
+
+#### Favorite a Hub Profile (to build your working set)
+
+1. In the **Registry Explorer**, click the **⭐ Toggle Favorites View** button until you see **Shared Profiles**.
+2. Expand a hub and find a profile.
+3. Right-click the profile and choose **Toggle Favorite**.
+4. Click **⭐ Toggle Favorites View** again to switch to **Favorites** and see your curated list (favorited profiles are marked with `⭐`).
+
 #### Create Profile
 
 ```bash
@@ -538,17 +567,26 @@ When installing a bundle:
 3. Bundle installs only to that profile
 ```
 
-#### Switch Profile
+#### Activate Profile
 
 ```bash
-Ctrl+Shift+P → "Prompt Registry: Switch Profile"
-# Select active profile
+Ctrl+Shift+P → "Prompt Registry: Activate Profile"
+# or Right-click a profile in Registry Explorer → "Activate Profile"
 ```
+
+#### Deactivate Profile
+
+```bash
+Ctrl+Shift+P → "Prompt Registry: Deactivate Profile"
+# or Right-click the active profile in Registry Explorer → "Deactivate Profile"
+```
+
+The active profile is shown with an **[Active]** label. In **Favorites** view, the **Active Profile** section always shows which profile is currently active (or **None**) so you don't need to expand nested trees to find it.
 
 #### View Profile Contents
 
 ```bash
-Sidebar → "My Profiles" → Select profile
+Registry Explorer → Shared Profiles or Favorites → Expand a profile
 # See all bundles in that profile
 ```
 
@@ -640,10 +678,10 @@ Ctrl+Shift+P → "View: Show Prompt Registry Explorer"
 - See installation status and version information
 - Visual indicators for available updates
 
-**👥 My Profiles**
-- Manage profile-based installations
-- Right-click for actions: Activate, Edit, Export, Delete
-- Quick profile switching
+**👥 Profiles (Shared / Favorites)**
+- Browse the full catalog of hub profiles in **Shared Profiles**
+- Build a focused daily working set in **Favorites** (includes **Active Profile**, favorited hub profiles, and **Local Profiles**)
+- Use **⭐ Toggle Favorites View** to switch between the two views
 
 **📡 Sources**
 - View all configured sources with priority and status

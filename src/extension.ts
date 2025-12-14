@@ -28,6 +28,8 @@ import { UpdateScheduler } from './services/UpdateScheduler';
 import { UpdateChecker } from './services/UpdateChecker';
 import { NotificationManager } from './services/NotificationManager';
 import { AutoUpdateService } from './services/AutoUpdateService';
+import { BundleUpdateNotifications } from './notifications/BundleUpdateNotifications';
+
 import {
     getValidUpdateCheckFrequency,
     getValidNotificationPreference
@@ -542,6 +544,9 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.refresh', () => {
                 this.treeProvider?.refresh();
             }),
+            vscode.commands.registerCommand('promptRegistry.toggleProfileView', () => {
+                this.treeProvider?.toggleViewMode();
+            }),
         ];
         
         this.disposables.push(...treeCommands);
@@ -618,7 +623,6 @@ export class PromptRegistryExtension {
 
             // Initialize AutoUpdateService with dependency injection
             // Pass RegistryManager methods as functions to avoid circular reference
-            const { BundleUpdateNotifications } = await import('./notifications/BundleUpdateNotifications');
             const bundleNotifications = new BundleUpdateNotifications(
                 async (bundleId: string) => {
                     return await this.registryManager.getBundleName(bundleId);
@@ -766,7 +770,6 @@ export class PromptRegistryExtension {
                     }
 
                     // Use BundleUpdateNotifications for bundle update notifications
-                    const { BundleUpdateNotifications } = await import('./notifications/BundleUpdateNotifications');
                     const bundleNotifications = new BundleUpdateNotifications(
                         async (bundleId: string) => {
                             return await this.registryManager.getBundleName(bundleId);

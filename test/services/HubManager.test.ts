@@ -477,4 +477,94 @@ suite('HubManager', () => {
         });
     });
 
+    suite('Favorites Management', () => {
+        test('should toggle favorite status', async () => {
+            const hubId = 'test-hub';
+            const profileId = 'profile-1';
+
+            // Initially not favorite
+            let favorites = await hubManager.getFavoriteProfiles();
+            assert.strictEqual(favorites[hubId], undefined);
+
+            // Toggle ON
+            await hubManager.toggleProfileFavorite(hubId, profileId);
+            let isFav = await hubManager.isProfileFavorite(hubId, profileId);
+            assert.strictEqual(isFav, true);
+            
+            favorites = await hubManager.getFavoriteProfiles();
+            assert.deepStrictEqual(favorites[hubId], [profileId]);
+
+            // Toggle OFF
+            await hubManager.toggleProfileFavorite(hubId, profileId);
+            isFav = await hubManager.isProfileFavorite(hubId, profileId);
+            assert.strictEqual(isFav, false);
+            
+            favorites = await hubManager.getFavoriteProfiles();
+            // Should be empty array or undefined depending on implementation cleanup
+            // Implementation: if (favorites[hubId].length === 0) { delete favorites[hubId]; }
+            assert.strictEqual(favorites[hubId], undefined);
+        });
+
+        test('should not create duplicates when toggling on repeatedly (simulated race)', async () => {
+            const hubId = 'test-hub';
+            const profileId = 'profile-1';
+
+            // Manually corrupt storage to have duplicates (if possible via API? No, API toggles)
+            // But let's verify API doesn't add duplicate if we call it weirdly?
+            // Actually API toggles. If we call it twice, it adds then removes.
+            
+            // Let's verify standard behavior first
+            await hubManager.toggleProfileFavorite(hubId, profileId);
+            await hubManager.toggleProfileFavorite(hubId, profileId); // Remove
+            await hubManager.toggleProfileFavorite(hubId, profileId); // Add back
+            
+            const favorites = await hubManager.getFavoriteProfiles();
+            assert.strictEqual(favorites[hubId].length, 1);
+            assert.strictEqual(favorites[hubId][0], profileId);
+        });
+
+        test('should emit event on change', async () => {
+            let eventFired = false;
+            hubManager.onFavoritesChanged(() => {
+                eventFired = true;
+            });
+
+            await hubManager.toggleProfileFavorite('hub', 'profile');
+            assert.strictEqual(eventFired, true);
+        });
+    });
+
+    suite('Profile Activation State', () => {
+        test('listProfilesFromHub should reflect active state', async () => {
+            // Import a hub with profiles
+            const hubId = await hubManager.importHub(localRef, 'active-state-hub');
+            
+            // Initially no profiles are active
+            let profiles = await hubManager.listProfilesFromHub(hubId);
+            assert.ok(profiles.length > 0);
+            assert.ok(profiles.every(p => !p.active));
+
+            // Mark one profile as active in storage
+            const profileToActivate = profiles[0];
+            await storage.saveProfileActivationState(hubId, profileToActivate.id, {
+                hubId,
+                profileId: profileToActivate.id,
+                activatedAt: new Date().toISOString(),
+                syncedBundles: []
+            });
+
+            // Check if active state is reflected
+            profiles = await hubManager.listProfilesFromHub(hubId);
+            const activeProfile = profiles.find(p => p.id === profileToActivate.id);
+            assert.ok(activeProfile);
+            assert.strictEqual(activeProfile.active, true);
+            
+            // Check others are still inactive
+            const otherProfiles = profiles.filter(p => p.id !== profileToActivate.id);
+            if (otherProfiles.length > 0) {
+                assert.ok(otherProfiles.every(p => !p.active));
+            }
+        });
+    });
+
 });

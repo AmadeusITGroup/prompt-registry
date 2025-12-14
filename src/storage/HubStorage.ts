@@ -442,4 +442,29 @@ export class HubStorage {
             'utf-8'
         );
     }
+
+    /**
+     * Get favorite profiles
+     * @returns Record<hubId, profileIds[]>
+     */
+    async getFavoriteProfiles(): Promise<Record<string, string[]>> {
+        const favoritesPath = path.join(this.storagePath, 'favorites.json');
+        if (!fs.existsSync(favoritesPath)) {
+            return {};
+        }
+        try {
+            const content = await fs.promises.readFile(favoritesPath, 'utf-8');
+            return JSON.parse(content);
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * Save favorite profiles
+     */
+    async saveFavoriteProfiles(favorites: Record<string, string[]>): Promise<void> {
+        const favoritesPath = path.join(this.storagePath, 'favorites.json');
+        await fs.promises.writeFile(favoritesPath, JSON.stringify(favorites, null, 2), 'utf-8');
+    }
 }

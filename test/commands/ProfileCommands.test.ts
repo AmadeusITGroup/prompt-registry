@@ -5,6 +5,8 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import { ProfileCommands } from '../../src/commands/ProfileCommands';
+import { RegistryManager } from '../../src/services/RegistryManager';
 
 suite('Profile Management Commands', () => {
     let sandbox: sinon.SinonSandbox;
@@ -52,19 +54,39 @@ suite('Profile Management Commands', () => {
             assert.ok(selectedBundles.includes('bundle-3'));
         });
 
-        test('should create profile with metadata', async () => {
-            const profile = {
-                id: 'profile-123',
-                name: 'My Profile',
-                bundles: ['bundle-1', 'bundle-2'],
-                created: new Date(),
-                active: false,
-            };
+        test('should show expanded icon list with search keywords', async () => {
+            const registryManagerStub = sandbox.createStubInstance(RegistryManager);
+            registryManagerStub.listProfiles.resolves([]);
+            registryManagerStub.createProfile.resolves({} as any);
+            
+            const profileCommands = new ProfileCommands(registryManagerStub as any);
+            
+            const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
+            showInputBoxStub.onFirstCall().resolves('Test Profile'); // Name
+            showInputBoxStub.onSecondCall().resolves('Description'); // Description
+            
+            const showQuickPickStub = sandbox.stub(vscode.window, 'showQuickPick');
+            
+            // Mock bundle selection
+            sandbox.stub(profileCommands as any, 'selectBundles').resolves(['bundle-1']);
+            sandbox.stub(profileCommands as any, 'generateProfileId').returns('test-profile-id');
+            // Mock activateProfile to avoid errors
+            sandbox.stub(profileCommands as any, 'activateProfile').resolves();
 
-            assert.ok(profile.id);
-            assert.ok(profile.name);
-            assert.ok(Array.isArray(profile.bundles));
-            assert.ok(profile.created instanceof Date);
+            // Mock icon selection return
+            showQuickPickStub.onFirstCall().resolves({ label: '🚀 Rocket', description: 'launch', iconChar: '🚀' } as any);
+
+            await profileCommands.createProfile();
+
+            const iconCall = showQuickPickStub.firstCall;
+            assert.ok(iconCall, 'showQuickPick should be called for icons');
+            
+            const items = iconCall.args[0] as vscode.QuickPickItem[];
+            assert.ok(items.length > 20, 'Should have a larger pool of icons');
+            
+            const rocketIcon = items.find(i => i.label.includes('🚀'));
+            assert.ok(rocketIcon);
+            assert.ok(rocketIcon.description && rocketIcon.description.toLowerCase().includes('launch'), 'Rocket icon should be searchable by "launch"');
         });
     });
 

@@ -372,6 +372,24 @@
         "title": "Open Hub Repository",
         "category": "Prompt Registry",
         "icon": "$(repo)"
+      },
+      {
+        "command": "promptregistry.openItemRepository",
+        "title": "Open Repository",
+        "category": "Prompt Registry",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "promptRegistry.toggleProfileView",
+        "title": "Toggle Favorites View",
+        "category": "Prompt Registry",
+        "icon": "$(star)"
+      },
+      {
+        "command": "promptRegistry.toggleProfileFavorite",
+        "title": "Toggle Favorite",
+        "category": "Prompt Registry",
+        "icon": "$(star)"
       }
     ],
     "viewsContainers": {
@@ -426,6 +444,11 @@
       ],
       "view/title": [
         {
+          "command": "promptRegistry.toggleProfileView",
+          "when": "view == promptRegistryExplorer",
+          "group": "navigation@0"
+        },
+        {
           "command": "promptRegistry.exportSettings",
           "when": "view == promptRegistryExplorer",
           "group": "navigation@1"
@@ -459,28 +482,33 @@
       "view/item/context": [
         {
           "command": "promptRegistry.activateProfile",
-          "when": "view == promptRegistryExplorer && viewItem == profile",
+          "when": "view == promptRegistryExplorer && (viewItem == profile || viewItem == hub_profile)",
           "group": "promptRegistry@1"
         },
         {
           "command": "promptRegistry.deactivateProfile",
-          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
+          "when": "view == promptRegistryExplorer && (viewItem =~ /^profile(-active)?$/ || viewItem == hub_profile)",
           "group": "promptRegistry@2"
         },
         {
           "command": "promptRegistry.editProfile",
-          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
+          "when": "view == promptRegistryExplorer && (viewItem =~ /^profile(-active)?$/ || viewItem == hub_profile)",
           "group": "promptRegistry@3"
         },
         {
           "command": "promptRegistry.exportProfile",
-          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
+          "when": "view == promptRegistryExplorer && (viewItem =~ /^profile(-active)?$/ || viewItem == hub_profile)",
           "group": "promptRegistry@4"
         },
         {
           "command": "promptRegistry.deleteProfile",
-          "when": "view == promptRegistryExplorer && viewItem =~ /^profile(-active)?$/",
+          "when": "view == promptRegistryExplorer && (viewItem =~ /^profile(-active)?$/ || viewItem == hub_profile)",
           "group": "promptRegistry@5"
+        },
+        {
+          "command": "promptRegistry.toggleProfileFavorite",
+          "when": "view == promptRegistryExplorer && viewItem == hub_profile",
+          "group": "promptRegistry@6"
         },
         {
           "command": "promptRegistry.viewBundle",
@@ -551,6 +579,26 @@
           "command": "promptregistry.deleteHub",
           "when": "view == promptRegistryExplorer && viewItem == hub",
           "group": "hubActions@2"
+        },
+        {
+          "command": "promptregistry.openItemRepository",
+          "when": "view == promptRegistryExplorer && viewItem == hub",
+          "group": "hubActions@3"
+        },
+        {
+          "command": "promptregistry.openItemRepository",
+          "when": "view == promptRegistryExplorer && viewItem == hub_profile",
+          "group": "promptRegistry@7"
+        },
+        {
+          "command": "promptregistry.openItemRepository",
+          "when": "view == promptRegistryExplorer && viewItem == source",
+          "group": "sourceActions@5"
+        },
+        {
+          "command": "promptregistry.openItemRepository",
+          "when": "view == promptRegistryExplorer && viewItem == installed_bundle",
+          "group": "bundleActions@5"
         }
       ]
     },

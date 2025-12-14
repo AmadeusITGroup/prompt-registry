@@ -371,4 +371,51 @@ suite('HubCommands', () => {
             // Error messages should include actionable information
         });
     });
+
+    suite('Source Deduplication', () => {
+        test('should not create duplicate sources when importing hub', async () => {
+            // This test verifies that HubManager.importHub() handles sources
+            // and HubCommands.importHub() doesn't duplicate the work
+            
+            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const ref: HubReference = { type: 'local', location: fixturePath };
+            
+            // Track sources added
+            const addedSources: string[] = [];
+            const mockRegistryMgr = {
+                listSources: async () => addedSources.map(id => ({ id, name: id })),
+                listProfiles: async () => [],
+                addSource: async (source: any) => {
+                    addedSources.push(source.id);
+                },
+                createProfile: async () => {},
+                updateSource: async () => {}
+            };
+            
+            // Set up HubManager with the mock RegistryManager passed to constructor
+            const validator = new MockSchemaValidator();
+            const testHubManager = new HubManager(
+                storage, 
+                validator as any, 
+                process.cwd(), 
+                undefined, 
+                mockRegistryMgr as any
+            );
+            
+            // Import hub - this should add sources only once via loadHubSources
+            await testHubManager.importHub(ref, 'test-hub');
+            
+            // Count sources - should have 2 sources (official-prompts, community-prompts)
+            // but each should only be added ONCE (with prefixed IDs)
+            const sourceCount = addedSources.length;
+            
+            // If there are more than 2 sources, we have duplicates
+            assert.strictEqual(sourceCount, 2, 
+                `Expected 2 sources but got ${sourceCount}: ${addedSources.join(', ')}`);
+            
+            // Verify the IDs are prefixed correctly
+            assert.ok(addedSources.every(id => id.startsWith('hub-test-hub-')),
+                `Source IDs should be prefixed with hub-test-hub-: ${addedSources.join(', ')}`);
+        });
+    });
 });

@@ -17,12 +17,13 @@ import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
     version?: string;
     enabled?: boolean;
+    sourceId?: string;
 }
 
 /**
@@ -421,8 +422,36 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     await this.handleToggleAutoUpdate(message.bundleId, message.enabled);
                 }
                 break;
+            case 'openSourceRepository':
+                if (message.bundleId) {
+                    await this.handleOpenSourceRepository(message.bundleId);
+                }
+                break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
+        }
+    }
+
+    /**
+     * Open the source repository for a bundle
+     */
+    private async handleOpenSourceRepository(bundleId: string): Promise<void> {
+        try {
+            const { bundle, source } = await this.findInstalledBundleByMarketplaceId(bundleId);
+            
+            // Create a fake tree item to pass to the command
+            const item = {
+                type: 'bundle',
+                data: {
+                    ...bundle,
+                    sourceId: bundle.sourceId
+                }
+            };
+            
+            await vscode.commands.executeCommand('promptregistry.openItemRepository', item);
+        } catch (error) {
+            this.logger.error('Failed to open source repository', error as Error);
+            vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
         }
     }
 
@@ -1699,6 +1728,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             opacity: 0.9;
         }
 
+        .btn-link {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            padding: 8px 10px;
+            min-width: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-link:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        .btn-link svg {
+            display: block;
+        }
+
         /* Version selector styles */
         .version-selector-group {
             display: flex;
@@ -2323,6 +2370,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                             : \`<button class="btn btn-primary" onclick="installBundle('\${bundle.id}')">Install</button>\`
                         }
                         <button class="btn btn-secondary" onclick="openDetails('\${bundle.id}')">Details</button>
+                        <button class="btn btn-link" onclick="openSourceRepo('\${bundle.id}')" title="Open Source Repository">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 1 1 0v2a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2h2a.5.5 0 0 1 0 1h-2zM9 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V3.707l-5.146 5.147a.5.5 0 0 1-.708-.708L12.293 3H9.5a.5.5 0 0 1-.5-.5z"/></svg>
+                        </button>
                     </div>
                 </div>
             \`).join('');
@@ -2353,6 +2403,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         function openDetails(bundleId) {
             vscode.postMessage({ type: 'openDetails', bundleId });
+        }
+
+        function openSourceRepo(bundleId) {
+            vscode.postMessage({ type: 'openSourceRepository', bundleId });
         }
 
         function toggleVersionDropdown(dropdownId, event) {

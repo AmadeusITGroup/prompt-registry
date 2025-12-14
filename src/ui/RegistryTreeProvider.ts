@@ -17,6 +17,8 @@ import { UI_CONSTANTS } from '../utils/constants';
 export enum TreeItemType {
     // Root sections
     PROFILES_ROOT = 'profiles_root',
+    HUBS_ROOT = 'hubs_root',
+    FAVORITES_ROOT = 'favorites_root',
     INSTALLED_ROOT = 'installed_root',
     DISCOVER_ROOT = 'discover_root',
     SOURCES_ROOT = 'sources_root',// Profile items
@@ -43,6 +45,13 @@ export enum TreeItemType {
     // Hub items
     IMPORT_HUB = 'import_hub',
     LIST_HUB = 'list_hub',
+    HUB = 'hub',
+    HUB_PROFILE = 'hub_profile',
+    PROFILE_FOLDER = 'profile_folder',
+    LOCAL_PROFILES_FOLDER = 'local_profiles_folder',
+
+    ACTIVE_PROFILE_SECTION = 'active_profile_section',
+    ACTIVE_PROFILE_NONE = 'active_profile_none',
 }
 
 /**
@@ -76,10 +85,18 @@ export class RegistryTreeItem extends vscode.TreeItem {
      * Get icon for tree item
      */
     private getIcon(): vscode.ThemeIcon | undefined {
+        // For profiles with custom icons, don't show ThemeIcon (emoji is in label)
+        if ((this.type === TreeItemType.HUB_PROFILE || this.type === TreeItemType.PROFILE) && this.data?.icon) {
+            return undefined;
+        }
+
         const iconMap: { [key in TreeItemType]?: string } = {
             [TreeItemType.PROFILES_ROOT]: 'home',
+            [TreeItemType.HUBS_ROOT]: 'globe',
+            [TreeItemType.FAVORITES_ROOT]: 'star-full',
             [TreeItemType.PROFILE]: 'symbol-misc',
-            [TreeItemType.CREATE_PROFILE]: 'add',
+            [TreeItemType.HUB_PROFILE]: 'symbol-misc',
+            [TreeItemType.PROFILE_FOLDER]: 'folder',
             
             [TreeItemType.INSTALLED_ROOT]: 'package',
             [TreeItemType.INSTALLED_BUNDLE]: 'check',
@@ -92,8 +109,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
             
             [TreeItemType.SOURCES_ROOT]: 'radio-tower',
             [TreeItemType.SOURCE]: 'repo',
-            [TreeItemType.ADD_SOURCE]: 'add',
-[TreeItemType.BUNDLE]: 'file-zip',
+            [TreeItemType.BUNDLE]: 'file-zip',
         };
 
         const iconId = iconMap[this.type];
@@ -105,7 +121,8 @@ export class RegistryTreeItem extends vscode.TreeItem {
      */
     private getTooltip(): string {
         switch (this.type) {
-            case TreeItemType.PROFILE: {
+            case TreeItemType.PROFILE:
+            case TreeItemType.HUB_PROFILE: {
                 const profile = this.data as Profile;
                 return `${profile.description}\n${profile.bundles.length} bundles`;
             }
@@ -135,7 +152,8 @@ export class RegistryTreeItem extends vscode.TreeItem {
      */
     private getDescription(): string | undefined {
         switch (this.type) {
-            case TreeItemType.PROFILE: {
+            case TreeItemType.PROFILE:
+            case TreeItemType.HUB_PROFILE: {
                 const profile = this.data as Profile;
                 return profile.active ? '[Active]' : '';
             }
@@ -228,6 +246,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     private sourceSyncDebounceTimer?: NodeJS.Timeout;
     private disposables: vscode.Disposable[] = [];
 
+    private viewMode: 'all' | 'favorites' = 'all';
+
     constructor(
         private readonly registryManager: RegistryManager,
         private readonly hubManager: HubManager
@@ -257,12 +277,21 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
             // Auto-update preference changes
             registryManager.onAutoUpdatePreferenceChanged(() => this.refresh()),
-        
+
             // Hub events
             hubManager.onHubImported(() => this.refresh()),
             hubManager.onHubDeleted(() => this.refresh()),
-            hubManager.onHubSynced(() => this.refresh())
+            hubManager.onHubSynced(() => this.refresh()),
+            hubManager.onFavoritesChanged(() => this.refresh())
         );
+    }
+
+    /**
+     * Toggle view mode between all hubs and favorites
+     */
+    toggleViewMode(): void {
+        this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
+        this.refresh();
     }
 
     /**
@@ -401,12 +430,41 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
         // Get children based on parent type
         switch (element.type) {
-case TreeItemType.PROFILES_ROOT:
+            case TreeItemType.PROFILES_ROOT:
                 return this.getProfileItems();
+
+            case TreeItemType.HUBS_ROOT:
+                return this.getHubsItems();
+
+            case TreeItemType.FAVORITES_ROOT:
+                return this.getFavoritesItems();
+
+            case TreeItemType.ACTIVE_PROFILE_SECTION:
+                return this.getActiveProfileItems();
+
+            case TreeItemType.HUB:
+                if (this.viewMode === 'favorites') {
+                    // In favorites view, HUB item data contains pre-filtered profiles
+                    // We need to organize them. If element.data is the Hub object, we need to fetch favorites.
+                    const hub = element.data;
+                    const profiles = await this.hubManager.listProfilesFromHub(hub.id);
+                    const favorites = await this.hubManager.getFavoriteProfiles();
+                    const hubFavorites = favorites[hub.id] || [];
+                    const favoriteProfiles = profiles.filter(p => hubFavorites.includes(p.id));
+                    return this.organizeProfiles(hub.id, favoriteProfiles, [], hubFavorites);
+                }
+                return this.getHubChildren(element.data);
+
+            case TreeItemType.PROFILE_FOLDER:
+                return this.getFolderChildren(element.data);
             
             case TreeItemType.PROFILE:
                 return this.getProfileBundleItems(element.data as Profile);
             
+            case TreeItemType.HUB_PROFILE:
+                // Reuse getProfileBundleItems as compatible
+                return this.getProfileBundleItems(element.data as Profile);
+
             case TreeItemType.INSTALLED_ROOT:
                 return this.getInstalledBundleItems();
             
@@ -418,6 +476,9 @@ case TreeItemType.PROFILES_ROOT:
             
             case TreeItemType.SOURCES_ROOT:
                 return this.getSourceItems();
+
+            case TreeItemType.LOCAL_PROFILES_FOLDER:
+                return this.getLocalProfileItems();
                        
             default:
                 return [];
@@ -428,32 +489,304 @@ case TreeItemType.PROFILES_ROOT:
      * Get root level items
      */
     private getRootItems(): RegistryTreeItem[] {
+        const profileRootLabel = this.viewMode === 'all' ? 'Shared Profiles' : 'Favorites';
+        const profileRootType = this.viewMode === 'all' ? TreeItemType.HUBS_ROOT : TreeItemType.FAVORITES_ROOT;
+        
         return [
             new RegistryTreeItem(
-                '🏠 My Profiles',
-                TreeItemType.PROFILES_ROOT,
+                profileRootLabel,
+                profileRootType,
                 undefined,
                 vscode.TreeItemCollapsibleState.Expanded
             ),
             new RegistryTreeItem(
-                '📚 Installed Bundles',
+                'Installed Bundles',
                 TreeItemType.INSTALLED_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Expanded
             ),
-            // new RegistryTreeItem(
-            //     '🔍 Discover',
-            //     TreeItemType.DISCOVER_ROOT,
-            //     undefined,
-            //     vscode.TreeItemCollapsibleState.Collapsed
-            // ),
             new RegistryTreeItem(
-                '📡 Sources',
+                'Sources',
                 TreeItemType.SOURCES_ROOT,
                 undefined,
                 vscode.TreeItemCollapsibleState.Collapsed
             ),
         ];
+    }
+
+    /**
+     * Get hub items
+     */
+    private async getHubsItems(): Promise<RegistryTreeItem[]> {
+        const hubs = await this.hubManager.listHubs();
+        return hubs.map(hub => new RegistryTreeItem(
+            hub.name,
+            TreeItemType.HUB,
+            hub,
+            vscode.TreeItemCollapsibleState.Collapsed
+        ));
+    }
+
+    /**
+     * Get favorite profile items
+     */
+    private async getFavoritesItems(): Promise<RegistryTreeItem[]> {
+        // Cleanup orphaned favorites (from previously deleted hubs)
+        await this.hubManager.cleanupOrphanedFavorites();
+        
+        const favorites = await this.hubManager.getFavoriteProfiles();
+        const items: RegistryTreeItem[] = [];
+        const addedProfileIds = new Set<string>();
+
+        items.push(
+            new RegistryTreeItem(
+                'Active Profile',
+                TreeItemType.ACTIVE_PROFILE_SECTION,
+                undefined,
+                vscode.TreeItemCollapsibleState.Expanded
+            )
+        );
+
+        // 1. Add favorited hub profiles, grouped by Hub
+        for (const [hubId, profileIds] of Object.entries(favorites)) {
+            if (!profileIds || profileIds.length === 0) {
+                continue;
+            }
+
+            try {
+                // Get Hub Info to display as a root folder
+                const hubInfo = await this.hubManager.getHubInfo(hubId);
+                
+                // Create a Hub item that will act as a folder
+                const hubItem = new RegistryTreeItem(
+                    hubInfo.config.metadata.name,
+                    TreeItemType.HUB,
+                    { id: hubId, name: hubInfo.config.metadata.name }, // Pass minimal hub data needed
+                    vscode.TreeItemCollapsibleState.Expanded // Expand by default to show favorites
+                );
+                
+                items.push(hubItem);
+                
+                // Mark these profiles as added so we don't duplicate them if logic changes
+                profileIds.forEach(id => addedProfileIds.add(id));
+
+            } catch (error) {
+                // Hub might be missing or fail to load
+                this.logger.warn(`Failed to load hub ${hubId} for favorites view`, error as Error);
+            }
+        }
+
+        // 2. Add "Local Profiles" section (only truly local profiles, not hub profiles)
+        try {
+            const localProfiles = await this.registryManager.listLocalProfiles();
+            if (localProfiles.length > 0) {
+                const localProfilesItem = new RegistryTreeItem(
+                    'Local Profiles',
+                    TreeItemType.LOCAL_PROFILES_FOLDER,
+                    { isLocalProfilesFolder: true },
+                    vscode.TreeItemCollapsibleState.Expanded
+                );
+                items.push(localProfilesItem);
+            }
+        } catch (error) {
+            this.logger.error('Failed to load local profiles for favorites view', error as Error);
+        }
+
+        // 3. Add "Create New Profile" item
+        items.push(
+            new RegistryTreeItem(
+                '➕ Create New Profile...',
+                TreeItemType.CREATE_PROFILE,
+                undefined,
+                vscode.TreeItemCollapsibleState.None
+            )
+        );
+
+        return items;
+    }
+
+    private async getActiveProfileItems(): Promise<RegistryTreeItem[]> {
+        try {
+            const localProfiles = await this.registryManager.listLocalProfiles();
+            const activeLocalProfile = localProfiles.find(p => p.active);
+
+            if (activeLocalProfile) {
+                const treeItem = new RegistryTreeItem(
+                    activeLocalProfile.name,
+                    TreeItemType.PROFILE,
+                    activeLocalProfile,
+                    vscode.TreeItemCollapsibleState.Collapsed
+                );
+
+                treeItem.contextValue = 'profile-active';
+                treeItem.description = '[Active]';
+
+                return [treeItem];
+            }
+        } catch (error) {
+            this.logger.error('Failed to load local profiles for active profile section', error as Error);
+        }
+
+        try {
+            const activeHubProfiles = await this.hubManager.listAllActiveProfiles();
+            const activeHubProfile = activeHubProfiles?.[0];
+
+            if (activeHubProfile) {
+                const profile = await this.hubManager.getHubProfile(activeHubProfile.hubId, activeHubProfile.profileId);
+                const iconPrefix = profile.icon ? `${profile.icon} ` : '';
+                const label = `${iconPrefix}${profile.name}`;
+
+                const treeItem = new RegistryTreeItem(
+                    label,
+                    TreeItemType.HUB_PROFILE,
+                    { ...profile, hubId: activeHubProfile.hubId, active: true },
+                    vscode.TreeItemCollapsibleState.Collapsed
+                );
+
+                treeItem.description = '[Active]';
+
+                return [treeItem];
+            }
+        } catch (error) {
+            this.logger.error('Failed to load hub profiles for active profile section', error as Error);
+        }
+
+        return [
+            new RegistryTreeItem(
+                'None',
+                TreeItemType.ACTIVE_PROFILE_NONE,
+                undefined,
+                vscode.TreeItemCollapsibleState.None
+            )
+        ];
+    }
+
+    /**
+     * Get children for a hub
+     */
+    private async getHubChildren(hub: any): Promise<RegistryTreeItem[]> {
+        const profiles = await this.hubManager.listProfilesFromHub(hub.id);
+        const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
+        const hubFavorites = favoriteProfiles[hub.id] || [];
+        
+        return this.organizeProfiles(hub.id, profiles, [], hubFavorites);
+    }
+
+    /**
+     * Get children for a folder
+     */
+    private async getFolderChildren(folder: any): Promise<RegistryTreeItem[]> {
+        const profiles = await this.hubManager.listProfilesFromHub(folder.hubId);
+        const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
+        const hubFavorites = favoriteProfiles[folder.hubId] || [];
+        
+        // Filter profiles if in favorites view
+        let profilesToOrganize = profiles;
+        if (this.viewMode === 'favorites') {
+            profilesToOrganize = profiles.filter(p => hubFavorites.includes(p.id));
+        }
+
+        return this.organizeProfiles(folder.hubId, profilesToOrganize, folder.path, hubFavorites);
+    }
+
+    /**
+     * Organize profiles into files and folders
+     */
+    private organizeProfiles(hubId: string, profiles: any[], currentPath: string[], favorites: string[] = []): RegistryTreeItem[] {
+        const items: RegistryTreeItem[] = [];
+        const folders = new Set<string>();
+
+        for (const profile of profiles) {
+            const profilePath = profile.path || [];
+            
+            // Check if profile is inside currentPath
+            if (profilePath.length < currentPath.length) {
+                continue;
+            }
+            
+            let isInside = true;
+            for (let i = 0; i < currentPath.length; i++) {
+                if (profilePath[i] !== currentPath[i]) {
+                    isInside = false;
+                    break;
+                }
+            }
+            if (!isInside) {
+                continue;
+            }
+
+            // Determine if direct child or in subfolder
+            if (profilePath.length === currentPath.length) {
+                // Direct child profile
+                const isFavorite = favorites.includes(profile.id);
+                // Build label: profile icon (if any) + star (if favorite) + name
+                const iconPrefix = profile.icon ? `${profile.icon} ` : '';
+                const favoritePrefix = isFavorite ? '⭐ ' : '';
+                const label = `${iconPrefix}${favoritePrefix}${profile.name}`;
+                
+                const treeItem = new RegistryTreeItem(
+                    label,
+                    TreeItemType.HUB_PROFILE,
+                    { ...profile, hubId },
+                    vscode.TreeItemCollapsibleState.Collapsed
+                );
+
+                if (profile.active) {
+                    treeItem.description = '[Active]';
+                }
+
+                items.push(treeItem);
+            } else {
+                // In subfolder - get the next segment
+                const folderName = profilePath[currentPath.length];
+                folders.add(folderName);
+            }
+        }
+
+        // Add folders
+        for (const folderName of folders) {
+            items.push(new RegistryTreeItem(
+                folderName,
+                TreeItemType.PROFILE_FOLDER,
+                { 
+                    hubId, 
+                    path: [...currentPath, folderName],
+                    name: folderName
+                },
+                vscode.TreeItemCollapsibleState.Collapsed
+            ));
+        }
+
+        return items;
+    }
+
+    /**
+     * Get local profile items (for Local Profiles folder in Favorites view)
+     */
+    private async getLocalProfileItems(): Promise<RegistryTreeItem[]> {
+        const items: RegistryTreeItem[] = [];
+        try {
+            // Use listLocalProfiles to get only truly local profiles, not hub profiles
+            const profiles = await this.registryManager.listLocalProfiles();
+            for (const profile of profiles) {
+                const treeItem = new RegistryTreeItem(
+                    profile.name,
+                    TreeItemType.PROFILE,
+                    profile,
+                    vscode.TreeItemCollapsibleState.Collapsed
+                );
+                
+                if (profile.active) {
+                    treeItem.contextValue = 'profile-active';
+                    treeItem.description = '[Active]';
+                }
+                
+                items.push(treeItem);
+            }
+        } catch (error) {
+            this.logger.error('Failed to load local profiles', error as Error);
+        }
+        return items;
     }
 
     /**
@@ -465,9 +798,8 @@ case TreeItemType.PROFILES_ROOT:
             const items: RegistryTreeItem[] = [];
 
             for (const profile of profiles) {
-                const icon = profile.icon || '📦';
                 const treeItem = new RegistryTreeItem(
-                    `${icon} ${profile.name}`,
+                    profile.name,
                     TreeItemType.PROFILE,
                     profile,
                     vscode.TreeItemCollapsibleState.Collapsed
@@ -507,11 +839,11 @@ case TreeItemType.PROFILES_ROOT:
         for (const profileBundle of profile.bundles) {
             try {
                 const bundle = await this.registryManager.getBundleDetails(profileBundle.id);
-                const status = profileBundle.required ? '✓' : '○';
+                // const status = profileBundle.required ? '✓' : '○'; // Unused
                 
                 items.push(
                     new RegistryTreeItem(
-                        `${status} ${bundle.name}`,
+                        bundle.name,
                         TreeItemType.PROFILE_BUNDLE,
                         { profile, bundle, profileBundle },
                         vscode.TreeItemCollapsibleState.None
@@ -522,7 +854,7 @@ case TreeItemType.PROFILES_ROOT:
                 this.logger.debug(`Bundle '${profileBundle.id}' not found in registry`, error as Error);
                 items.push(
                     new RegistryTreeItem(
-                        `⚠️  ${profileBundle.id} (not found)`,
+                        `${profileBundle.id} (not found)`,
                         TreeItemType.PROFILE_BUNDLE,
                         profileBundle,
                         vscode.TreeItemCollapsibleState.None
@@ -608,8 +940,6 @@ case TreeItemType.PROFILES_ROOT:
                     items.push(treeItem);
                 }
             }
-
-            // Show count in root item
             return items;
         } catch (error) {
             this.logger.error('Failed to load installed bundles', error as Error);
@@ -667,11 +997,10 @@ case TreeItemType.PROFILES_ROOT:
             const items: RegistryTreeItem[] = [];
 
             for (const source of sources) {
-                const status = source.enabled ? '✓' : '○';
                 
                 items.push(
                     new RegistryTreeItem(
-                        `${status} ${source.name}`,
+                        source.name,
                         TreeItemType.SOURCE,
                         source,
                         vscode.TreeItemCollapsibleState.None
@@ -695,9 +1024,4 @@ case TreeItemType.PROFILES_ROOT:
             return [];
         }
     }
-
-    /**
-     * Get hub items for tree view
-     */
-
 }

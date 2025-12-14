@@ -8,6 +8,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as fc from 'fast-check';
 import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
+import { Logger } from '../../src/utils/logger';
 
 suite('BundleUpdateNotifications - Property Tests', () => {
     let sandbox: sinon.SinonSandbox;
@@ -371,7 +372,6 @@ suite('BundleUpdateNotifications - Property Tests', () => {
         // This property verifies that NotificationManager uses the Logger utility
         // for all notification operations
         
-        const { Logger } = await import('../../src/utils/logger');
         const loggerInstance = Logger.getInstance();
         
         // Stub logger methods

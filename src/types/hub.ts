@@ -80,6 +80,9 @@ export interface HubSource extends RegistrySource {
 export interface HubProfile extends Profile {
   /** Bundles in this profile */
   bundles: HubProfileBundle[];
+
+  /** Optional path for nested profile organization */
+  path?: string[];
 }
 
 /**

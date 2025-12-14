@@ -224,12 +224,25 @@ const vscode = {
     Window: 10,
     Notification: 15
   },
-  commands: {
-    executeCommand: () => Promise.resolve()
-  },
   QuickPickItemKind: {
     Separator: -1,
     Default: 0
+  },
+  TreeItem: class TreeItem {
+    constructor(label, collapsibleState) {
+      this.label = label;
+      this.collapsibleState = collapsibleState;
+    }
+  },
+  TreeItemCollapsibleState: {
+    None: 0,
+    Collapsed: 1,
+    Expanded: 2
+  },
+  ThemeIcon: class ThemeIcon {
+    constructor(id) {
+      this.id = id;
+    }
   }
 };
 

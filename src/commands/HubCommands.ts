@@ -72,7 +72,8 @@ export class HubCommands {
             vscode.commands.registerCommand('promptregistry.deleteHub', (hubId?: string) => this.deleteHub(hubId)),
             vscode.commands.registerCommand('promptregistry.switchHub', () => this.switchHub()),
             vscode.commands.registerCommand('promptregistry.exportHubConfig', () => this.exportHubConfig()),
-            vscode.commands.registerCommand('promptregistry.openHubRepository', () => this.openHubRepository())
+            vscode.commands.registerCommand('promptregistry.openHubRepository', () => this.openHubRepository()),
+            vscode.commands.registerCommand('promptregistry.openItemRepository', (item: any) => this.openItemRepository(item))
         );
     }
 
@@ -110,65 +111,19 @@ export class HubCommands {
                     progress.report({ message: 'Loading hub configuration...' });
 
                     try {
+                        // HubManager.importHub() handles source loading via loadHubSources()
                         const importedHubId = await this.hubManager.importHub(reference, hubId || undefined);
                         
-                        // Load the hub
-                        const importedHubConfig = await this.hubManager.loadHub(importedHubId);
+                        // Note: Hub profiles are NOT copied locally. They are accessed via
+                        // HubManager.listProfilesFromHub() and displayed in "Shared Profiles" view.
+                        // Local profiles are only created when the user explicitly creates them.
 
-                        // Sync sources from hub
-                        if (importedHubConfig.config.sources && importedHubConfig.config.sources.length > 0) {
-                            progress.report({ message: 'Importing sources...' });
-                            try {
-                                const existingSources = await this.registryManager.listSources();
-                                
-                                for (const sourceConfig of importedHubConfig.config.sources) {
-                                    // Check if source already exists
-                                    const existing = existingSources.find(s => s.id === sourceConfig.id);
-                                    
-                                    if (existing) {
-                                        this.logger.info(`Source ${sourceConfig.id} already exists, skipping import from hub.`);
-                                    } else {
-                                        try {
-                                            // Inject hubId to track provenance
-                                            const sourceToAdd = {
-                                                ...sourceConfig,
-                                                hubId: importedHubId
-                                            };
-                                            await this.registryManager.addSource(sourceToAdd);
-                                            this.logger.info(`Imported source ${sourceConfig.id} from hub`);
-                                        } catch (error) {
-                                            this.logger.error(`Failed to import source ${sourceConfig.id}`, error as Error);
-                                        }
-                                    }
-                                }
-                                this.logger.info(`Processed ${importedHubConfig.config.sources.length} sources from hub`);
-                            } catch (error) {
-                                this.logger.error('Failed to sync sources from hub', error as Error);
-                            }
-                        }
-                        
-                        if (importedHubConfig.config.profiles && importedHubConfig.config.profiles.length > 0) {
-                            progress.report({ message: 'Creating profiles...' });
-                            for (const profileConfig of importedHubConfig.config.profiles) {
-                                try {
-                                    await this.registryManager.createProfile({
-                                        id: profileConfig.id,
-                                        name: profileConfig.name,
-                                        description: profileConfig.description || '',
-                                        icon: profileConfig.icon || '📦',
-                                        bundles: profileConfig.bundles || [],
-                                        active: false
-                                    });
-                                } catch (error) {
-                                    this.logger.error(`Failed to create profile ${profileConfig.id}`, error as Error);
-                                }
-                            }
-                            this.logger.info(`Created ${importedHubConfig.config.profiles.length} profiles from hub`);
-                        }
-                        
+                        // Auto-activate the imported hub
+                        await this.hubManager.setActiveHub(importedHubId);
+                        this.logger.info(`Auto-activated imported hub: ${importedHubId}`);
 
                         vscode.window.showInformationMessage(
-                            `Successfully imported hub: ${importedHubId}`
+                            `Successfully imported and activated hub: ${importedHubId}`
                         );
 
                         // Refresh the tree view to show the new hub
@@ -534,14 +489,44 @@ export class HubCommands {
 
     /**
      * Open the active hub's repository in browser
+     * Falls back to selecting from available hubs if no active hub is set
      */
     async openHubRepository(): Promise<void> {
         try {
-            const activeHub = await this.hubManager.getActiveHub();
+            let activeHub = await this.hubManager.getActiveHub();
             
+            // If no active hub, fall back to available hubs
             if (!activeHub) {
-                vscode.window.showInformationMessage('No active hub configured. Please activate a hub first.');
-                return;
+                const hubs = await this.hubManager.listHubs();
+                
+                if (hubs.length === 0) {
+                    vscode.window.showInformationMessage('No hubs imported. Use "Import Hub" to add one first.');
+                    return;
+                }
+                
+                if (hubs.length === 1) {
+                    // Single hub - use it directly
+                    activeHub = await this.hubManager.loadHub(hubs[0].id);
+                } else {
+                    // Multiple hubs - let user select
+                    const items = hubs.map(hub => ({
+                        label: hub.name,
+                        description: hub.description,
+                        detail: `ID: ${hub.id}`,
+                        hubId: hub.id
+                    }));
+                    
+                    const selected = await vscode.window.showQuickPick(items, {
+                        placeHolder: 'Select a hub to open its repository',
+                        ignoreFocusOut: true
+                    });
+                    
+                    if (!selected) {
+                        return;
+                    }
+                    
+                    activeHub = await this.hubManager.loadHub(selected.hubId);
+                }
             }
 
             const reference = activeHub.reference;
@@ -583,6 +568,157 @@ export class HubCommands {
         }
     }
 
+    /**
+     * Open repository for a specific item (hub, profile, source, bundle)
+     * Called from context menu in Registry Explorer
+     */
+    async openItemRepository(item: any): Promise<void> {
+        try {
+            if (!item || !item.type) {
+                vscode.window.showWarningMessage('Unable to determine item type.');
+                return;
+            }
+
+            const itemType = item.type;
+            const data = item.data;
+
+            let repositoryUrl: string | undefined;
+
+            switch (itemType) {
+                case 'hub': {
+                    // Hub item - use hub's reference
+                    if (data?.reference) {
+                        repositoryUrl = this.referenceToUrl(data.reference);
+                    } else if (data?.id) {
+                        const hub = await this.hubManager.loadHub(data.id);
+                        repositoryUrl = this.referenceToUrl(hub.reference);
+                    }
+                    break;
+                }
+
+                case 'hub_profile': {
+                    // Hub profile - use parent hub's reference
+                    const hubId = data?.hubId;
+                    if (hubId) {
+                        const hub = await this.hubManager.loadHub(hubId);
+                        repositoryUrl = this.referenceToUrl(hub.reference);
+                    }
+                    break;
+                }
+
+                case 'source': {
+                    // Source - use source URL
+                    repositoryUrl = this.sourceToUrl(data);
+                    break;
+                }
+
+                case 'installed_bundle':
+                case 'bundle':
+                case 'profile_bundle': {
+                    // Bundle - find source and use its URL
+                    const sourceId = data?.sourceId;
+                    if (sourceId) {
+                        const sources = await this.registryManager.listSources();
+                        const source = sources.find(s => s.id === sourceId);
+                        if (source) {
+                            repositoryUrl = this.sourceToUrl(source);
+                        }
+                    }
+                    // Fallback to bundle's own repository URL if available
+                    if (!repositoryUrl && data?.repository) {
+                        repositoryUrl = data.repository;
+                    }
+                    break;
+                }
+
+                default:
+                    vscode.window.showWarningMessage(`Cannot open repository for item type: ${itemType}`);
+                    return;
+            }
+
+            if (!repositoryUrl) {
+                vscode.window.showInformationMessage(
+                    'This item is stored locally and does not have a remote repository URL.',
+                    'OK'
+                );
+                return;
+            }
+
+            await vscode.env.openExternal(vscode.Uri.parse(repositoryUrl));
+            this.logger.info(`Opened repository: ${repositoryUrl}`);
+
+        } catch (error) {
+            this.logger.error('Failed to open repository', error as Error);
+            vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Convert a hub reference to a URL
+     */
+    private referenceToUrl(reference: { type: string; location: string }): string | undefined {
+        switch (reference.type) {
+            case 'github':
+                return `https://github.com/${reference.location}`;
+            case 'url':
+                return reference.location;
+            case 'local':
+                return undefined;
+            default:
+                return undefined;
+        }
+    }
+
+    /**
+     * Convert a source to a repository URL
+     */
+    private sourceToUrl(source: any): string | undefined {
+        if (!source) {
+            return undefined;
+        }
+
+        // Check for explicit repository/homepage in metadata
+        if (source.metadata?.homepage) {
+            return source.metadata.homepage;
+        }
+
+        const url = source.url;
+        if (!url) {
+            return undefined;
+        }
+
+        switch (source.type) {
+            case 'github':
+            case 'awesome-copilot': {
+                // GitHub URL - extract repo path
+                // Could be: https://github.com/owner/repo or owner/repo
+                if (url.startsWith('https://github.com/')) {
+                    // Remove /tree/branch or /blob/branch suffix if present
+                    const cleanUrl = url.replace(/\/(tree|blob)\/[^/]+.*$/, '');
+                    return cleanUrl;
+                } else if (url.match(/^[^/]+\/[^/]+$/)) {
+                    // Short format: owner/repo
+                    return `https://github.com/${url}`;
+                }
+                return url;
+            }
+            case 'gitlab': {
+                if (url.startsWith('https://gitlab.com/')) {
+                    return url.replace(/\/-\/(tree|blob)\/[^/]+.*$/, '');
+                }
+                return url;
+            }
+            case 'http':
+            case 'url':
+                return url;
+            case 'local':
+            case 'local-awesome-copilot':
+            case 'local-apm':
+                return undefined;
+            default:
+                return url;
+        }
+    }
 
     /**
      * Convert object to YAML format (simple implementation)

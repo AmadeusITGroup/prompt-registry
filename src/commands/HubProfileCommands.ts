@@ -37,8 +37,45 @@ export class HubProfileCommands {
             vscode.commands.registerCommand('promptregistry.browseHubProfiles', () => this.browseHubProfiles()),
             vscode.commands.registerCommand('promptregistry.viewHubProfile', (hubId: string, profileId: string) => 
                 this.viewHubProfile(hubId, profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.toggleProfileFavorite', (arg: any) => 
+                this.toggleProfileFavorite(arg)
             )
         );
+    }
+
+    /**
+     * Toggle profile favorite status
+     */
+    async toggleProfileFavorite(arg: any): Promise<void> {
+        try {
+            let hubId: string;
+            let profileId: string;
+
+            // Handle tree item argument
+            if (arg?.data?.hubId && arg?.data?.id) {
+                hubId = arg.data.hubId;
+                profileId = arg.data.id;
+            } else if (arg?.hubId && arg?.profileId) {
+                // Handle direct argument
+                hubId = arg.hubId;
+                profileId = arg.profileId;
+            } else {
+                this.logger.error('Invalid arguments for toggleProfileFavorite');
+                return;
+            }
+
+            this.logger.info(`Toggling favorite for profile ${profileId} in hub ${hubId}`);
+            await this.hubManager.toggleProfileFavorite(hubId, profileId);
+            const isFavorite = await this.hubManager.isProfileFavorite(hubId, profileId);
+            const status = isFavorite ? 'added to' : 'removed from';
+            this.logger.info(`Profile ${profileId} ${status} favorites`);
+            vscode.window.showInformationMessage(`Profile ${status} favorites`);
+
+        } catch (error) {
+            this.logger.error('Failed to toggle profile favorite', error as Error);
+            vscode.window.showErrorMessage(`Failed to toggle favorite: ${(error as Error).message}`);
+        }
     }
 
     /**
