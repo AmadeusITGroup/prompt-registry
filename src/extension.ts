@@ -17,6 +17,7 @@ import { ScaffoldCommand, ScaffoldType } from './commands/ScaffoldCommand';
 import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
+import { ValidateHubCommand } from './commands/ValidateHubCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
 import { StatusBar } from './ui/statusBar';
@@ -66,6 +67,7 @@ export class PromptRegistryExtension {
     private hubManager: HubManager | undefined;
     private validateCollectionsCommand: ValidateCollectionsCommand | undefined;
     private validateApmCommand: ValidateApmCommand | undefined;
+    private validateHubCommand: ValidateHubCommand | undefined;
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
     
@@ -186,6 +188,7 @@ export class PromptRegistryExtension {
             // Dispose collection commands
             this.validateCollectionsCommand?.dispose();
             this.validateApmCommand?.dispose();
+            this.validateHubCommand?.dispose();
             this.createCollectionCommand?.dispose();
 
             // Dispose UI components
@@ -228,6 +231,7 @@ export class PromptRegistryExtension {
         const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
+        this.validateHubCommand = new ValidateHubCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
 
         // Legacy commands
@@ -469,6 +473,10 @@ export class PromptRegistryExtension {
 
             vscode.commands.registerCommand('promptRegistry.validateApm', async () => {
                 await this.validateApmCommand!.execute();
+            }),
+
+            vscode.commands.registerCommand('promptRegistry.validateHub', async (options?) => {
+                await this.validateHubCommand!.execute(options);
             }),
 
             vscode.commands.registerCommand('promptRegistry.createCollection', async () => {

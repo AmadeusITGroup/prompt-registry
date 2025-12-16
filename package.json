@@ -106,6 +106,12 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.validateHub",
+        "title": "Validate Hub Configuration",
+        "category": "Prompt Registry",
+        "icon": "$(check)"
+      },
+      {
         "command": "promptRegistry.validateCollectionsWithRefs",
         "title": "Validate Collections (Check File References)",
         "category": "Prompt Registry"
@@ -655,6 +661,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "webpack --mode production",
+    "validate:hub": "node templates/validate-hub.js hub-config.yml",
+    "validate:hub:urls": "node templates/validate-hub.js hub-config.yml --check-urls",
     "watch": "webpack --mode development --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "package:vsix": "vsce package",
