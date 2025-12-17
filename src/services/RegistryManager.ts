@@ -931,10 +931,11 @@ export class RegistryManager {
         
         if (specificVersion) {
             this.logger.info(`Installing specific version ${requestedVersion} instead of latest ${bundle.version}`);
-            const versionedId = `${identity}-${specificVersion.version}`;
+            // Use the original bundle ID from the version cache to preserve the correct format
+            // (e.g., owner-repo-v1.0.0 instead of owner-repo-1.0.0)
             return {
                 ...bundle,
-                id: versionedId,
+                id: specificVersion.bundleId,
                 version: specificVersion.version,
                 downloadUrl: specificVersion.downloadUrl,
                 manifestUrl: specificVersion.manifestUrl,
@@ -1128,10 +1129,15 @@ export class RegistryManager {
         // If write fails, the old record remains intact
         this.logger.debug(`Recording new installation for '${updated.bundleId}' v${updated.version}`);
         await this.storage.recordInstallation(updated);
-
-        if (updated.bundleId !== current.bundleId) {
-            this.logger.debug(`Removing old installation record for '${current.bundleId}' from ${current.scope} scope`);
-            await this.storage.removeInstallation(current.bundleId, current.scope);
+        
+        // Only remove old record if bundleId changed (e.g., GitHub bundles with version in ID)
+        // For Awesome Copilot bundles, the bundleId doesn't include version, so old and new are the same
+        // In that case, recordInstallation already overwrote the old record
+        if (updated.bundleId !== bundleId) {
+            this.logger.debug(`Removing old installation record for '${bundleId}' from ${current.scope} scope`);
+            await this.storage.removeInstallation(bundleId, current.scope);
+        } else {
+            this.logger.debug(`BundleId unchanged ('${bundleId}'), old record already overwritten`);
         }
         
         this._onBundleUpdated.fire(updated);

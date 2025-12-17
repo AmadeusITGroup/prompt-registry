@@ -36,12 +36,6 @@ npm run test:one -- test/path/to/file.test.ts
 npm run test:one -- test/path/to/file.test.ts --no-compile
 ```
 
-**With LOG_LEVEL (recommended):**
-```bash
-LOG_LEVEL=ERROR npm run test:one -- test/utils/configTypeGuards.test.ts
-LOG_LEVEL=ERROR npm run test:one -- test/commands/BundleCommands.autoUpdate.integration.test.ts
-```
-
 #### How It Works
 
 1. Takes TypeScript test path: `test/commands/MyTest.test.ts`

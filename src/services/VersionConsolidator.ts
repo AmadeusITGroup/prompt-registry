@@ -7,6 +7,7 @@ import { Logger } from '../utils/logger';
  */
 export interface BundleVersion {
     version: string;
+    bundleId: string;  // Original bundle ID (e.g., owner-repo-v1.0.0)
     publishedAt: string;
     downloadUrl: string;
     manifestUrl: string;
@@ -330,6 +331,7 @@ export class VersionConsolidator {
     private toBundleVersion(bundle: Bundle): BundleVersion {
         return {
             version: bundle.version,
+            bundleId: bundle.id,  // Preserve original bundle ID
             publishedAt: bundle.lastUpdated,
             downloadUrl: bundle.downloadUrl,
             manifestUrl: bundle.manifestUrl,
