@@ -69,8 +69,8 @@ export class BundleInstaller {
             const manifest = await this.validateBundle(extractDir, bundle);
             this.logger.debug('Bundle validation passed');
 
-            // Get installation directory
-            const installDir = this.getInstallDirectory(bundle.id, options.scope);
+            // Get installation directory (pass undefined for sourceType since it's not available in install method)
+            const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
             await this.ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
@@ -114,7 +114,9 @@ export class BundleInstaller {
     async installFromBuffer(
         bundle: Bundle,
         bundleBuffer: Buffer,
-        options: InstallOptions
+        options: InstallOptions,
+        sourceType?: string,
+        sourceName?: string
     ): Promise<InstalledBundle> {
         this.logger.info(`Installing bundle from buffer: ${bundle.name} v${bundle.version}`);
 
@@ -138,12 +140,26 @@ export class BundleInstaller {
             this.logger.debug('Bundle validation passed');
 
             // Step 5: Get installation directory
-            const installDir = this.getInstallDirectory(bundle.id, options.scope);
+            const installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
             await this.ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
             // Step 6: Copy files to installation directory
-            await this.copyBundleFiles(extractDir, installDir);
+            // For OLAF bundles, the ZIP contains a skill folder, so we need to copy from inside it
+            const isOlafBundle = sourceType === 'olaf' || bundle.id.startsWith('olaf-');
+            if (isOlafBundle && bundle.name) {
+                // Check if there's a subfolder with the skill name
+                const skillSubfolder = path.join(extractDir, bundle.name);
+                if (require('fs').existsSync(skillSubfolder)) {
+                    this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying from skill subfolder: ${skillSubfolder}`);
+                    await this.copyBundleFiles(skillSubfolder, installDir);
+                } else {
+                    // Fallback to normal copy if subfolder doesn't exist
+                    await this.copyBundleFiles(extractDir, installDir);
+                }
+            } else {
+                await this.copyBundleFiles(extractDir, installDir);
+            }
             this.logger.debug('Files copied to installation directory');
 
             // Step 7: Clean up temp directory
@@ -335,8 +351,33 @@ export class BundleInstaller {
 
     /**
      * Get installation directory for bundle
+     * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
      */
-    private getInstallDirectory(bundleId: string, scope: 'user' | 'workspace'): string {
+    private getInstallDirectory(bundleId: string, scope: 'user' | 'workspace', sourceType?: string, sourceName?: string, bundleName?: string): string {
+        // Check if this is an OLAF bundle
+        const isOlafBundle = sourceType === 'olaf' || bundleId.startsWith('olaf-');
+        
+        if (isOlafBundle) {
+            // OLAF bundles must be installed in workspace .olaf/external-skills directory
+            const workspaceFolders = require('vscode').workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
+            }
+            
+            const workspacePath = workspaceFolders[0].uri.fsPath;
+            
+            // Use bundle name (from skill manifest) as the skill directory name
+            // This ensures we use the clean skill name like "create-prompt" instead of the folder name
+            const skillName = bundleName || bundleId;
+            
+            // Use source name for directory organization, fallback to 'default' if not provided
+            const sourceDir = sourceName || 'default';
+            
+            this.logger.info(`[BundleInstaller] Installing OLAF skill '${skillName}' to .olaf/external-skills/${sourceDir}`);
+            return path.join(workspacePath, '.olaf', 'external-skills', sourceDir, skillName);
+        }
+        
+        // Standard bundle installation
         if (scope === 'user') {
             // User scope: global storage
             return path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);

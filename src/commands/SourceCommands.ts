@@ -66,6 +66,11 @@ export class SourceCommands {
                         description: 'Local filesystem directory containing apm.yml',
                         value: 'local-apm' as SourceType
                     },
+                    {
+                        label: '$(robot) OLAF Skills Repository',
+                        description: 'GitHub repository with AI skills in .olaf/core/skills directory structure',
+                        value: 'olaf' as SourceType
+                    },
                 ],
                 {
                     placeHolder: 'Select source type',
@@ -710,6 +715,19 @@ export class SourceCommands {
                 
                 return uris && uris.length > 0 ? uris[0].fsPath : undefined;
             }
+
+            case 'olaf':
+                return await vscode.window.showInputBox({
+                    prompt: 'Enter GitHub repository URL containing OLAF skills',
+                    placeHolder: 'https://github.com/owner/repo',
+                    validateInput: (value) => {
+                        if (!value || !value.match(/github\.com/)) {
+                            return 'Please enter a valid GitHub URL';
+                        }
+                        return undefined;
+                    },
+                    ignoreFocusOut: true
+                });
 
             default:
                 return undefined;

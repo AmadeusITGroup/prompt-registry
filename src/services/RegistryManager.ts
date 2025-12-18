@@ -15,6 +15,7 @@ import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
 import { LocalApmAdapter } from '../adapters/LocalApmAdapter';
 import { ApmAdapter } from '../adapters/ApmAdapter';
+import { OlafAdapter } from '../adapters/OlafAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
@@ -115,6 +116,7 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
         RepositoryAdapterFactory.register('local-apm', LocalApmAdapter);
         RepositoryAdapterFactory.register('apm', ApmAdapter);
+        RepositoryAdapterFactory.register('olaf', OlafAdapter);
     }
 
 	/**
@@ -976,8 +978,8 @@ export class RegistryManager {
         const bundleBuffer = await adapter.downloadBundle(bundle);
         this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
         
-        // Install from buffer
-        const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options);
+        // Install from buffer (pass sourceType and sourceName for OLAF bundle detection)
+        const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options, source.type, source.name);
         
         // Add profileId if provided
         if (options.profileId) {
@@ -987,6 +989,25 @@ export class RegistryManager {
         // Ensure sourceId and sourceType are set for identity matching
         installation.sourceId = bundle.sourceId;
         installation.sourceType = source.type;
+        
+        // Call adapter post-installation hook if available (for OLAF skills)
+        if (source.type === 'olaf') {
+            this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
+            this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
+            
+            if (typeof (adapter as any).postInstall === 'function') {
+                this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
+                try {
+                    await (adapter as any).postInstall(bundle.id, installation.installPath);
+                    this.logger.info(`Post-installation hook completed successfully`);
+                } catch (error) {
+                    this.logger.warn(`Post-installation hook failed: ${error}`);
+                    // Don't fail the installation if post-install fails
+                }
+            } else {
+                this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
+            }
+        }
         
         return installation;
     }
@@ -1003,9 +1024,42 @@ export class RegistryManager {
         if (!installed) {
             throw new Error(`Bundle '${bundleId}' is not installed in ${scope} scope`);
         }
+
+        // Get source information for post-uninstall hooks
+        let source: RegistrySource | undefined;
+        if (installed.sourceId) {
+            const sources = await this.storage.getSources();
+            source = sources.find(s => s.id === installed.sourceId);
+        }
         
         // Uninstall using BundleInstaller
         await this.installer.uninstall(installed);
+
+        // Call adapter post-uninstallation hook if available (for OLAF skills)
+        if (source?.type === 'olaf' && installed.installPath) {
+            this.logger.debug(`Checking for post-uninstallation hook on ${source.type} adapter`);
+            
+            try {
+                const adapter = this.getAdapter(source);
+                this.logger.debug(`Adapter type: ${typeof adapter}, postUninstall type: ${typeof (adapter as any).postUninstall}`);
+                
+                if (typeof (adapter as any).postUninstall === 'function') {
+                    this.logger.info(`Calling post-uninstallation hook for ${source.type} adapter`);
+                    try {
+                        await (adapter as any).postUninstall(installed.bundleId, installed.installPath);
+                        this.logger.info(`Post-uninstallation hook completed successfully`);
+                    } catch (error) {
+                        this.logger.warn(`Post-uninstallation hook failed: ${error}`);
+                        // Don't fail the uninstallation if post-uninstall fails
+                    }
+                } else {
+                    this.logger.warn(`Post-uninstallation hook not found on ${source.type} adapter`);
+                }
+            } catch (error) {
+                this.logger.warn(`Failed to get adapter for post-uninstallation hook: ${error}`);
+                // Don't fail the uninstallation if adapter retrieval fails
+            }
+        }
         
         // Remove installation record using the stored bundle ID from the installation record
         // This ensures we remove the correct record even for versioned bundles
@@ -1605,11 +1659,30 @@ export class RegistryManager {
             profileId: profileId,
         };
         
-        const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options);
+        const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options, source.type, source.name);
 
         // Ensure sourceId and sourceType are set for identity matching
         installation.sourceId = matchingBundle.sourceId;
         installation.sourceType = source.type;
+
+        // Call adapter post-installation hook if available (for OLAF skills)
+        if (source.type === 'olaf') {
+            this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
+            this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
+            
+            if (typeof (adapter as any).postInstall === 'function') {
+                this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
+                try {
+                    await (adapter as any).postInstall(matchingBundle.id, installation.installPath);
+                    this.logger.info(`Post-installation hook completed successfully`);
+                } catch (error) {
+                    this.logger.warn(`Post-installation hook failed: ${error}`);
+                    // Don't fail the installation if post-install fails
+                }
+            } else {
+                this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
+            }
+        }
 
         // Record installation and fire event
         await this.storage.recordInstallation(installation);

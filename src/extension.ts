@@ -36,6 +36,7 @@ import {
 } from './utils/configTypeGuards';
 
 import { ApmRuntimeManager } from './services/ApmRuntimeManager';
+import { OlafRuntimeManager } from './services/OlafRuntimeManager';
 
 // Module-level variable to store the extension instance for deactivation
 let extensionInstance: PromptRegistryExtension | undefined;
@@ -117,8 +118,9 @@ export class PromptRegistryExtension {
             // Initialize McpConfigLocator for profile support
             McpConfigLocator.initialize(this.context);
 
-            // Initialize Runtime Manager with context
+            // Initialize Runtime Managers with context
             ApmRuntimeManager.getInstance().initialize(this.context);
+            OlafRuntimeManager.getInstance().initialize(this.context);
 
             // Initialize Registry Manager
             await this.registryManager.initialize();
