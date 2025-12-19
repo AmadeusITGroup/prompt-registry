@@ -1,0 +1,44 @@
+version: "1.0.0"
+metadata:
+  name: "Test Hub with Invalid Source References"
+  description: "Hub configuration for testing profile-source reference validation"
+  maintainer: "Test Team"
+  updatedAt: "2025-12-16T00:00:00Z"
+
+sources:
+  - id: "valid-source"
+    type: "github"
+    repository: "test/valid"
+    enabled: true
+    priority: 100
+
+profiles:
+  - id: "test-profile-1"
+    name: "Profile with Invalid Source Reference"
+    description: "Contains bundles referencing non-existent sources"
+    icon: "❌"
+    bundles:
+      - id: "bundle-1"
+        version: "1.0.0"
+        source: "non-existent-source"
+        required: true
+      - id: "bundle-2"
+        version: "2.0.0"
+        source: "valid-source"
+        required: false
+    active: false
+    createdAt: "2025-12-16T00:00:00Z"
+    updatedAt: "2025-12-16T00:00:00Z"
+    
+  - id: "test-profile-2"
+    name: "Profile with Missing Source"
+    description: "Contains bundles without source reference"
+    icon: "⚠️"
+    bundles:
+      - id: "bundle-3"
+        version: "1.0.0"
+        source: "another-missing-source"
+        required: true
+    active: false
+    createdAt: "2025-12-16T00:00:00Z"
+    updatedAt: "2025-12-16T00:00:00Z"

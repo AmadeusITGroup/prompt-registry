@@ -1,0 +1,61 @@
+version: "1.0.0"
+metadata:
+  name: "Test Hub with Mixed URL Scenarios"
+  description: "Hub configuration for testing URL accessibility validation"
+  maintainer: "Test Team"
+  updatedAt: "2025-12-16T00:00:00Z"
+
+sources:
+  - id: "public-github"
+    type: "github"
+    repository: "torvalds/linux"
+    enabled: true
+    priority: 100
+    
+  - id: "private-github"
+    type: "github"
+    repository: "private-org/private-repo"
+    enabled: true
+    priority: 90
+    
+  - id: "invalid-github"
+    type: "github"
+    repository: "nonexistent-org/nonexistent-repo"
+    enabled: true
+    priority: 80
+    
+  - id: "valid-http"
+    type: "http"
+    url: "https://raw.githubusercontent.com/torvalds/linux/master/README"
+    enabled: true
+    priority: 70
+    
+  - id: "broken-url"
+    type: "http"
+    url: "https://httpbin.org/status/404"
+    enabled: true
+    priority: 60
+    
+  - id: "invalid-domain"
+    type: "http"
+    url: "https://this-domain-does-not-exist-12345.invalid"
+    enabled: true
+    priority: 50
+
+profiles:
+  - id: "test-profile"
+    name: "Test Profile"
+    description: "Profile for URL validation testing"
+    icon: "🧪"
+    bundles:
+      - id: "test-bundle-1"
+        version: "1.0.0"
+        source: "public-github"
+        required: true
+      - id: "test-bundle-2"
+        version: "1.0.0"
+        source: "valid-http"
+        required: false
+    active: false
+    createdAt: "2025-12-16T00:00:00Z"
+    updatedAt: "2025-12-16T00:00:00Z"
