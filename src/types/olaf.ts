@@ -121,3 +121,93 @@ export interface OlafWorkspaceConfig {
     /** Configuration timestamp */
     configuredAt: string;
 }
+
+/**
+ * Entry point definition for local OLAF skills
+ * Defines how a skill integrates with the competency index
+ */
+export interface EntryPoint {
+    /** Protocol type for skill execution */
+    protocol: string;
+    
+    /** Path to the skill's main file relative to skill folder */
+    path: string;
+    
+    /** Trigger patterns that activate this skill */
+    patterns: string[];
+}
+
+/**
+ * Extended skill manifest for local OLAF sources
+ * Includes entry points for competency index integration
+ */
+export interface LocalOlafSkillManifest extends SkillManifest {
+    /** Entry points for competency index integration */
+    entry_points: EntryPoint[];
+}
+
+/**
+ * Skill reference within a bundle definition
+ * References a skill by path and manifest location
+ */
+export interface SkillReference {
+    /** Skill name */
+    name: string;
+    
+    /** Skill description */
+    description: string;
+    
+    /** Path to skill folder relative to source root */
+    path: string;
+    
+    /** Path to skill manifest file relative to source root */
+    manifest: string;
+}
+
+/**
+ * Bundle definition structure for local OLAF sources
+ * Defines a bundle of related skills with metadata
+ */
+export interface BundleDefinition {
+    /** Bundle metadata */
+    metadata: {
+        /** Bundle name */
+        name: string;
+        
+        /** Bundle description */
+        description: string;
+        
+        /** Bundle version (optional) */
+        version?: string;
+        
+        /** Bundle author (optional) */
+        author?: string;
+        
+        /** Bundle tags (optional) */
+        tags?: string[];
+    };
+    
+    /** List of skills included in this bundle */
+    skills: SkillReference[];
+}
+
+/**
+ * Bundle definition information with validation results
+ * Contains parsed bundle definition and validated skill information
+ */
+export interface BundleDefinitionInfo {
+    /** Unique bundle identifier */
+    id: string;
+    
+    /** Bundle definition file name */
+    fileName: string;
+    
+    /** Full path to bundle definition file */
+    filePath: string;
+    
+    /** Parsed bundle definition */
+    definition: BundleDefinition;
+    
+    /** List of validated skills with their information */
+    validatedSkills: SkillInfo[];
+}

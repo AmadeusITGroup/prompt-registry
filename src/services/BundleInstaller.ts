@@ -146,7 +146,7 @@ export class BundleInstaller {
 
             // Step 6: Copy files to installation directory
             // For OLAF bundles, the ZIP contains a skill folder, so we need to copy from inside it
-            const isOlafBundle = sourceType === 'olaf' || bundle.id.startsWith('olaf-');
+            const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
             if (isOlafBundle && bundle.name) {
                 // Check if there's a subfolder with the skill name
                 const skillSubfolder = path.join(extractDir, bundle.name);
@@ -355,7 +355,7 @@ export class BundleInstaller {
      */
     private getInstallDirectory(bundleId: string, scope: 'user' | 'workspace', sourceType?: string, sourceName?: string, bundleName?: string): string {
         // Check if this is an OLAF bundle
-        const isOlafBundle = sourceType === 'olaf' || bundleId.startsWith('olaf-');
+        const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
         
         if (isOlafBundle) {
             // OLAF bundles must be installed in workspace .olaf/external-skills directory

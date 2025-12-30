@@ -363,6 +363,16 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             return this.countPromptsByType(bundleData.prompts);
         }
 
+        // Third: For local OLAF bundles, show skills as prompts
+        if (bundleData.skills && Array.isArray(bundleData.skills)) {
+            return {
+                prompts: bundleData.skills.length, // Show skills as prompts for OLAF bundles
+                instructions: 0,
+                chatmodes: 0,
+                agents: 0
+            };
+        }
+
         // Fallback: Don't show estimates for uninstalled bundles
         // If we don't have manifest data, return zeros instead of misleading estimates
         // Users can install the bundle to see accurate counts

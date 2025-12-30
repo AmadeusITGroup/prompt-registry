@@ -16,6 +16,7 @@ import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapt
 import { LocalApmAdapter } from '../adapters/LocalApmAdapter';
 import { ApmAdapter } from '../adapters/ApmAdapter';
 import { OlafAdapter } from '../adapters/OlafAdapter';
+import { LocalOlafAdapter } from '../adapters/LocalOlafAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
@@ -117,6 +118,7 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('local-apm', LocalApmAdapter);
         RepositoryAdapterFactory.register('apm', ApmAdapter);
         RepositoryAdapterFactory.register('olaf', OlafAdapter);
+        RepositoryAdapterFactory.register('local-olaf', LocalOlafAdapter);
     }
 
 	/**
@@ -991,7 +993,7 @@ export class RegistryManager {
         installation.sourceType = source.type;
         
         // Call adapter post-installation hook if available (for OLAF skills)
-        if (source.type === 'olaf') {
+        if (source.type === 'olaf' || source.type === 'local-olaf') {
             this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
             this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
             
@@ -1036,7 +1038,7 @@ export class RegistryManager {
         await this.installer.uninstall(installed);
 
         // Call adapter post-uninstallation hook if available (for OLAF skills)
-        if (source?.type === 'olaf' && installed.installPath) {
+        if ((source?.type === 'olaf' || source?.type === 'local-olaf') && installed.installPath) {
             this.logger.debug(`Checking for post-uninstallation hook on ${source.type} adapter`);
             
             try {
@@ -1666,7 +1668,7 @@ export class RegistryManager {
         installation.sourceType = source.type;
 
         // Call adapter post-installation hook if available (for OLAF skills)
-        if (source.type === 'olaf') {
+        if (source.type === 'olaf' || source.type === 'local-olaf') {
             this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
             this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
             
