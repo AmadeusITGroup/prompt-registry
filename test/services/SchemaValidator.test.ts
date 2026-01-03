@@ -911,4 +911,274 @@ suite('SchemaValidator', () => {
             assert.ok(result.errors.some(e => e.includes('email')));
         });
     });
+
+    suite('Hub Validation', () => {
+        const validHubConfig = {
+            version: '1.0.0',
+            metadata: {
+                name: 'Test Hub',
+                description: 'A test hub configuration',
+                maintainer: 'Test Maintainer',
+                updatedAt: '2025-12-16T00:00:00Z'
+            },
+            sources: [
+                {
+                    id: 'github-source',
+                    type: 'github',
+                    repository: 'test/repo',
+                    branch: 'main',
+                    enabled: true,
+                    priority: 100
+                }
+            ],
+            profiles: [
+                {
+                    id: 'default',
+                    name: 'Default Profile',
+                    description: 'Test profile description',
+                    active: true,
+                    bundles: [
+                        {
+                            id: 'test-bundle',
+                            version: '1.0.0',
+                            source: 'github-source',
+                            required: true
+                        }
+                    ]
+                }
+            ]
+        };
+
+        test('should validate valid hub configuration', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const result = await validator.validateHub(validHubConfig);
+            
+            if (!result.valid) {
+                console.log('Validation errors:', result.errors);
+                console.log('Validation warnings:', result.warnings);
+            }
+            
+            assert.strictEqual(result.valid, true, 'Valid hub should pass validation');
+            assert.strictEqual(result.errors.length, 0, 'Should have no errors');
+        });
+
+        test('should warn about disabled high-priority sources', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithDisabledHighPriority = {
+                ...validHubConfig,
+                sources: [
+                    {
+                        id: 'disabled-source',
+                        type: 'github',
+                        enabled: false,
+                        priority: 90
+                    }
+                ]
+            };
+
+            const result = await validator.validateHub(hubWithDisabledHighPriority);
+            
+            assert.ok(result.warnings.some(w => w.includes('High priority sources are disabled')), 
+                'Should warn about disabled high-priority sources');
+            assert.ok(result.warnings.some(w => w.includes('disabled-source')), 
+                'Warning should mention the source ID');
+        });
+
+        test('should warn about very long hub description', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithLongDescription = {
+                ...validHubConfig,
+                metadata: {
+                    name: 'Test Hub',
+                    description: 'A'.repeat(600)
+                }
+            };
+
+            const result = await validator.validateHub(hubWithLongDescription);
+            
+            assert.ok(result.warnings.some(w => w.includes('description is very long')), 
+                'Should warn about very long description');
+        });
+
+        test('should warn about multiple active profiles', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithMultipleActive = {
+                ...validHubConfig,
+                profiles: [
+                    {
+                        id: 'profile1',
+                        name: 'Profile 1',
+                        active: true,
+                        bundles: []
+                    },
+                    {
+                        id: 'profile2',
+                        name: 'Profile 2',
+                        active: true,
+                        bundles: []
+                    }
+                ]
+            };
+
+            const result = await validator.validateHub(hubWithMultipleActive);
+            
+            assert.ok(result.warnings.some(w => w.includes('Multiple profiles are marked as active')), 
+                'Should warn about multiple active profiles');
+            assert.ok(result.warnings.some(w => w.includes('profile1') && w.includes('profile2')), 
+                'Warning should list the active profile IDs');
+        });
+
+        test('should warn about very long hub name', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithLongName = {
+                ...validHubConfig,
+                metadata: {
+                    name: 'A'.repeat(101),
+                    description: 'Test description'
+                }
+            };
+
+            const result = await validator.validateHub(hubWithLongName);
+            
+            assert.ok(result.warnings.some(w => w.includes('Hub name is at maximum length')), 
+                'Should warn about very long hub name');
+        });
+
+        test('should not warn for hub with enabled low-priority sources', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithEnabledLowPriority = {
+                ...validHubConfig,
+                sources: [
+                    {
+                        id: 'low-priority-source',
+                        type: 'github',
+                        enabled: true,
+                        priority: 50
+                    }
+                ]
+            };
+
+            const result = await validator.validateHub(hubWithEnabledLowPriority);
+            
+            const priorityWarnings = result.warnings.filter(w => w.includes('priority'));
+            assert.strictEqual(priorityWarnings.length, 0, 
+                'Should not warn about enabled low-priority sources');
+        });
+
+        test('should not warn about disabled low-priority sources', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithDisabledLowPriority = {
+                ...validHubConfig,
+                sources: [
+                    {
+                        id: 'low-priority-source',
+                        type: 'github',
+                        enabled: false,
+                        priority: 50
+                    }
+                ]
+            };
+
+            const result = await validator.validateHub(hubWithDisabledLowPriority);
+            
+            const priorityWarnings = result.warnings.filter(w => w.includes('High priority'));
+            assert.strictEqual(priorityWarnings.length, 0, 
+                'Should not warn about disabled low-priority sources');
+        });
+
+        test('should handle hub with no sources', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithNoSources = {
+                ...validHubConfig,
+                sources: []
+            };
+
+            const result = await validator.validateHub(hubWithNoSources);
+            
+            // Should not crash, may have schema errors
+            assert.ok(result, 'Should return a result');
+        });
+
+        test('should handle hub with no profiles', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const hubWithNoProfiles = {
+                ...validHubConfig,
+                profiles: []
+            };
+
+            const result = await validator.validateHub(hubWithNoProfiles);
+            
+            // Should not crash, may have schema errors
+            assert.ok(result, 'Should return a result');
+        });
+
+        test('should handle hub with single active profile', async function() {
+            const hubSchemaPath = path.join(process.cwd(), 'schemas', 'hub-config.schema.json');
+            
+            if (!fs.existsSync(hubSchemaPath)) {
+                this.skip();
+                return;
+            }
+
+            const result = await validator.validateHub(validHubConfig);
+            
+            const multipleActiveWarnings = result.warnings.filter(w => w.includes('Multiple profiles'));
+            assert.strictEqual(multipleActiveWarnings.length, 0, 
+                'Should not warn about single active profile');
+        });
+    });
 });
