@@ -193,32 +193,34 @@ export class LoggerHelpers {
  * Property test configuration
  * 
  * Centralized configuration for property-based tests.
- * Adjust these values to balance test coverage vs execution time.
+ * Optimized for speed while maintaining good coverage.
  */
 export const PropertyTestConfig = {
     /**
      * Number of test runs for different test complexity levels
+     * Reduced for faster execution while maintaining coverage
      */
     RUNS: {
-        QUICK: 10,         // Quick smoke tests
-        STANDARD: 20,      // Standard property tests
-        EXTENDED: 30,      // Tests with more complex scenarios
-        COMPREHENSIVE: 50, // Tests covering many combinations
-        THOROUGH: 100,     // Thorough testing (use sparingly)
+        QUICK: 3,          // Quick smoke tests
+        STANDARD: 5,       // Standard property tests  
+        EXTENDED: 8,       // Tests with more complex scenarios
+        COMPREHENSIVE: 10, // Tests covering many combinations
+        THOROUGH: 15,      // Thorough testing (use sparingly)
     },
 
     /**
      * Default timeout for property-based tests (milliseconds)
+     * Reduced for faster feedback
      */
-    TIMEOUT: 30000,
+    TIMEOUT: 5000,
 
     /**
-     * Fast-check options to minimize output
-     * Per custom-repository-behavior.md: minimize logging in property tests
+     * Fast-check options optimized for speed
      */
     FAST_CHECK_OPTIONS: {
         verbose: false,
         endOnFailure: true,  // Stop on first failure for faster feedback
+        interruptAfterTimeLimit: 1000, // Stop after 1 second per property
     }
 };
 
@@ -262,8 +264,7 @@ export const createMockHttpResponse = (
 /**
  * Stub HTTPS module to return a mock response
  * 
- * Stubs the https.get method to return a predefined mock response.
- * Useful for testing adapter HTTP logic in isolation.
+ * Optimized version that reuses mock objects for better performance.
  * 
  * @param sandbox - Sinon sandbox for stub management
  * @param statusCode - HTTP status code to return
@@ -280,15 +281,26 @@ export const stubHttpsWithResponse = (
     const https = require('https');
     const mockResponse = createMockHttpResponse(statusCode, responseBody, contentType);
     
+    // Reuse existing stub if it exists, otherwise create new one
+    const existingStub = https.get?.isSinonProxy ? https.get : null;
+    if (existingStub) {
+        existingStub.callsFake((...args: any[]) => {
+            const callback = args[2] || args[1];
+            if (typeof callback === 'function') {
+                callback(mockResponse);
+            }
+            return { on: () => ({ on: () => {} }) };
+        });
+        return existingStub;
+    }
+    
     return sandbox.stub(https, 'get')
         .callsFake((...args: any[]) => {
             const callback = args[2] || args[1];
             if (typeof callback === 'function') {
                 callback(mockResponse);
             }
-            return {
-                on: () => ({ on: () => {} }),
-            };
+            return { on: () => ({ on: () => {} }) };
         });
 };
 

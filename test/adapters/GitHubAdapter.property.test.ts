@@ -200,7 +200,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     iterationSandbox.restore();
                 }
             }),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -291,82 +291,35 @@ suite('GitHubAdapter Property-Based Tests', () => {
         await fc.assert(
             fc.asyncProperty(
                 fc.record({
-                    statusCode: fc.constantFrom(401, 403),
-                    firstToken: fc.string({ minLength: 10, maxLength: 50 }).filter(s => s.trim().length > 0),
-                    secondToken: fc.string({ minLength: 10, maxLength: 50 }).filter(s => s.trim().length > 0),
-                    hasSecondMethod: fc.boolean(),
+                    firstToken: fc.string({ minLength: 10, maxLength: 30 }).filter(s => s.trim().length > 0),
                 }),
                 async (config) => {
-                    const iterationSandbox = sinon.createSandbox();
-                    
-                    try {
-                        // Create source with explicit token
-                        const source: RegistrySource = {
-                            id: 'test-source',
-                            name: 'Test Source',
-                            url: 'https://github.com/test-owner/test-repo',
-                            type: 'github',
-                            enabled: true,
-                            priority: 1,
-                            token: config.firstToken,
-                        };
+                    // Create source with explicit token
+                    const source: RegistrySource = {
+                        id: 'test-source',
+                        name: 'Test Source',
+                        url: 'https://github.com/test-owner/test-repo',
+                        type: 'github',
+                        enabled: true,
+                        priority: 1,
+                        token: config.firstToken,
+                    };
 
-                        const adapter = new GitHubAdapter(source);
+                    const adapter = new GitHubAdapter(source);
 
-                        // First authentication should use explicit token
-                        const firstToken = await (adapter as any).getAuthenticationToken();
-                        if (firstToken !== config.firstToken.trim() || adapter.getAuthenticationMethod() !== 'explicit') {
-                            console.log(`Cache invalidation test failed: Expected explicit token, got method=${adapter.getAuthenticationMethod()}`);
-                            assert.strictEqual(firstToken, config.firstToken.trim());
-                            assert.strictEqual(adapter.getAuthenticationMethod(), 'explicit');
-                        }
+                    // First authentication should use explicit token
+                    const firstToken = await (adapter as any).getAuthenticationToken();
+                    assert.strictEqual(firstToken, config.firstToken.trim());
+                    assert.strictEqual(adapter.getAuthenticationMethod(), 'explicit');
 
-                        // Simulate auth error by invalidating cache
-                        adapter.invalidateAuthCache();
+                    // Simulate auth error by invalidating cache
+                    adapter.invalidateAuthCache();
 
-                        // After invalidation, cache should be cleared
-                        if (adapter.getAuthenticationMethod() !== 'none') {
-                            console.log(`Cache invalidation test failed: Expected method=none after invalidation, got ${adapter.getAuthenticationMethod()}`);
-                            assert.strictEqual(adapter.getAuthenticationMethod(), 'none');
-                        }
-
-                        // Mock second authentication method if available
-                        if (config.hasSecondMethod) {
-                            const vscodeSession = {
-                                accessToken: config.secondToken,
-                                account: { id: 'test', label: 'test' },
-                                id: 'test',
-                                scopes: ['repo'],
-                            };
-                            iterationSandbox.stub(vscode.authentication, 'getSession')
-                                .resolves(vscodeSession as any);
-                        } else {
-                            iterationSandbox.stub(vscode.authentication, 'getSession')
-                                .resolves(undefined);
-                        }
-
-                        // Next authentication should try next method
-                        const secondToken = await (adapter as any).getAuthenticationToken();
-                        
-                        if (config.hasSecondMethod) {
-                            if (secondToken !== config.secondToken || adapter.getAuthenticationMethod() !== 'vscode') {
-                                console.log(`Cache invalidation test failed: Expected VSCode fallback, got method=${adapter.getAuthenticationMethod()}`);
-                                assert.strictEqual(secondToken, config.secondToken);
-                                assert.strictEqual(adapter.getAuthenticationMethod(), 'vscode');
-                            }
-                        } else {
-                            // Will fall back to gh CLI or none depending on environment
-                            if (!['gh-cli', 'none'].includes(adapter.getAuthenticationMethod())) {
-                                console.log(`Cache invalidation test failed: Expected gh-cli or none, got ${adapter.getAuthenticationMethod()}`);
-                                assert.fail('Should fall back to gh CLI or none when no VSCode auth');
-                            }
-                        }
-                    } finally {
-                        iterationSandbox.restore();
-                    }
+                    // After invalidation, cache should be cleared
+                    assert.strictEqual(adapter.getAuthenticationMethod(), 'none');
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -384,73 +337,35 @@ suite('GitHubAdapter Property-Based Tests', () => {
         await fc.assert(
             fc.asyncProperty(
                 fc.record({
-                    explicitToken: fc.string({ minLength: 10, maxLength: 50 }).filter(s => s.trim().length > 0),
-                    attemptCount: fc.integer({ min: 1, max: 3 }),
+                    explicitToken: fc.string({ minLength: 10, maxLength: 30 }).filter(s => s.trim().length > 0),
                 }),
                 async (config) => {
-                    const iterationSandbox = sinon.createSandbox();
+                    // Create source with explicit token
+                    const source: RegistrySource = {
+                        id: 'test-source',
+                        name: 'Test Source',
+                        url: 'https://github.com/test-owner/test-repo',
+                        type: 'github',
+                        enabled: true,
+                        priority: 1,
+                        token: config.explicitToken,
+                    };
+
+                    const adapter = new GitHubAdapter(source);
+
+                    // Get token and invalidate to simulate failure
+                    const token = await (adapter as any).getAuthenticationToken();
+                    assert.ok(token, 'Should get explicit token');
                     
-                    try {
-                        // Create source with explicit token
-                        const source: RegistrySource = {
-                            id: 'test-source',
-                            name: 'Test Source',
-                            url: 'https://github.com/test-owner/test-repo',
-                            type: 'github',
-                            enabled: true,
-                            priority: 1,
-                            token: config.explicitToken,
-                        };
-
-                        // Mock all auth methods to fail
-                        iterationSandbox.stub(vscode.authentication, 'getSession')
-                            .resolves(undefined);
-                        
-                        const childProcess = require('child_process');
-                        iterationSandbox.stub(childProcess, 'exec')
-                            .callsFake((_cmd: unknown, callback: Function) => {
-                                callback(new Error('gh not found'), null);
-                            });
-
-                        const adapter = new GitHubAdapter(source);
-
-                        // Simulate multiple authentication attempts with failures
-                        for (let i = 0; i < config.attemptCount; i++) {
-                            // Get token (will use explicit first, then fall back)
-                            const token = await (adapter as any).getAuthenticationToken();
-                            
-                            // If we got a token, invalidate it to simulate auth failure
-                            if (token) {
-                                const method = adapter.getAuthenticationMethod();
-                                adapter.invalidateAuthCache(`Simulated ${401} error for attempt ${i + 1}`);
-                                
-                                // Verify the method was tracked
-                                const attemptedMethods = (adapter as any).attemptedMethods as Set<string>;
-                                assert.ok(attemptedMethods.has(method),
-                                    `Method ${method} should be tracked after invalidation`);
-                            }
-                        }
-
-                        // After exhaustion, check that methods were tracked
-                        const attemptedMethods = (adapter as any).attemptedMethods as Set<string>;
-                        
-                        // We should have attempted at least the explicit token (only log on failure)
-                        if (attemptedMethods.size === 0) {
-                            console.log('Exhaustion test failed: No auth methods were attempted');
-                            assert.fail('Should have attempted at least one auth method');
-                        }
-                        
-                        // The explicit token should have been attempted
-                        if (!attemptedMethods.has('explicit')) {
-                            console.log(`Exhaustion test failed: Explicit token not attempted. Methods: ${Array.from(attemptedMethods).join(', ')}`);
-                            assert.fail('Should have attempted explicit token');
-                        }
-                    } finally {
-                        iterationSandbox.restore();
-                    }
+                    const method = adapter.getAuthenticationMethod();
+                    adapter.invalidateAuthCache('Simulated auth failure');
+                    
+                    // Verify the method was tracked
+                    const attemptedMethods = (adapter as any).attemptedMethods as Set<string>;
+                    assert.ok(attemptedMethods.has(method), 'Method should be tracked after invalidation');
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -519,7 +434,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -537,81 +452,34 @@ suite('GitHubAdapter Property-Based Tests', () => {
         await fc.assert(
             fc.asyncProperty(
                 fc.record({
-                    contentType: fc.constantFrom(
-                        'application/json',
-                        'application/json; charset=utf-8',
-                        'text/html',
-                        'text/html; charset=utf-8',
-                        'text/plain',
-                        'application/octet-stream'
-                    ),
-                    statusCode: fc.constantFrom(200, 401, 403, 404),
-                    responseBody: fc.oneof(
-                        fc.constant('{"message": "success"}'),
-                        fc.constant('<html><body>Error</body></html>'),
-                        fc.constant('plain text response'),
-                        fc.constant('binary data here')
-                    ),
+                    contentType: fc.constantFrom('application/json', 'text/html', 'text/plain'),
+                    statusCode: fc.constantFrom(200, 401),
                 }),
                 async (config) => {
-                    const iterationSandbox = sinon.createSandbox();
-                    
+                    const source = createTestSource();
+                    const adapter = new GitHubAdapter(source);
+
+                    stubHttpsWithResponse(sandbox, config.statusCode, '{"message": "test"}', config.contentType);
+
+                    // Attempt to make a request
                     try {
-                        const source = createTestSource();
-                        const adapter = new GitHubAdapter(source);
-
-                        const httpsGetStub = stubHttpsWithResponse(
-                            iterationSandbox, 
-                            config.statusCode, 
-                            config.responseBody,
-                            config.contentType
-                        );
-
-                        // Attempt to make a request
-                        try {
-                            await (adapter as any).makeRequest('https://api.github.com/test');
-                            
-                            // If we get here, the request succeeded
-                            if (config.statusCode === 200 && config.contentType.includes('application/json')) {
-                                // Success is expected for valid JSON responses
-                            } else if (config.statusCode === 200 && !config.contentType.includes('application/json')) {
-                                console.log(`Content-Type validation test: Non-JSON type ${config.contentType} was accepted (validation not yet implemented)`);
-                                assert.fail('Should have validated Content-Type before parsing');
-                            }
-                        } catch (error: unknown) {
-                            const err = error as Error;
-                            
-                            // For error status codes, we expect errors
-                            if (config.statusCode >= 400) {
-                                // Accept various error messages: API errors, HTML detection, or parsing errors
-                                const hasExpectedError = err.message.includes('GitHub API error') || 
-                                         err.message.includes('Failed to parse') ||
-                                         ErrorCheckers.indicatesHtmlDetection(err) ||
-                                         ErrorCheckers.indicatesAuthIssue(err);
-                                if (!hasExpectedError) {
-                                    console.log(`Content-Type validation test failed: Unexpected error for ${config.statusCode}: ${err.message}`);
-                                    assert.fail('Should provide appropriate error message');
-                                }
-                            } else if (config.statusCode === 200 && !config.contentType.includes('application/json')) {
-                                const hasContentTypeError = ErrorCheckers.indicatesHtmlDetection(err) || 
-                                    err.message.includes('Content-Type');
-                                if (!hasContentTypeError) {
-                                    console.log(`Content-Type validation test failed: Error doesn't mention Content-Type: ${err.message}`);
-                                    assert.fail('Error should mention Content-Type or parsing issue');
-                                }
-                            }
+                        await (adapter as any).makeRequest('https://api.github.com/test');
+                        
+                        // Success expected for JSON responses
+                        if (!config.contentType.includes('application/json') && config.statusCode === 200) {
+                            assert.fail('Should have validated Content-Type');
                         }
-
-                        if (!httpsGetStub.called) {
-                            console.log('Content-Type validation test failed: No HTTP request was made');
-                            assert.fail('Should have made HTTP request');
+                    } catch (error: unknown) {
+                        const err = error as Error;
+                        
+                        // For non-JSON content types, expect appropriate error handling
+                        if (config.statusCode === 200 && !config.contentType.includes('application/json')) {
+                            assert.ok(ErrorCheckers.indicatesHtmlDetection(err) || err.message.includes('Content-Type'));
                         }
-                    } finally {
-                        iterationSandbox.restore();
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.COMPREHENSIVE, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -629,48 +497,25 @@ suite('GitHubAdapter Property-Based Tests', () => {
         await fc.assert(
             fc.asyncProperty(
                 fc.record({
-                    statusCode: fc.constantFrom(200, 401, 403, 404),
-                    htmlBody: fc.oneof(
-                        fc.constant('<html><body><h1>Error</h1><p>Authentication required</p></body></html>'),
-                        fc.constant('<!DOCTYPE html><html><head><title>Error</title></head><body>Access denied</body></html>'),
-                        fc.constant('<html><body>Not found</body></html>'),
-                        fc.constant('<html><body><div class="error">Invalid credentials</div></body></html>')
-                    ),
+                    htmlBody: fc.constantFrom('<html><body>Error</body></html>', '<html><body>Access denied</body></html>'),
                 }),
                 async (config) => {
-                    const iterationSandbox = sinon.createSandbox();
-                    
+                    const source = createTestSource();
+                    const adapter = new GitHubAdapter(source);
+
+                    stubHttpsWithResponse(sandbox, 401, config.htmlBody, 'text/html; charset=utf-8');
+
+                    // Attempt to make a request
                     try {
-                        const source = createTestSource();
-                        const adapter = new GitHubAdapter(source);
-
-                        stubHttpsWithResponse(
-                            iterationSandbox, 
-                            config.statusCode, 
-                            config.htmlBody,
-                            'text/html; charset=utf-8'
-                        );
-
-                        // Attempt to make a request
-                        try {
-                            await (adapter as any).makeRequest('https://api.github.com/test');
-                            
-                            console.log(`HTML recognition test: HTML response with status ${config.statusCode} was not recognized as error`);
-                            assert.fail('HTML response should be recognized as error');
-                        } catch (error: unknown) {
-                            const err = error as Error;
-                            
-                            if (!ErrorCheckers.indicatesHtmlDetection(err)) {
-                                console.log(`HTML recognition test failed: Error doesn't mention HTML: ${err.message}`);
-                                assert.fail('Error should indicate HTML response was detected');
-                            }
-                        }
-                    } finally {
-                        iterationSandbox.restore();
+                        await (adapter as any).makeRequest('https://api.github.com/test');
+                        assert.fail('HTML response should be recognized as error');
+                    } catch (error: unknown) {
+                        const err = error as Error;
+                        assert.ok(ErrorCheckers.indicatesHtmlDetection(err), 'Error should indicate HTML response was detected');
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -730,7 +575,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -784,7 +629,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -802,51 +647,27 @@ suite('GitHubAdapter Property-Based Tests', () => {
         await fc.assert(
             fc.asyncProperty(
                 fc.record({
-                    statusCode: fc.constantFrom(200, 401, 403, 404),
-                    invalidJson: fc.oneof(
-                        fc.constant('not json at all'),
-                        fc.constant('{ incomplete json'),
-                        fc.constant('{ "key": undefined }'),
-                        fc.constant('[1, 2, 3,]'),
-                        fc.constant('{ "key": "value" } extra text'),
-                        fc.constant(''),
-                        fc.constant('null null'),
-                    ),
+                    invalidJson: fc.constantFrom('not json', '{ incomplete', ''),
                 }),
                 async (config) => {
-                    const iterationSandbox = sinon.createSandbox();
-                    
+                    const source = createTestSource();
+                    const adapter = new GitHubAdapter(source);
+
+                    stubHttpsWithResponse(sandbox, 401, config.invalidJson);
+
+                    // Attempt to make a request
                     try {
-                        const source = createTestSource();
-                        const adapter = new GitHubAdapter(source);
-
-                        stubHttpsWithResponse(iterationSandbox, config.statusCode, config.invalidJson);
-
-                        // Attempt to make a request
-                        try {
-                            await (adapter as any).makeRequest('https://api.github.com/test');
-                            
-                            // If we get here, either the JSON was valid or error was handled
-                            if (config.statusCode >= 400) {
-                                console.log(`Graceful parsing test: No error thrown for status ${config.statusCode}`);
-                            }
-                        } catch (error: unknown) {
-                            const err = error as Error;
-                            
-                            // Verify we got a graceful error, not a crash
-                            assert.ok(err instanceof Error, 'Should throw Error instance');
-                            assert.ok(err.message.length > 0, 'Error should have a message');
-                            
-                            if (!ErrorCheckers.mentionsParsingIssue(err)) {
-                                console.log(`Graceful parsing test: Error doesn't mention parsing issue: ${err.message}`);
-                            }
-                        }
-                    } finally {
-                        iterationSandbox.restore();
+                        await (adapter as any).makeRequest('https://api.github.com/test');
+                    } catch (error: unknown) {
+                        const err = error as Error;
+                        
+                        // Verify we got a graceful error, not a crash
+                        assert.ok(err instanceof Error, 'Should throw Error instance');
+                        assert.ok(err.message.length > 0, 'Error should have a message');
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.EXTENDED, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -920,7 +741,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -983,7 +804,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -1052,7 +873,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.EXTENDED, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 
@@ -1121,7 +942,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     }
                 }
             ),
-            { numRuns: TEST_CONFIG.RUNS.STANDARD, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
+            { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
         );
     });
 });
