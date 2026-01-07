@@ -1,0 +1,23 @@
+{
+  "name": "Prompt Registry Resource Templates",
+  "version": "1.0.0",
+  "description": "Templates for creating new resources (prompts, instructions, agents, skills)",
+  "templates": {
+    "prompt": {
+      "file": "prompt.template.md",
+      "description": "Interactive prompt for Copilot"
+    },
+    "instruction": {
+      "file": "instruction.template.md",
+      "description": "Step-by-step guidance document"
+    },
+    "agent": {
+      "file": "agent.template.md",
+      "description": "Autonomous AI agent configuration"
+    },
+    "skill": {
+      "file": "skill.template.md",
+      "description": "Agent skill with domain expertise"
+    }
+  }
+}

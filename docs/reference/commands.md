@@ -95,7 +95,7 @@ This document lists all VS Code commands provided by the Prompt Registry extensi
 | Command | Title | Description |
 |---------|-------|-------------|
 | `promptRegistry.scaffoldProject` | Scaffold Project | Create a new project from a template |
-| `promptRegistry.addResource` | Add Resource | Add a prompt, instruction or agent |
+| `promptRegistry.addResource` | Add Resource | Add a prompt, instruction, agent, or skill |
 
 ## Settings & Configuration
 

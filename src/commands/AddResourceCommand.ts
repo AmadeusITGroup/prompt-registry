@@ -7,8 +7,8 @@ import { TemplateEngine } from '../services/TemplateEngine';
 export enum ResourceType {
     Prompt = 'prompt',
     Instruction = 'instruction',
-    ChatMode = 'chatmode',
-    Agent = 'agent'
+    Agent = 'agent',
+    Skill = 'skill'
 }
 
 interface ResourceTypeInfo {
@@ -45,14 +45,7 @@ export class AddResourceCommand {
                 extension: '.instructions.md',
                 template: 'instruction.template.md'
             }],
-            [ResourceType.ChatMode, {
-                label: '$(comment-discussion) Chat Mode',
-                description: 'Conversation behavior configuration',
-                icon: '$(comment-discussion)',
-                folder: 'chatmodes',
-                extension: '.chatmode.md',
-                template: 'chatmode.template.md'
-            }],
+            
             [ResourceType.Agent, {
                 label: '$(robot) Agent',
                 description: 'Autonomous AI agent configuration',
@@ -60,6 +53,14 @@ export class AddResourceCommand {
                 folder: 'agents',
                 extension: '.agent.md',
                 template: 'agent.template.md'
+            }],
+            [ResourceType.Skill, {
+                label: '$(lightbulb) Skill',
+                description: 'Agent skill with domain expertise',
+                icon: '$(lightbulb)',
+                folder: 'skills',
+                extension: '.skill.md',
+                template: 'skill.template.md'
             }]
         ]);
     }

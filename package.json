@@ -92,7 +92,7 @@
       },
       {
         "command": "promptRegistry.addResource",
-        "title": "Add Resource (Prompt/Instruction/ChatMode/Agent)",
+        "title": "Add Resource (Prompt/Instruction/Agent/Skill)",
         "category": "Prompt Registry"
       },
       {
@@ -727,9 +727,9 @@
     "package:prepare": "node scripts/package-helpers.js prod && npm run compile",
     "package:cleanup": "node scripts/package-helpers.js dev",
     "package:full": "npm run package:prepare && npm run package:vsix && npm run package:cleanup",
-    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"📦 Production package created with optimized size\"",
-    "dev:setup": "npm run ignore:dev && echo \"🔧 Development mode activated - Copilot friendly\"",
-    "dev:package-test": "npm run package:prepare && echo \"📋 Switched to production mode - check file exclusions\" && npm run ignore:status",
+    "package:production": "npm run package:prepare && npm run package:vsix && npm run package:cleanup && echo \"\ud83d\udce6 Production package created with optimized size\"",
+    "dev:setup": "npm run ignore:dev && echo \"\ud83d\udd27 Development mode activated - Copilot friendly\"",
+    "dev:package-test": "npm run package:prepare && echo \"\ud83d\udccb Switched to production mode - check file exclusions\" && npm run ignore:status",
     "version:update": "./scripts/update-version.sh",
     "version:bump:major": "npm version major --no-git-tag-version && npm run version:update",
     "version:bump:minor": "npm version minor --no-git-tag-version && npm run version:update",
