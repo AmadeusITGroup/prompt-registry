@@ -4,21 +4,33 @@
   "title": "Awesome Copilot Collection",
   "description": "Schema for Copilot prompt collection files",
   "type": "object",
-  "required": ["id", "name", "description", "items"],
+  "required": [
+    "id",
+    "name",
+    "description",
+    "items"
+  ],
   "properties": {
     "id": {
       "type": "string",
       "description": "Unique identifier for the collection (lowercase letters, numbers, and hyphens only)",
       "pattern": "^[a-z0-9-]+$",
       "minLength": 1,
-      "examples": ["my-prompts", "python-helpers", "git-workflows"]
+      "examples": [
+        "my-prompts",
+        "python-helpers",
+        "git-workflows"
+      ]
     },
     "name": {
       "type": "string",
       "description": "Human-readable name of the collection",
       "minLength": 1,
       "maxLength": 100,
-      "examples": ["My Awesome Prompts", "Python Development Helpers"]
+      "examples": [
+        "My Awesome Prompts",
+        "Python Development Helpers"
+      ]
     },
     "description": {
       "type": "string",
@@ -33,18 +45,31 @@
       "maxItems": 50,
       "items": {
         "type": "object",
-        "required": ["path", "kind"],
+        "required": [
+          "path",
+          "kind"
+        ],
         "properties": {
           "path": {
             "type": "string",
             "description": "Relative path to the resource file",
             "minLength": 1,
-            "examples": ["prompts/my-prompt.md", "instructions/code-style.md"]
+            "examples": [
+              "prompts/my-prompt.prompt.md",
+              "instructions/code-style.instructions.md",
+              "skills/my-skill/SKILL.md"
+            ]
           },
           "kind": {
             "type": "string",
             "description": "Type of resource",
-            "enum": ["prompt", "instruction", "chat-mode", "agent"]
+            "enum": [
+              "prompt",
+              "instruction",
+              "chat-mode",
+              "agent",
+              "skill"
+            ]
           },
           "title": {
             "type": "string",
@@ -76,12 +101,18 @@
             "^[a-zA-Z0-9_-]+$": {
               "type": "object",
               "description": "MCP server configuration",
-              "required": ["command"],
+              "required": [
+                "command"
+              ],
               "properties": {
                 "command": {
                   "type": "string",
                   "description": "Command to start the MCP server",
-                  "examples": ["node", "python", "npx"]
+                  "examples": [
+                    "node",
+                    "python",
+                    "npx"
+                  ]
                 },
                 "args": {
                   "type": "array",
@@ -90,9 +121,15 @@
                     "type": "string"
                   },
                   "examples": [
-                    ["${bundlePath}/server.js"],
-                    ["${bundlePath}/mcp_server.py"],
-                    ["${env:HOME}/.local/bin/my-mcp-server"]
+                    [
+                      "${bundlePath}/server.js"
+                    ],
+                    [
+                      "${bundlePath}/mcp_server.py"
+                    ],
+                    [
+                      "${env:HOME}/.local/bin/my-mcp-server"
+                    ]
                   ]
                 },
                 "env": {
@@ -120,7 +157,10 @@
       "type": "string",
       "description": "Version of the collection",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "examples": ["1.0.0", "2.1.3"]
+      "examples": [
+        "1.0.0",
+        "2.1.3"
+      ]
     },
     "author": {
       "type": "string",
@@ -148,7 +188,10 @@
         "ordering": {
           "type": "string",
           "description": "How to order items in the collection",
-          "enum": ["manual", "alphabetical"]
+          "enum": [
+            "manual",
+            "alphabetical"
+          ]
         },
         "show_badge": {
           "type": "boolean",

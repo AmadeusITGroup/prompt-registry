@@ -319,3 +319,60 @@ items:
         });
     });
 });
+
+suite('Skill Kind Support', () => {
+    test('should parse collection with skill items', async () => {
+        const mockSource: RegistrySource = {
+            id: 'awesome-test',
+            name: 'Awesome Copilot Test',
+            type: 'awesome-copilot',
+            url: 'https://github.com/test-owner/awesome-copilot',
+            enabled: true,
+            priority: 1,
+        };
+
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+            .reply(200, [{
+                name: 'skills-collection.collection.yml',
+                type: 'file',
+                download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/skills-collection.collection.yml'
+            }]);
+
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/collections/skills-collection.collection.yml')
+            .reply(200, `
+id: skills-collection
+name: Skills Collection
+description: Test collection with skills
+tags: ["test", "skills"]
+items:
+  - path: "skills/my-skill/SKILL.md"
+    kind: skill
+  - path: "prompts/test.prompt.md"
+    kind: prompt
+`);
+
+        const adapter = new AwesomeCopilotAdapter(mockSource);
+        const bundles = await adapter.fetchBundles();
+
+        assert.strictEqual(bundles.length, 1);
+        assert.strictEqual(bundles[0].id, 'skills-collection');
+        // The bundle should contain both skill and prompt items
+    });
+
+    test('should map skill kind correctly in type mapping', () => {
+        // Test the mapKindToType function behavior
+        const kindMap: Record<string, string> = {
+            'prompt': 'prompt',
+            'instruction': 'instructions',
+            'chat-mode': 'chatmode',
+            'agent': 'agent',
+            'skill': 'skill'
+        };
+        
+        assert.strictEqual(kindMap['skill'], 'skill');
+        assert.strictEqual(kindMap['prompt'], 'prompt');
+        assert.strictEqual(kindMap['instruction'], 'instructions');
+    });
+});

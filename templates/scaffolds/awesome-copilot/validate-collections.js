@@ -29,7 +29,7 @@ const colors = {
 };
 
 // Validation constants (match VS Code extension)
-const VALID_KINDS = ['prompt', 'instruction', 'chat-mode', 'agent'];
+const VALID_KINDS = ['prompt', 'instruction', 'chat-mode', 'agent', 'skill'];
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_TAGS = 10;
 const MAX_TAG_LENGTH = 30;

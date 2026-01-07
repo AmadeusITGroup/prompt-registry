@@ -1,4 +1,7 @@
 // Mock vscode API for unit tests
+const fs = require('fs');
+const path = require('path');
+
 module.exports = {
   workspace: {
     getConfiguration: (section) => ({
@@ -16,7 +19,51 @@ module.exports = {
         return defaultValue;
       },
       update: async (key, value, target) => undefined
-    })
+    }),
+    fs: {
+      writeFile: async (uri, content) => {
+        const filePath = uri.fsPath;
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(filePath, content);
+      },
+      readFile: async (uri) => {
+        const filePath = uri.fsPath;
+        return fs.readFileSync(filePath);
+      },
+      createDirectory: async (uri) => {
+        const dirPath = uri.fsPath;
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath, { recursive: true });
+        }
+      },
+      delete: async (uri, options) => {
+        const filePath = uri.fsPath;
+        if (fs.existsSync(filePath)) {
+          fs.rmSync(filePath, { recursive: options?.recursive || false });
+        }
+      },
+      stat: async (uri) => {
+        const filePath = uri.fsPath;
+        const stats = fs.statSync(filePath);
+        return {
+          type: stats.isDirectory() ? 2 : 1, // FileType.Directory = 2, FileType.File = 1
+          ctime: stats.ctimeMs,
+          mtime: stats.mtimeMs,
+          size: stats.size
+        };
+      },
+      readDirectory: async (uri) => {
+        const dirPath = uri.fsPath;
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        return entries.map(entry => [
+          entry.name,
+          entry.isDirectory() ? 2 : 1 // FileType.Directory = 2, FileType.File = 1
+        ]);
+      }
+    }
   },
   window: {
     showInformationMessage: () => Promise.resolve(),

@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""
+Example script for {{name}} skill.
+
+This script demonstrates how to create utility tools for your skill.
+Scripts in this directory can be referenced by the skill and executed
+by agents with appropriate tool permissions.
+"""
+
+import argparse
+import json
+import sys
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Example utility for {{name}} skill'
+    )
+    parser.add_argument(
+        '--input', '-i',
+        type=str,
+        help='Input data or file path'
+    )
+    parser.add_argument(
+        '--format', '-f',
+        choices=['json', 'text', 'markdown'],
+        default='text',
+        help='Output format (default: text)'
+    )
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose output'
+    )
+    
+    args = parser.parse_args()
+    
+    if args.verbose:
+        print(f"[{{name}}] Processing with format: {args.format}", file=sys.stderr)
+    
+    # Example processing logic
+    result = {
+        'skill': '{{name}}',
+        'input': args.input,
+        'status': 'success',
+        'message': 'Example script executed successfully'
+    }
+    
+    # Output based on format
+    if args.format == 'json':
+        print(json.dumps(result, indent=2))
+    elif args.format == 'markdown':
+        print(f"## {{name}} Result\n")
+        print(f"- **Status**: {result['status']}")
+        print(f"- **Input**: {result['input']}")
+        print(f"- **Message**: {result['message']}")
+    else:
+        print(f"{{name}}: {result['message']}")
+        if args.input:
+            print(f"Input: {args.input}")
+
+
+if __name__ == '__main__':
+    main()

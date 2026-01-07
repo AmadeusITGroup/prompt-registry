@@ -11,6 +11,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ScaffoldCommand } from '../../src/commands/ScaffoldCommand';
 
+const TEMPLATES_ROOT = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
+
 suite('ScaffoldCommand', () => {
     let testDir: string;
     let scaffoldCommand: ScaffoldCommand;
@@ -18,7 +20,7 @@ suite('ScaffoldCommand', () => {
     setup(() => {
         // Create temp directory for each test
         testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scaffold-test-'));
-        scaffoldCommand = new ScaffoldCommand();
+        scaffoldCommand = new ScaffoldCommand(TEMPLATES_ROOT);
     });
 
     teardown(() => {
@@ -564,4 +566,91 @@ suite('ScaffoldCommand', () => {
 //         });
 //     });
 // });
+});
+
+suite('Skill Scaffold', () => {
+    let testDir: string;
+    let skillScaffoldCommand: ScaffoldCommand;
+
+    setup(() => {
+        testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-scaffold-test-'));
+        // Import ScaffoldType to create skill-specific command
+        const { ScaffoldType } = require('../../src/commands/ScaffoldCommand');
+        const skillTemplateRoot = path.join(process.cwd(), 'templates/scaffolds/skill');
+        skillScaffoldCommand = new ScaffoldCommand(skillTemplateRoot, ScaffoldType.Skill);
+    });
+
+    teardown(() => {
+        if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+        }
+    });
+
+    test('should create SKILL.md file with correct structure', async () => {
+        await skillScaffoldCommand.execute(testDir, { projectName: 'my-skill' });
+
+        const skillFile = path.join(testDir, 'my-skill', 'SKILL.md');
+        assert.ok(fs.existsSync(skillFile), 'SKILL.md should exist');
+
+        const content = fs.readFileSync(skillFile, 'utf8');
+        
+        // Should have YAML frontmatter
+        assert.ok(content.startsWith('---'), 'Should have YAML frontmatter');
+        assert.ok(content.includes('name:'), 'Should have name field');
+        assert.ok(content.includes('description:'), 'Should have description field');
+        assert.ok(content.includes('allowed-tools:'), 'Should have allowed-tools');
+    });
+
+    test('should create README.md file', async () => {
+        await skillScaffoldCommand.execute(testDir, { projectName: 'test-skill' });
+
+        const readmeFile = path.join(testDir, 'test-skill', 'README.md');
+        assert.ok(fs.existsSync(readmeFile), 'README.md should exist');
+
+        const content = fs.readFileSync(readmeFile, 'utf8');
+        assert.ok(content.includes('test-skill'), 'Should contain skill name');
+        assert.ok(content.includes('Installation'), 'Should have installation section');
+    });
+
+    test('should create example script', async () => {
+        await skillScaffoldCommand.execute(testDir, { projectName: 'scripted-skill' });
+
+        const scriptFile = path.join(testDir, 'scripted-skill', 'scripts', 'example.py');
+        assert.ok(fs.existsSync(scriptFile), 'example.py should exist');
+
+        const content = fs.readFileSync(scriptFile, 'utf8');
+        assert.ok(content.includes('scripted-skill'), 'Should reference skill name');
+        assert.ok(content.includes('#!/usr/bin/env python3'), 'Should have shebang');
+    });
+
+    test('should use provided description', async () => {
+        await skillScaffoldCommand.execute(testDir, { 
+            projectName: 'described-skill',
+            description: 'A custom skill description'
+        });
+
+        const skillFile = path.join(testDir, 'described-skill', 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf8');
+        assert.ok(content.includes('A custom skill description'), 'Should use provided description');
+    });
+
+    test('should use provided author', async () => {
+        await skillScaffoldCommand.execute(testDir, { 
+            projectName: 'authored-skill',
+            author: 'Test Author'
+        });
+
+        const skillFile = path.join(testDir, 'authored-skill', 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf8');
+        assert.ok(content.includes('Test Author'), 'Should use provided author');
+    });
+
+    test('should create skill directory structure', async () => {
+        await skillScaffoldCommand.execute(testDir, { projectName: 'structured-skill' });
+
+        const skillDir = path.join(testDir, 'structured-skill');
+        assert.ok(fs.existsSync(skillDir), 'Skill directory should exist');
+        assert.ok(fs.existsSync(path.join(skillDir, 'SKILL.md')), 'SKILL.md should exist');
+        assert.ok(fs.existsSync(path.join(skillDir, 'README.md')), 'README.md should exist');
+    });
 });

@@ -4,6 +4,7 @@ import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 
 export enum ScaffoldType {
+    Skill = 'skill',
     AwesomeCopilot = 'awesome-copilot',
     Apm = 'apm',
 }

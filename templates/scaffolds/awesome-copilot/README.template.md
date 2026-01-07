@@ -1,18 +1,20 @@
 # {{projectName}}
 
-Welcome to your awesome-copilot prompt collection! This repository contains prompts, instructions, chat modes, and collections to enhance your GitHub Copilot experience.
+Welcome to your awesome-copilot prompt collection! This repository contains prompts, instructions, chat modes, skills, and collections to enhance your GitHub Copilot experience.
 
 ## 📖 Repository Structure
 
 ```
 ├── prompts/              # Task-specific prompts (.prompt.md)
 ├── instructions/         # Coding standards and best practices (.instructions.md)
-├── agents/           # AI personas and specialized modes (.agent.md)
-├── collections/         # Curated collections (.collection.yml)
-├── mcp-server/          # Optional: MCP server configuration
-├── schemas/             # JSON schemas for validation
-├── .vscode/             # VS Code settings and extensions
-└── package.json         # Node.js dependencies
+├── agents/               # AI personas and specialized modes (.agent.md)
+├── skills/               # Agent skills with bundled assets (SKILL.md)
+├── collections/          # Curated collections (.collection.yml)
+├── mcp-server/           # Optional: MCP server configuration
+├── schemas/              # JSON schemas for validation
+├── scripts/              # Validation and creation utilities
+├── .vscode/              # VS Code settings and extensions
+└── package.json          # Node.js dependencies
 ```
 
 ## 🚀 Quick Start
@@ -35,7 +37,19 @@ Checks:
 - ✅ File references exist
 - ✅ Valid YAML syntax
 
-### 3. Use with VS Code
+### 3. Validate Your Skills
+
+```bash
+npm run skill:validate
+```
+
+Checks:
+- ✅ SKILL.md frontmatter (name, description)
+- ✅ Name matches folder name
+- ✅ No duplicate skill names
+- ✅ Bundled asset size limits (max 5MB per file)
+
+### 4. Use with VS Code
 
 The scaffold includes VS Code configuration:
 
@@ -47,13 +61,13 @@ The scaffold includes VS Code configuration:
 - IntelliSense for collection properties
 - Real-time validation errors
 
-### 4. Ensure that the GitHub runner label is correctly configured
+### 5. Ensure that the GitHub runner label is correctly configured
 
 - open `.github/workflows/validate-collections.yml`
 - look for `runs-on:`
 - ensure you are using the runner label as per recommendations of your organisation
 
-### 5. (Optional) Enable MCP Servers
+### 6. (Optional) Enable MCP Servers
 
 **What is MCP?** Model Context Protocol allows your collection to provide custom tools and context to GitHub Copilot.
 
@@ -64,7 +78,7 @@ The scaffold includes VS Code configuration:
 
 See `mcp-server/README.md` for detailed instructions.
 
-### 6. Publish to GitHub
+### 7. Publish to GitHub
 
 ```bash
 # Initialize git (if needed)
@@ -78,7 +92,7 @@ git branch -M main
 git push -u origin main
 ```
 
-### 7. Use with Prompt Registry Extension
+### 8. Use with Prompt Registry Extension
 
 **Option A: Add as Source**
 1. Open VS Code Command Palette (`Ctrl+Shift+P`)
@@ -153,6 +167,62 @@ You are a senior code reviewer focused on quality and best practices.
 - Explain the reasoning
 ```
 
+### Agent Skills (`skills/<name>/SKILL.md`)
+
+Domain-specific capabilities for Copilot following the [Agent Skills specification](https://agentskills.io/specification).
+
+**Creating a New Skill:**
+
+```bash
+npm run skill:create
+```
+
+This runs an interactive wizard that prompts for:
+- **Name**: lowercase letters, numbers, and hyphens (e.g., `code-review`)
+- **Description**: 10-1024 characters explaining what the skill does
+
+**Skill Structure:**
+
+```
+skills/
+└── my-skill/
+    ├── SKILL.md        # Required: skill definition with frontmatter
+    ├── example.py      # Optional: bundled asset
+    └── schema.json     # Optional: bundled asset
+```
+
+**SKILL.md Format:**
+
+```markdown
+---
+name: my-skill
+description: "A concise description of what this skill enables (10-1024 chars)"
+---
+
+# My Skill
+
+Detailed instructions for how Copilot should use this skill.
+
+## Capabilities
+
+What this skill enables Copilot to do.
+
+## Usage
+
+When and how Copilot should apply this skill.
+```
+
+**Bundled Assets:**
+- Include supporting files (templates, schemas, examples) alongside SKILL.md
+- Maximum 5MB per file
+- Referenced in the markdown body
+
+**Validation:**
+
+```bash
+npm run skill:validate
+```
+
 ### Collections (`collections/*.collection.yml`)
 
 Group related items together.
@@ -169,6 +239,8 @@ items:
     kind: prompt
   - path: instructions/typescript-style.instructions.md
     kind: instruction
+  - path: skills/code-review/SKILL.md
+    kind: skill
 ```
 
 **Validation Rules**:
@@ -176,7 +248,7 @@ items:
 - `name`: 1-100 characters
 - `description`: 1-500 characters
 - `items`: 1-50 items, paths must exist
-- `kind`: `prompt`, `instruction`, `chat-mode`, or `agent`
+- `kind`: `prompt`, `instruction`, `chat-mode`, `agent`, or `skill`
 
 ### MCP Servers (Optional)
 
@@ -207,11 +279,13 @@ See `mcp-server/README.md` for available servers and custom implementation guide
 ### Local Validation
 
 ```bash
-# Run validation script
+# Run all validation
 npm run validate
+npm run skill:validate
 
 # Or with Node directly
 node validate-collections.js
+node scripts/validate-skills.js
 ```
 
 ### CI/CD (GitHub Actions)
@@ -228,7 +302,8 @@ The included workflow (`.github/workflows/validate-collections.yml`) runs automa
 1. **In Copilot Chat**: Use `/` to access prompts
 2. **With Prompt Registry**: Browse and install collections
 3. **Validate Files**: Check YAML syntax and file references
-4. **MCP Servers** (if enabled): Verify server appears in VS Code MCP settings
+4. **Validate Skills**: Verify SKILL.md frontmatter
+5. **MCP Servers** (if enabled): Verify server appears in VS Code MCP settings
 
 ## 📋 Quality Checklist
 
@@ -236,6 +311,7 @@ Before committing:
 
 - [ ] `npm install` completed successfully
 - [ ] `npm run validate` passes with no errors
+- [ ] `npm run skill:validate` passes with no errors
 - [ ] File naming follows conventions
 - [ ] All collection paths exist
 - [ ] YAML syntax is valid
@@ -247,6 +323,7 @@ Before committing:
 - [GitHub Copilot Documentation](https://docs.github.com/en/copilot)
 - [Awesome Copilot Repository](https://github.com/github/awesome-copilot)
 - [Collection Template](https://github.com/github/awesome-copilot/blob/main/collections/TEMPLATE.md)
+- [Agent Skills Specification](https://agentskills.io/specification)
 - [Prompt Engineering Guide](https://www.promptingguide.ai/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [MCP Server Examples](https://github.com/modelcontextprotocol/servers)
@@ -258,7 +335,7 @@ Available when using Prompt Registry extension:
 - `Prompt Registry: Validate Collections` - Validate all collections
 - `Prompt Registry: Create New Collection` - Interactive collection wizard
 - `Prompt Registry: List All Collections` - View collection metadata
-- `Prompt Registry: Add Resource` - Add prompt/instruction/agent
+- `Prompt Registry: Add Resource` - Add prompt/instruction/agent/skill
 
 ## 📄 License
 
@@ -270,4 +347,4 @@ Based on [github/awesome-copilot](https://github.com/github/awesome-copilot) str
 
 ---
 
-**Next Steps**: Review examples → Run `npm install` → Run `npm run validate` → Create your first collection! 🚀
+**Next Steps**: Review examples → Run `npm install` → Run `npm run validate` → Run `npm run skill:validate` → Create your first collection! 🚀

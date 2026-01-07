@@ -1,0 +1,30 @@
+{
+    "version": "1.0.0",
+    "description": "Agent Skill scaffold template",
+    "templates": {
+        "skill-md": {
+            "path": "SKILL.md.template",
+            "description": "Main skill definition file",
+            "required": true,
+            "variables": ["name", "description", "author"]
+        },
+        "readme": {
+            "path": "README.md.template",
+            "description": "Skill documentation",
+            "required": true,
+            "variables": ["name", "description"]
+        },
+        "example-script": {
+            "path": "scripts/example.py.template",
+            "description": "Example Python script for skill",
+            "required": true,
+            "variables": ["name"]
+        },
+        "gitignore": {
+            "path": ".gitignore",
+            "description": "Git ignore file",
+            "required": true,
+            "variables": []
+        }
+    }
+}

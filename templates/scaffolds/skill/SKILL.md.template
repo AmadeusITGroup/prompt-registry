@@ -1,0 +1,48 @@
+---
+name: {{name}}
+description: {{description}}
+metadata:
+  license: MIT
+  version: 1.0.0
+  author: {{author}}
+allowed-tools:
+  - run_in_terminal
+  - read_file
+  - grep_search
+---
+
+# {{name}}
+
+{{description}}
+
+## Overview
+
+This skill provides specialized capabilities for...
+
+## Usage
+
+To use this skill, simply reference it by name in your agent configuration.
+
+## Examples
+
+### Basic Usage
+
+```
+Example prompt or interaction demonstrating this skill
+```
+
+## Allowed Tools
+
+This skill has access to the following tools:
+
+- `run_in_terminal` - Execute shell commands
+- `read_file` - Read file contents
+- `grep_search` - Search for patterns in files
+
+## References
+
+Place reference materials in the `references/` directory.
+
+## Scripts
+
+Utility scripts can be placed in the `scripts/` directory and referenced in the skill.

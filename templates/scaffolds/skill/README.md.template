@@ -1,0 +1,57 @@
+# {{name}}
+
+{{description}}
+
+## Skill Structure
+
+```
+{{name}}/
+├── SKILL.md              # Main skill definition
+├── scripts/              # Utility scripts
+│   └── example.py        # Example Python script
+├── references/           # Reference materials
+├── assets/               # Static assets (images, data)
+└── README.md             # This file
+```
+
+## Installation
+
+To install this skill to your Copilot environment:
+
+### User Scope (recommended)
+```bash
+# Copy skill to ~/.copilot/skills/
+cp -r {{name}} ~/.copilot/skills/
+```
+
+### Workspace Scope
+```bash
+# Copy skill to .copilot/skills/ in your project
+cp -r {{name}} .copilot/skills/
+```
+
+## Usage
+
+Reference this skill in your agent configurations or chat sessions:
+
+\`\`\`
+@{{name}} perform the specialized task
+\`\`\`
+
+## Allowed Tools
+
+The skill has access to these tools (configurable in SKILL.md):
+- \`run_in_terminal\` - Execute shell commands
+- \`read_file\` - Read file contents  
+- \`grep_search\` - Search for patterns
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+MIT License - see SKILL.md for details.

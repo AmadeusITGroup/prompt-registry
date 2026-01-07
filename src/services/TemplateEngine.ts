@@ -112,13 +112,25 @@ export class TemplateEngine {
         
         // Copy all templates
         const manifest = await this.loadManifest();
+        
+        // Check if this is a skill scaffold (contains SKILL.md template)
+        // Check if this is a dedicated skill scaffold (not a project scaffold with skill examples)
+        // A dedicated skill scaffold has SKILL.md.template at the root level
+        const isSkillScaffold = manifest.templates['skill-md'] && Object.values(manifest.templates).some(
+            t => t.path === 'SKILL.md.template'
+        );
+        
+        // For skill scaffolds, create files in a subdirectory named after the project
+        const effectiveTargetUri = isSkillScaffold && context.projectName
+            ? vscode.Uri.joinPath(targetUri, context.projectName)
+            : targetUri;
         for (const [name, template] of Object.entries(manifest.templates)) {
             if (!template.required) {
                 continue;
             }
 
             const relativePath = this.resolveRelativePath(name, template.path);
-            const targetFile = vscode.Uri.joinPath(targetUri, relativePath);
+            const targetFile = vscode.Uri.joinPath(effectiveTargetUri, relativePath);
             
             await this.copyTemplate(name, targetFile, context);
         }
@@ -189,7 +201,7 @@ export class TemplateEngine {
 
         // Ensure defaults for required fields
         if (!enhanced.description) {
-            enhanced.description = 'A new APM package';
+            enhanced.description = 'A new package';
         }
         if (!enhanced.author) {
             enhanced.author = process.env.USER || 'user';

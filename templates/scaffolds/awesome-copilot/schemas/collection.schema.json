@@ -37,14 +37,15 @@
         "properties": {
           "path": {
             "type": "string",
-            "description": "Relative path to the resource file",
+            "description": "Relative path from repository root to the item file",
+            "pattern": "^(?:skills/[^/]+/SKILL\\.md|(prompts|instructions|agents)/[^/]+\\.(prompt|instructions|agent)\\.md)$",
             "minLength": 1,
-            "examples": ["prompts/my-prompt.md", "instructions/code-style.md"]
+            "examples": ["prompts/my-prompt.prompt.md", "instructions/code-style.instructions.md", "skills/my-skill/SKILL.md"]
           },
           "kind": {
             "type": "string",
             "description": "Type of resource",
-            "enum": ["prompt", "instruction", "chat-mode", "agent"]
+            "enum": ["prompt", "instruction", "chat-mode", "agent", "skill"]
           },
           "title": {
             "type": "string",

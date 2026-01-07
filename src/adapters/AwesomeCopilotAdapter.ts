@@ -55,7 +55,7 @@ interface CollectionManifest {
 
 interface CollectionItem {
     path: string;
-    kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent';
+    kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent' | 'skill';
 }
 
 /**
@@ -470,12 +470,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Map collection kind to Prompt Registry type
      */
-    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
-        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent'> = {
+    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
             'prompt': 'prompt',
             'instruction': 'instructions',
             'chat-mode': 'chatmode',
-            'agent': 'agent'
+            'agent': 'agent',
+            'skill': 'skill'
         };
         return kindMap[kind] || 'prompt';
     }
@@ -488,7 +489,8 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
-            agents: 0
+            agents: 0,
+            skills: 0
         };
 
         for (const item of items) {
@@ -504,6 +506,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                     break;
                 case 'agent':
                     breakdown.agents++;
+                    break;
+                case 'skill':
+                    breakdown.skills++;
                     break;
             }
         }

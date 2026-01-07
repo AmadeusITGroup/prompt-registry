@@ -33,7 +33,7 @@ const lstat = promisify(fs.lstat);
 /**
  * Supported Copilot file types
  */
-export type CopilotFileType = 'prompt' | 'instructions' | 'chatmode' | 'agent';
+export type CopilotFileType = 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill';
 
 export interface CopilotFile {
     bundleId: string;
@@ -316,8 +316,14 @@ export class CopilotSyncService {
                 return;
             }
             
-            // Sync each prompt
+            // Sync each prompt/skill
             for (const promptDef of manifest.prompts) {
+                // Handle skills differently - they are directories
+                if (promptDef.type === 'skill') {
+                    await this.syncSkillFromBundle(bundleId, bundlePath, promptDef);
+                    continue;
+                }
+                
                 const sourcePath = path.join(bundlePath, promptDef.file);
                 
                 if (!fs.existsSync(sourcePath)) {
@@ -334,6 +340,38 @@ export class CopilotSyncService {
             
         } catch (error) {
             this.logger.error(`Failed to sync bundle ${bundleId}`, error as Error);
+        }
+    }
+
+    /**
+     * Sync a skill from a bundle
+     * Skills are directories containing SKILL.md and optional subdirectories
+     */
+    private async syncSkillFromBundle(bundleId: string, bundlePath: string, promptDef: any): Promise<void> {
+        try {
+            // Extract skill name from the path (e.g., skills/my-skill/SKILL.md -> my-skill)
+            const skillPath = promptDef.file;
+            const skillMatch = skillPath.match(/skills\/([^/]+)\/SKILL\.md/);
+            
+            if (!skillMatch) {
+                this.logger.warn(`Invalid skill path: ${skillPath}`);
+                return;
+            }
+            
+            const skillName = skillMatch[1];
+            const skillSourceDir = path.join(bundlePath, 'skills', skillName);
+            
+            if (!fs.existsSync(skillSourceDir)) {
+                this.logger.warn(`Skill directory not found: ${skillSourceDir}`);
+                return;
+            }
+            
+            // Sync skill to ~/.copilot/skills
+            await this.syncSkill(skillName, skillSourceDir, 'user');
+            
+            this.logger.info(`✅ Synced skill: ${skillName}`);
+        } catch (error) {
+            this.logger.error(`Failed to sync skill from bundle ${bundleId}`, error as Error);
         }
     }
 
@@ -460,9 +498,20 @@ export class CopilotSyncService {
                 return;
             }
             
-            // Remove each synced file
+            // Remove each synced file/skill
             let removedCount = 0;
             for (const promptDef of manifest.prompts) {
+                // Handle skills differently - they are directories
+                if (promptDef.type === 'skill') {
+                    const skillMatch = promptDef.file.match(/skills\/([^/]+)\/SKILL\.md/);
+                    if (skillMatch) {
+                        const skillName = skillMatch[1];
+                        await this.unsyncSkill(skillName, 'user');
+                        removedCount++;
+                    }
+                    continue;
+                }
+                
                 const sourcePath = path.join(bundlePath, promptDef.file);
                 const copilotFile = this.determineCopilotFileType(promptDef, sourcePath, bundleId);
                 
@@ -593,5 +642,213 @@ export class CopilotSyncService {
             fs.mkdirSync(dir, { recursive: true });
             this.logger.debug(`Created directory: ${dir}`);
         }
+    }
+
+    /**
+     * Get the Copilot skills directory
+     * Skills are stored in ~/.copilot/skills (user-level) following the Agent Skills specification
+     * https://code.visualstudio.com/docs/copilot/customization/agent-skills
+     * 
+     * @param scope - Installation scope ('user' or 'workspace')
+     * @returns Path to the skills directory
+     */
+    getCopilotSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+        if (scope === 'workspace') {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                throw new Error('No workspace folder open. Skills require an open workspace for workspace scope.');
+            }
+            return path.join(workspaceFolders[0].uri.fsPath, '.copilot', 'skills');
+        }
+        
+        // User-level skills go to ~/.copilot/skills
+        return path.join(os.homedir(), '.copilot', 'skills');
+    }
+
+    /**
+     * Get the Claude skills directory (alternative location)
+     * Some users may prefer ~/.claude/skills
+     * 
+     * @param scope - Installation scope ('user' or 'workspace')
+     * @returns Path to the Claude skills directory
+     */
+    getClaudeSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+        if (scope === 'workspace') {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                throw new Error('No workspace folder open. Skills require an open workspace for workspace scope.');
+            }
+            return path.join(workspaceFolders[0].uri.fsPath, '.claude', 'skills');
+        }
+        
+        // User-level skills go to ~/.claude/skills
+        return path.join(os.homedir(), '.claude', 'skills');
+    }
+
+    /**
+     * Sync a skill directory to the Copilot skills location
+     * Skills are directories containing SKILL.md and optional scripts/, references/, assets/ subdirectories
+     * 
+     * @param skillName - Name of the skill (directory name)
+     * @param sourceDir - Source directory containing the skill files
+     * @param scope - Installation scope ('user' or 'workspace')
+     * @param syncToClaude - Also sync to ~/.claude/skills
+     */
+    async syncSkill(skillName: string, sourceDir: string, scope: 'user' | 'workspace' = 'user', syncToClaude: boolean = false): Promise<void> {
+        try {
+            this.logger.info(`Syncing skill: ${skillName} (scope: ${scope})`);
+            
+            // Get target skills directory
+            const skillsDir = this.getCopilotSkillsDirectory(scope);
+            await this.ensureDirectory(skillsDir);
+            
+            const targetDir = path.join(skillsDir, skillName);
+            
+            // Remove existing skill if present
+            if (fs.existsSync(targetDir)) {
+                await this.removeSkillDirectory(targetDir);
+            }
+            
+            // Copy skill directory recursively
+            await this.copySkillDirectory(sourceDir, targetDir);
+            
+            this.logger.info(`✅ Synced skill to: ${targetDir}`);
+            
+            // Optionally sync to Claude location too
+            if (syncToClaude) {
+                const claudeSkillsDir = this.getClaudeSkillsDirectory(scope);
+                await this.ensureDirectory(claudeSkillsDir);
+                const claudeTargetDir = path.join(claudeSkillsDir, skillName);
+                
+                if (fs.existsSync(claudeTargetDir)) {
+                    await this.removeSkillDirectory(claudeTargetDir);
+                }
+                
+                await this.copySkillDirectory(sourceDir, claudeTargetDir);
+                this.logger.info(`✅ Also synced skill to Claude: ${claudeTargetDir}`);
+            }
+            
+        } catch (error) {
+            this.logger.error(`Failed to sync skill ${skillName}`, error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Remove a synced skill
+     * 
+     * @param skillName - Name of the skill to remove
+     * @param scope - Installation scope
+     * @param removeFromClaude - Also remove from ~/.claude/skills
+     */
+    async unsyncSkill(skillName: string, scope: 'user' | 'workspace' = 'user', removeFromClaude: boolean = false): Promise<void> {
+        try {
+            this.logger.info(`Removing skill: ${skillName}`);
+            
+            const skillsDir = this.getCopilotSkillsDirectory(scope);
+            const targetDir = path.join(skillsDir, skillName);
+            
+            if (fs.existsSync(targetDir)) {
+                await this.removeSkillDirectory(targetDir);
+                this.logger.info(`✅ Removed skill from: ${targetDir}`);
+            }
+            
+            if (removeFromClaude) {
+                const claudeSkillsDir = this.getClaudeSkillsDirectory(scope);
+                const claudeTargetDir = path.join(claudeSkillsDir, skillName);
+                
+                if (fs.existsSync(claudeTargetDir)) {
+                    await this.removeSkillDirectory(claudeTargetDir);
+                    this.logger.info(`✅ Also removed skill from Claude: ${claudeTargetDir}`);
+                }
+            }
+            
+        } catch (error) {
+            this.logger.error(`Failed to remove skill ${skillName}`, error as Error);
+        }
+    }
+
+    /**
+     * Copy skill directory recursively
+     */
+    private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
+        await this.ensureDirectory(targetDir);
+        
+        const entries = await readdir(sourceDir);
+        
+        for (const entry of entries) {
+            const sourcePath = path.join(sourceDir, entry);
+            const targetPath = path.join(targetDir, entry);
+            
+            const stats = fs.statSync(sourcePath);
+            
+            if (stats.isDirectory()) {
+                await this.copySkillDirectory(sourcePath, targetPath);
+            } else {
+                const fileContent = await readFile(sourcePath);
+                await writeFile(targetPath, fileContent);
+            }
+        }
+    }
+
+    /**
+     * Remove skill directory recursively
+     */
+    private async removeSkillDirectory(dir: string): Promise<void> {
+        if (!fs.existsSync(dir)) {
+            return;
+        }
+        
+        const entries = await readdir(dir);
+        
+        for (const entry of entries) {
+            const entryPath = path.join(dir, entry);
+            const stats = await lstat(entryPath);
+            
+            if (stats.isSymbolicLink()) {
+                await unlink(entryPath);
+            } else if (stats.isDirectory()) {
+                await this.removeSkillDirectory(entryPath);
+            } else {
+                await unlink(entryPath);
+            }
+        }
+        
+        fs.rmdirSync(dir);
+    }
+
+    /**
+     * Get skills status
+     */
+    async getSkillsStatus(scope: 'user' | 'workspace' = 'user'): Promise<{
+        skillsDir: string;
+        dirExists: boolean;
+        skills: string[];
+    }> {
+        const skillsDir = this.getCopilotSkillsDirectory(scope);
+        const status = {
+            skillsDir,
+            dirExists: fs.existsSync(skillsDir),
+            skills: [] as string[]
+        };
+        
+        if (status.dirExists) {
+            const entries = await readdir(skillsDir);
+            
+            for (const entry of entries) {
+                const entryPath = path.join(skillsDir, entry);
+                const entryStats = fs.statSync(entryPath);
+                
+                // Skills are directories containing SKILL.md
+                if (entryStats.isDirectory()) {
+                    const skillMdPath = path.join(entryPath, 'SKILL.md');
+                    if (fs.existsSync(skillMdPath)) {
+                        status.skills.push(entry);
+                    }
+                }
+            }
+        }
+        
+        return status;
     }
 }

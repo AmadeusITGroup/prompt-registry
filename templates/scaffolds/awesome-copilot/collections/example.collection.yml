@@ -9,6 +9,8 @@ items:
     kind: instruction
   - path: agents/example.agent.md
     kind: agent
+  - path: skills/example-skill/SKILL.md
+    kind: skill
 display:
   ordering: manual
   show_badge: true

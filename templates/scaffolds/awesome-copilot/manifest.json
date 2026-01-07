@@ -20,6 +20,12 @@
       "required": true,
       "variables": []
     },
+    "example-skill": {
+      "path": "skills/example-skill/SKILL.md",
+      "description": "Example agent skill following Agent Skills specification",
+      "required": true,
+      "variables": []
+    },
     "example-collection": {
       "path": "collections/example.collection.yml",
       "description": "Example collection template",
@@ -47,6 +53,18 @@
     "validation-script": {
       "path": "validate-collections.js",
       "description": "Collection validation script",
+      "required": true,
+      "variables": []
+    },
+    "skill-validation-script": {
+      "path": "scripts/validate-skills.js",
+      "description": "Skill validation script following Agent Skills specification",
+      "required": true,
+      "variables": []
+    },
+    "skill-creation-script": {
+      "path": "scripts/create-skill.js",
+      "description": "Interactive skill creation wizard",
       "required": true,
       "variables": []
     },

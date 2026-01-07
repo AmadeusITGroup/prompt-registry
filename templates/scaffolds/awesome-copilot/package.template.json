@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "Awesome Copilot prompt collection",
   "scripts": {
-    "validate": "node scripts/validate-collections.js",
-    "validate:verbose": "node scripts/validate-collections.js --verbose"
+    "validate": "node validate-collections.js",
+    "validate:verbose": "node validate-collections.js --verbose",
+    "skill:validate": "node scripts/validate-skills.js",
+    "skill:create": "node scripts/create-skill.js"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"
@@ -12,6 +14,9 @@
   "keywords": [
     "copilot",
     "prompts",
+    "instructions",
+    "agents",
+    "skills",
     "ai",
     "github-copilot"
   ],
