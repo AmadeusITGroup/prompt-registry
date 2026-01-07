@@ -1,76 +1,87 @@
+---
+name: {{collectionId}}
+description: {{RESOURCE_DESCRIPTION}}
+---
+
 # {{RESOURCE_NAME}}
-
-> {{RESOURCE_DESCRIPTION}}
-
-**Author:** {{AUTHOR}}  
-**Version:** {{VERSION}}  
-**Last Updated:** {{DATE}}
-
-## Overview
 
 This skill provides specialized domain knowledge and capabilities for AI agents.
 
 ## When to Use This Skill
 
-Use this skill when:
-- Specific domain expertise is required
-- Complex multi-step processes need orchestration
-- Specialized tools or integrations are involved
+Use this skill when you need to:
+- Describe the primary use cases for this skill
+- Specify the types of problems it solves
+- Outline the scenarios where it's most effective
 
-## Capabilities
+## Prerequisites
 
-### Primary Functions
+List any requirements needed to use this skill:
+- Required tools or software
+- Environment setup
+- API keys or credentials
+- Domain knowledge
 
-1. **Function Name**: Brief description
-   - Input: What it expects
-   - Output: What it produces
-   - Example use case
+## Core Capabilities
 
-### Tools and Integrations
+### 1. Primary Capability
+Describe the main functionality this skill provides and how it helps accomplish tasks.
 
-List any external tools, APIs, or services this skill integrates with.
+### 2. Supporting Features
+Additional capabilities that complement the primary function:
+- Feature details
+- Use cases
+- Integration points
+
+### 3. Bundled Assets (Optional)
+If this skill includes helper scripts, templates, or other resources:
+- List the assets and their purpose
+- Explain how agents can utilize them
+- Reference locations of key files
 
 ## Usage Examples
 
 ### Example 1: Basic Usage
-
 ```
-User request or scenario
+Describe a typical user request or scenario where this skill would be invoked.
 ```
 
-**Expected behavior:**
-- Step 1
-- Step 2
-- Result
+**Expected outcome:**
+- Step-by-step description of what happens
+- Key actions performed by the agent
+- Final result delivered
 
 ### Example 2: Advanced Usage
-
 ```
-Complex user request or scenario
+Describe a more complex scenario that demonstrates the skill's full capabilities.
 ```
 
-**Expected behavior:**
-- Detailed steps
-- Edge cases handled
-- Final outcome
+**Expected outcome:**
+- Detailed workflow
+- How the skill handles edge cases
+- Integration with other tools or skills
 
-## Best Practices
+## Guidelines
 
-- Guideline 1
-- Guideline 2
-- Guideline 3
+1. **Best Practice 1** - Describe recommended approach
+2. **Best Practice 2** - Explain optimal usage patterns
+3. **Best Practice 3** - Highlight important considerations
+4. **Quality Standards** - Define expected quality levels
 
 ## Limitations
 
-- Known limitation 1
-- Known limitation 2
+- Known limitation 1: Explanation and potential workaround
+- Known limitation 2: Scope boundaries
+- Constraint 3: Performance or scale considerations
 
 ## Related Resources
 
-- Link to related prompts or instructions
-- External documentation references
-- Related skills
+- [Related Documentation](https://example.com) - Link to relevant docs
+- Related skills or instructions in your collection
+- External tools or APIs used by this skill
 
 ---
 
-*Generated from Prompt Registry template*
+*Skill created by: {{AUTHOR}}*  
+*Version: {{VERSION}}*  
+*Last updated: {{DATE}}*
