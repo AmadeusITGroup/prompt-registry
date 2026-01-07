@@ -27,12 +27,22 @@ export class ScaffoldCommand {
     private readonly templateEngine: TemplateEngine;
     private readonly scaffoldType: ScaffoldType;
 
-    constructor(templateRoot?: string, scaffoldType: ScaffoldType = ScaffoldType.AwesomeCopilot) {
+    constructor(extensionPathOrTemplateRoot?: string, scaffoldType: ScaffoldType = ScaffoldType.AwesomeCopilot) {
         this.logger = Logger.getInstance();
         this.scaffoldType = scaffoldType;
         // Initialize template engine with scaffold templates
-        // Use provided path or default to project's template directory with type
-        const templatesPath = templateRoot || path.join(__dirname, '../templates/scaffolds', scaffoldType);
+        // If path includes 'templates/scaffolds', use it directly (for tests)
+        // Otherwise treat as extensionPath and append templates/scaffolds path
+        let templatesPath: string;
+        if (extensionPathOrTemplateRoot) {
+            if (extensionPathOrTemplateRoot.includes('templates/scaffolds')) {
+                templatesPath = extensionPathOrTemplateRoot;
+            } else {
+                templatesPath = path.join(extensionPathOrTemplateRoot, 'templates/scaffolds', scaffoldType);
+            }
+        } else {
+            templatesPath = path.join(__dirname, '../templates/scaffolds', scaffoldType);
+        }
         this.templateEngine = new TemplateEngine(templatesPath);
     }
 

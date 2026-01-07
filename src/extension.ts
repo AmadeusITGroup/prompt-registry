@@ -229,7 +229,7 @@ export class PromptRegistryExtension {
         this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
         this.hubProfileCommands = new HubProfileCommands(this.context);
         // Note: scaffoldCommand is registered inline in command handler
-        const addResourceCommand = new AddResourceCommand();
+        const addResourceCommand = new AddResourceCommand(this.context.extensionPath);
         const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
@@ -461,7 +461,7 @@ export class PromptRegistryExtension {
                                 cancellable: false
                             },
                             async () => {
-                                const cmd = new ScaffoldCommand(undefined, scaffoldTypeChoice.value);
+                                const cmd = new ScaffoldCommand(this.context.extensionPath, scaffoldTypeChoice.value);
                                 await cmd.execute(targetPath[0], {
                                     projectName,
                                     githubRunner,

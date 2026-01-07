@@ -24,8 +24,19 @@ export class AddResourceCommand {
     private templateEngine: TemplateEngine;
     private readonly resourceTypes: Map<ResourceType, ResourceTypeInfo>;
 
-    constructor(templateRoot?: string) {
-        const templatesPath = templateRoot || path.join(__dirname, '../templates/resources');
+    constructor(extensionPathOrTemplateRoot?: string) {
+        // If path includes 'templates/resources', use it directly (for tests)
+        // Otherwise treat as extensionPath and append templates/resources path
+        let templatesPath: string;
+        if (extensionPathOrTemplateRoot) {
+            if (extensionPathOrTemplateRoot.includes('templates/resources') || extensionPathOrTemplateRoot.includes('templates\\resources')) {
+                templatesPath = extensionPathOrTemplateRoot;
+            } else {
+                templatesPath = path.join(extensionPathOrTemplateRoot, 'templates/resources');
+            }
+        } else {
+            templatesPath = path.join(__dirname, '../templates/resources');
+        }
         this.templateEngine = new TemplateEngine(templatesPath);
         
         this.resourceTypes = new Map([
