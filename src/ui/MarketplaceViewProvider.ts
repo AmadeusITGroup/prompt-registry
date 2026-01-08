@@ -34,6 +34,7 @@ interface ContentBreakdown {
     instructions: number;
     chatmodes: number;
     agents: number;
+    skills: number;
 }
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
@@ -324,7 +325,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
-            agents: 0
+            agents: 0,
+            skills: 0
         };
 
         for (const prompt of prompts) {
@@ -341,6 +343,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'agent':
                     breakdown.agents++;
+                    break;
+                case 'skill':
+                    breakdown.skills++;
                     break;
             }
         }
@@ -363,13 +368,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             return this.countPromptsByType(bundleData.prompts);
         }
 
-        // Third: For local OLAF bundles, show skills as prompts
+        // Third: For local OLAF bundles, show skills separately
         if (bundleData.skills && Array.isArray(bundleData.skills)) {
             return {
-                prompts: bundleData.skills.length, // Show skills as prompts for OLAF bundles
+                prompts: 0,
                 instructions: 0,
                 chatmodes: 0,
-                agents: 0
+                agents: 0,
+                skills: bundleData.skills.length
             };
         }
 
@@ -380,7 +386,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
-            agents: 0
+            agents: 0,
+            skills: 0
         };
     }
 
@@ -1095,6 +1102,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-icon">🤖</div>
                 <div class="breakdown-count">${breakdown.agents}</div>
                 <div class="breakdown-label">Agents</div>
+            </div>
+            <div class="breakdown-item">
+                <div class="breakdown-icon">💡</div>
+                <div class="breakdown-count">${breakdown.skills}</div>
+                <div class="breakdown-label">Skills</div>
             </div>
         </div>
         ` : `
@@ -2316,6 +2328,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         \${renderContentItem('📋', 'Instructions', bundle.contentBreakdown?.instructions || 0)}
                         \${renderContentItem('🎭', 'Chat Modes', bundle.contentBreakdown?.chatmodes || 0)}
                         \${renderContentItem('🤖', 'Agents', bundle.contentBreakdown?.agents || 0)}
+                        \${renderContentItem('💡', 'Skills', bundle.contentBreakdown?.skills || 0)}
                     </div>
 
                     <div class="bundle-tags">
