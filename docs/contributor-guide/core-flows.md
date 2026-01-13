@@ -37,7 +37,7 @@ flowchart TD
     STEP2 --> STEP3[3. Extract to Temp Directory<br/>unzip]
     STEP3 --> STEP4[4. Validate deployment-manifest.yml<br/>check structure]
     STEP4 --> STEP5[5. Copy to Install Location<br/>extension storage]
-    STEP5 --> STEP6[6. Sync to Copilot Directory<br/>CopilotSyncService]
+    STEP5 --> STEP6[6. Sync to Copilot Directory<br/>UserScopeService]
     STEP6 --> STEP7[7. Create Symlinks/Copies<br/>platform-specific]
     STEP7 --> STEP8[8. Update Installation Record<br/>RegistryStorage]
     STEP8 --> STEP9[9. Fire Event<br/>onBundleInstalled]
@@ -90,7 +90,7 @@ async installFromBuffer(bundle: Bundle, bundleBuffer: Buffer, options: InstallOp
 **Buffer-based**: Accepts ZIP created dynamically in memory
 
 #### Copilot Sync
-**File**: `src/services/CopilotSyncService.ts`  
+**File**: `src/services/UserScopeService.ts`  
 **Purpose**: Syncs bundles to GitHub Copilot's native directories
 
 ```typescript
@@ -117,10 +117,21 @@ syncBundle(bundleId: string, installDir: string): Promise<void>
 
 ```typescript
 interface InstallOptions {
-    scope: 'user' | 'workspace';  // Installation scope
-    force?: boolean;              // Overwrite existing
+    scope: 'user' | 'workspace' | 'repository';  // Installation scope
+    force?: boolean;                              // Overwrite existing
+    commitMode?: 'commit' | 'local-only';         // For repository scope
 }
 ```
+
+### Repository Scope
+
+For repository-scoped installations:
+- Files are placed in `.github/` directories (prompts, agents, instructions, skills)
+- MCP servers are merged into `.vscode/mcp.json`
+- The lockfile (`prompt-registry.lock.json`) tracks installed bundles
+- Local-only mode excludes files via `.git/info/exclude`
+
+See [Installation Flow](./architecture/installation-flow.md) for detailed repository scope documentation.
 
 ### Error Handling
 
@@ -696,7 +707,7 @@ this.profileCommands = new ProfileCommands(this.context, this.registryManager);
 
 | Task | Entry Point | Key Files |
 |------|-------------|-----------|
-| Install Bundle | `BundleCommands` | `RegistryManager`, `BundleInstaller`, `CopilotSyncService` |
+| Install Bundle | `BundleCommands` | `RegistryManager`, `BundleInstaller`, `UserScopeService` |
 | Fetch from GitHub | `GitHubAdapter` | `RepositoryAdapter`, `GitHubAdapter` |
 | Fetch Awesome Copilot | `AwesomeCopilotAdapter` | `RepositoryAdapter`, `AwesomeCopilotAdapter` |
 | UI Interaction | `MarketplaceViewProvider` | `MarketplaceViewProvider`, `extension.ts` |
@@ -744,7 +755,7 @@ Relevant log messages:
 [RegistryManager] Installing bundle: testing-automation
 [GitHubAdapter] ✓ Using VSCode GitHub authentication
 [BundleInstaller] Downloaded bundle to temp
-[CopilotSyncService] Synced to Copilot directory
+[UserScopeService] Synced to Copilot directory
 ```
 
 ### 2. Testing Adapters

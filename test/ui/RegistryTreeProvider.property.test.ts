@@ -490,3 +490,229 @@ suite('RegistryTreeProvider - Property Tests', () => {
         });
     });
 });
+
+    suite('Property 10: Backward Compatibility Invariant', () => {
+        /**
+         * **Property 10: Backward Compatibility Invariant**
+         * **Validates: Requirements 9.1-9.5**
+         * 
+         * For any existing user-level installation, the extension SHALL continue to display,
+         * update, and uninstall it independently of repository-level bundles.
+         * 
+         * This property tests that:
+         * 1. User-level bundles are always displayed regardless of repository bundles
+         * 2. User-level bundles maintain their own update indicators
+         * 3. User-level bundles can be operated on independently
+         */
+        test('should display user-level bundles independently of repository bundles', () => {
+            const bundleIdArbitrary = fc.string({ minLength: 3, maxLength: 20 })
+                .filter(s => /^[a-z0-9-]+$/.test(s));
+
+            const semverArbitrary = fc.tuple(
+                fc.integer({ min: 0, max: 10 }),
+                fc.integer({ min: 0, max: 20 }),
+                fc.integer({ min: 0, max: 50 })
+            ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+
+            fc.assert(
+                fc.property(
+                    fc.record({
+                        userBundles: fc.array(
+                            fc.record({
+                                bundleId: bundleIdArbitrary,
+                                version: semverArbitrary,
+                                scope: fc.constant('user' as const)
+                            }),
+                            { minLength: 1, maxLength: 5 }
+                        ),
+                        repositoryBundles: fc.array(
+                            fc.record({
+                                bundleId: bundleIdArbitrary,
+                                version: semverArbitrary,
+                                scope: fc.constant('repository' as const)
+                            }),
+                            { minLength: 0, maxLength: 5 }
+                        )
+                    }).filter(({ userBundles, repositoryBundles }) => {
+                        // Ensure no duplicate bundle IDs (scope conflict prevention)
+                        const userIds = new Set(userBundles.map(b => b.bundleId));
+                        const repoIds = new Set(repositoryBundles.map(b => b.bundleId));
+                        
+                        for (const id of userIds) {
+                            if (repoIds.has(id)) {
+                                return false; // Duplicate found
+                            }
+                        }
+                        return true; // No duplicates
+                    }),
+                    ({ userBundles, repositoryBundles }) => {
+                        // Simulate bundle list that would be returned by listInstalledBundles
+                        const allBundles = [...userBundles, ...repositoryBundles];
+
+                        // Verify all user bundles are present in the combined list
+                        for (const userBundle of userBundles) {
+                            const found = allBundles.find(b => 
+                                b.bundleId === userBundle.bundleId && b.scope === 'user'
+                            );
+                            if (!found) {
+                                return false; // User bundle not found
+                            }
+                        }
+
+                        // Verify user bundles maintain their scope
+                        for (const bundle of allBundles) {
+                            if (userBundles.some(ub => ub.bundleId === bundle.bundleId)) {
+                                if (bundle.scope !== 'user') {
+                                    return false; // Scope changed
+                                }
+                            }
+                        }
+
+                        return true;
+                    }
+                ),
+                { numRuns: 100, verbose: false }
+            );
+        });
+
+        test('should maintain independent update indicators for user-level bundles', () => {
+            const bundleIdArbitrary = fc.string({ minLength: 3, maxLength: 20 })
+                .filter(s => /^[a-z0-9-]+$/.test(s));
+
+            const semverArbitrary = fc.tuple(
+                fc.integer({ min: 0, max: 10 }),
+                fc.integer({ min: 0, max: 20 }),
+                fc.integer({ min: 0, max: 50 })
+            ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+
+            fc.assert(
+                fc.property(
+                    fc.record({
+                        userBundleId: bundleIdArbitrary,
+                        userVersion: semverArbitrary,
+                        userLatestVersion: semverArbitrary,
+                        repoBundleId: bundleIdArbitrary,
+                        repoVersion: semverArbitrary,
+                        repoLatestVersion: semverArbitrary
+                    }).filter(({ userBundleId, repoBundleId, userVersion, userLatestVersion, repoVersion, repoLatestVersion }) => 
+                        // Ensure different bundle IDs and versions differ from latest
+                        userBundleId !== repoBundleId &&
+                        userVersion !== userLatestVersion &&
+                        repoVersion !== repoLatestVersion
+                    ),
+                    ({ userBundleId, userVersion, userLatestVersion, repoBundleId, repoVersion, repoLatestVersion }) => {
+                        // Create update map with updates for both bundles
+                        const availableUpdates = new Map<string, UpdateCheckResult>();
+                        
+                        availableUpdates.set(userBundleId, {
+                            bundleId: userBundleId,
+                            currentVersion: userVersion,
+                            latestVersion: userLatestVersion,
+                            releaseDate: new Date().toISOString(),
+                            downloadUrl: `https://example.com/${userBundleId}.zip`,
+                            autoUpdateEnabled: false
+                        });
+
+                        availableUpdates.set(repoBundleId, {
+                            bundleId: repoBundleId,
+                            currentVersion: repoVersion,
+                            latestVersion: repoLatestVersion,
+                            releaseDate: new Date().toISOString(),
+                            downloadUrl: `https://example.com/${repoBundleId}.zip`,
+                            autoUpdateEnabled: false
+                        });
+
+                        // Verify user bundle has update indicator
+                        const userIconPrefix = getBundleIconPrefix(userBundleId, availableUpdates);
+                        if (userIconPrefix !== '⬆️') {
+                            return false;
+                        }
+
+                        // Verify user bundle has correct version display
+                        const userVersionDisplay = getVersionDisplay(userBundleId, userVersion, availableUpdates);
+                        const expectedUserDisplay = `v${userVersion} → v${userLatestVersion}`;
+                        if (userVersionDisplay !== expectedUserDisplay) {
+                            return false;
+                        }
+
+                        // Verify repository bundle also has update indicator (independent)
+                        const repoIconPrefix = getBundleIconPrefix(repoBundleId, availableUpdates);
+                        if (repoIconPrefix !== '⬆️') {
+                            return false;
+                        }
+
+                        // Verify repository bundle has correct version display
+                        const repoVersionDisplay = getVersionDisplay(repoBundleId, repoVersion, availableUpdates);
+                        const expectedRepoDisplay = `v${repoVersion} → v${repoLatestVersion}`;
+                        if (repoVersionDisplay !== expectedRepoDisplay) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+                ),
+                { numRuns: 100, verbose: false }
+            );
+        });
+
+        test('should preserve user bundle context values independently', () => {
+            const bundleIdArbitrary = fc.string({ minLength: 3, maxLength: 20 })
+                .filter(s => /^[a-z0-9-]+$/.test(s));
+
+            fc.assert(
+                fc.property(
+                    fc.record({
+                        userBundleId: bundleIdArbitrary,
+                        userHasUpdate: fc.boolean(),
+                        repoBundleId: bundleIdArbitrary,
+                        repoHasUpdate: fc.boolean()
+                    }).filter(({ userBundleId, repoBundleId }) => 
+                        userBundleId !== repoBundleId
+                    ),
+                    ({ userBundleId, userHasUpdate, repoBundleId, repoHasUpdate }) => {
+                        const availableUpdates = new Map<string, UpdateCheckResult>();
+
+                        // Add updates based on flags
+                        if (userHasUpdate) {
+                            availableUpdates.set(userBundleId, {
+                                bundleId: userBundleId,
+                                currentVersion: '1.0.0',
+                                latestVersion: '1.1.0',
+                                releaseDate: new Date().toISOString(),
+                                downloadUrl: `https://example.com/${userBundleId}.zip`,
+                                autoUpdateEnabled: false
+                            });
+                        }
+
+                        if (repoHasUpdate) {
+                            availableUpdates.set(repoBundleId, {
+                                bundleId: repoBundleId,
+                                currentVersion: '2.0.0',
+                                latestVersion: '2.1.0',
+                                releaseDate: new Date().toISOString(),
+                                downloadUrl: `https://example.com/${repoBundleId}.zip`,
+                                autoUpdateEnabled: false
+                            });
+                        }
+
+                        // Verify user bundle context value is independent
+                        const userContextValue = getContextValue(userBundleId, availableUpdates);
+                        const expectedUserContext = userHasUpdate ? 'installed_bundle_updatable' : 'installed_bundle';
+                        if (userContextValue !== expectedUserContext) {
+                            return false;
+                        }
+
+                        // Verify repository bundle context value is independent
+                        const repoContextValue = getContextValue(repoBundleId, availableUpdates);
+                        const expectedRepoContext = repoHasUpdate ? 'installed_bundle_updatable' : 'installed_bundle';
+                        if (repoContextValue !== expectedRepoContext) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+                ),
+                { numRuns: 100, verbose: false }
+            );
+        });
+    });

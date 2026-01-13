@@ -188,3 +188,104 @@ export async function waitForCondition(
     
     throw new Error(`Condition not met within ${timeoutMs}ms timeout`);
 }
+
+
+/**
+ * Bundle setup result from setupSourceAndGetBundle helper
+ */
+export interface BundleSetupResult {
+    /** The source ID used for this setup */
+    sourceId: string;
+    /** The bundle found in the source */
+    bundle: any;
+}
+
+/**
+ * Options for setting up a source and bundle
+ */
+export interface BundleSetupOptions {
+    /** Test ID prefix for unique naming */
+    testId: string;
+    /** Suffix to append to testId for unique source naming */
+    testIdSuffix: string;
+    /** Content identifier for the bundle */
+    content: string;
+    /** Workspace root path */
+    workspaceRoot: string;
+    /** E2E test context */
+    testContext: E2ETestContext;
+    /** Sinon sandbox for stubbing */
+    sandbox: any;
+    /** Function to create mock source */
+    createMockSource: (id: string) => any;
+    /** Function to setup release mocks */
+    setupReleaseMocks: (releases: Array<{ tag: string; version: string; content: string }>) => void;
+    /** Expected bundle ID to find */
+    expectedBundleId: string;
+}
+
+/**
+ * Helper to set up a source and get a bundle for testing.
+ * Extracts common setup pattern used across multiple E2E tests.
+ * 
+ * This is a generic version that can be used by any E2E test file.
+ * For simpler usage within a single test file, consider creating a
+ * local wrapper function that captures the test-specific dependencies.
+ * 
+ * @param options - Setup options including test context and mock functions
+ * @returns Object containing sourceId and the found bundle
+ * @throws Error if bundle is not found
+ * 
+ * @example
+ * // In your test file, create a local wrapper:
+ * async function setupSourceAndGetBundle(suffix: string, content: string) {
+ *     return setupSourceAndGetBundleGeneric({
+ *         testId,
+ *         testIdSuffix: suffix,
+ *         content,
+ *         workspaceRoot,
+ *         testContext,
+ *         sandbox,
+ *         createMockSource,
+ *         setupReleaseMocks,
+ *         expectedBundleId: BUNDLE_ID
+ *     });
+ * }
+ */
+export async function setupSourceAndGetBundleGeneric(
+    options: BundleSetupOptions
+): Promise<BundleSetupResult> {
+    const {
+        testId,
+        testIdSuffix,
+        content,
+        workspaceRoot,
+        testContext,
+        sandbox,
+        createMockSource,
+        setupReleaseMocks,
+        expectedBundleId
+    } = options;
+
+    const sourceId = `${testId}-${testIdSuffix}`;
+    const source = createMockSource(sourceId);
+    setupReleaseMocks([{ tag: 'v1.0.0', version: '1.0.0', content }]);
+    
+    // Import vscode dynamically to avoid issues in non-VS Code environments
+    const vscode = require('vscode');
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
+    ]);
+    
+    await testContext.registryManager.addSource(source);
+    await testContext.registryManager.syncSource(sourceId);
+    
+    const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
+    const bundle = rawBundles.find((b: any) => b.id === expectedBundleId);
+    
+    if (!bundle) {
+        throw new Error(`Should find bundle ${expectedBundleId}, found: ${rawBundles.map((b: any) => b.id).join(', ')}`);
+    }
+    
+    return { sourceId, bundle };
+}

@@ -26,6 +26,8 @@ This document describes all configuration settings available for the Prompt Regi
   - `workspace` — Install bundles for the current workspace only
   - `project` — Install bundles at the project level
 
+> **Note:** Repository-level installation is selected via the installation dialog, not this setting. When installing a bundle, you'll be prompted to choose between Repository (Commit), Repository (Local Only), or User Profile. See [Repository Installation](../user-guide/repository-installation.md) for details.
+
 ## GitHub Settings
 
 ### `promptregistry.githubApiUrl`

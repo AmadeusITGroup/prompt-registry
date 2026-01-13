@@ -278,6 +278,9 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             // Auto-update preference changes
             registryManager.onAutoUpdatePreferenceChanged(() => this.refresh()),
 
+            // Repository bundle changes (workspace folder changes)
+            registryManager.onRepositoryBundlesChanged(() => this.refresh()),
+
             // Hub events
             hubManager.onHubImported(() => this.refresh()),
             hubManager.onHubDeleted(() => this.refresh()),
@@ -369,21 +372,30 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
     /**
      * Map bundle update/auto-update state to tree icon prefix and context value
+     * @param hasUpdate - Whether an update is available
+     * @param autoUpdateEnabled - Whether auto-update is enabled
+     * @param filesMissing - Whether bundle files are missing (repository scope only)
      */
-    private getBundleStatusPresentation(hasUpdate: boolean, autoUpdateEnabled: boolean): {
+    private getBundleStatusPresentation(hasUpdate: boolean, autoUpdateEnabled: boolean, filesMissing?: boolean): {
         prefix: string;
         contextValue: string;
     } {
         let prefix = '✓';
 
-        if (hasUpdate) {
+        // Files missing takes precedence for visual indicator
+        if (filesMissing) {
+            prefix = '⚠️';
+        } else if (hasUpdate) {
             prefix = '⬆️';
         } else if (autoUpdateEnabled) {
             prefix = '🔄';
         }
 
         let contextValue: string;
-        if (hasUpdate && autoUpdateEnabled) {
+        // Files missing gets its own context value for special menu handling
+        if (filesMissing) {
+            contextValue = 'installedBundle.filesMissing';
+        } else if (hasUpdate && autoUpdateEnabled) {
             contextValue = 'installed_bundle_updatable_auto_enabled';
         } else if (hasUpdate && !autoUpdateEnabled) {
             contextValue = 'installed_bundle_updatable_auto_disabled';
@@ -410,6 +422,36 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             // Show only current version
             treeItem.description = `v${currentVersion}`;
         }
+    }
+
+    /**
+     * Get context value for menu actions
+     * 
+     * Returns the context value with scope information to match package.json 'when' clauses.
+     * Format: {baseContextValue}_{scope}[_{commitMode}]
+     * 
+     * Examples:
+     * - installed_bundle_auto_disabled_user
+     * - installed_bundle_auto_disabled_repository_commit
+     * - installed_bundle_auto_disabled_repository_local_only
+     * 
+     * @param baseContextValue - The base context value (e.g., 'installed_bundle_auto_disabled')
+     * @param bundle - The installed bundle with scope information
+     */
+    private getContextValue(baseContextValue: string, bundle?: InstalledBundle): string {
+        if (!bundle) {
+            return baseContextValue;
+        }
+        
+        const scope = bundle.scope || 'user';
+        if (scope === 'repository') {
+            const commitMode = bundle.commitMode || 'commit';
+            // Convert 'local-only' to 'local_only' for valid context value
+            const commitModeSuffix = commitMode === 'local-only' ? 'local_only' : commitMode;
+            return `${baseContextValue}_repository_${commitModeSuffix}`;
+        }
+        
+        return `${baseContextValue}_${scope}`;
     }
 
     /**
@@ -895,7 +937,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
                     const { prefix, contextValue } = this.getBundleStatusPresentation(
                         hasUpdate,
-                        autoUpdateEnabled
+                        autoUpdateEnabled,
+                        bundle.filesMissing
                     );
 
                     const treeItem = new RegistryTreeItem(
@@ -909,7 +952,13 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
 
                     // Set context value to enable/disable update menu option and auto-update toggle
-                    treeItem.contextValue = contextValue;
+                    treeItem.contextValue = this.getContextValue(contextValue, bundle);
+
+                    // Set warning tooltip and icon when files are missing
+                    if (bundle.filesMissing) {
+                        treeItem.tooltip = `${details.name} - Files missing from repository`;
+                        treeItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                    }
 
                     items.push(treeItem);
                 } catch (error) {
@@ -922,7 +971,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
                     const { prefix, contextValue } = this.getBundleStatusPresentation(
                         hasUpdate,
-                        autoUpdateEnabled
+                        autoUpdateEnabled,
+                        bundle.filesMissing
                     );
 
                     const treeItem = new RegistryTreeItem(
@@ -935,7 +985,14 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     // Set version display with update information
                     this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
 
-                    treeItem.contextValue = contextValue;
+                    // Set context value for menu actions
+                    treeItem.contextValue = this.getContextValue(contextValue, bundle);
+
+                    // Set warning tooltip and icon when files are missing
+                    if (bundle.filesMissing) {
+                        treeItem.tooltip = `${bundle.bundleId} - Files missing from repository`;
+                        treeItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                    }
 
                     items.push(treeItem);
                 }

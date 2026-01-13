@@ -71,7 +71,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             // Source sync events with debouncing
             this.registryManager.onSourceSynced((event) => this.handleSourceSynced(event)),
             // Auto-update preference changes
-            this.registryManager.onAutoUpdatePreferenceChanged(() => this.loadBundles())
+            this.registryManager.onAutoUpdatePreferenceChanged(() => this.loadBundles()),
+            // Repository bundle changes (lockfile changes, workspace folder changes)
+            this.registryManager.onRepositoryBundlesChanged(() => this.loadBundles())
         );
     }
 
@@ -508,21 +510,40 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Show scope selection dialog and return result
+     * @returns Scope selection result or undefined if cancelled
+     */
+    private async promptForScope(): Promise<import('../utils/scopeSelectionUI').ScopeSelectionResult | undefined> {
+        const { showScopeSelectionDialog } = await import('../utils/scopeSelectionUI');
+        return showScopeSelectionDialog();
+    }
+
+    /**
      * Install a bundle
      */
     private async handleInstall(bundleId: string): Promise<void> {
         try {
             this.logger.info(`Installing bundle from marketplace: ${bundleId}`);
 
-            // Use RegistryManager to install
+            // Show scope selection dialog
+            const scopeResult = await this.promptForScope();
+            
+            if (!scopeResult) {
+                // User cancelled the dialog
+                this.logger.debug('Installation cancelled by user');
+                return;
+            }
+
+            // Use RegistryManager to install with selected scope
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: `Installing bundle...`,
                 cancellable: false
             }, async () => {
                 await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: 'latest'
+                    scope: scopeResult.scope,
+                    version: 'latest',
+                    commitMode: scopeResult.commitMode
                 });
             });
 
@@ -620,15 +641,25 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Installing specific version of bundle: ${bundleId} v${version}`);
 
-            // Use RegistryManager to install with specific version
+            // Show scope selection dialog
+            const scopeResult = await this.promptForScope();
+            
+            if (!scopeResult) {
+                // User cancelled the dialog
+                this.logger.debug('Installation cancelled by user');
+                return;
+            }
+
+            // Use RegistryManager to install with specific version and selected scope
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: `Installing bundle v${version}...`,
                 cancellable: false
             }, async () => {
                 await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: version
+                    scope: scopeResult.scope,
+                    version: version,
+                    commitMode: scopeResult.commitMode
                 });
             });
 

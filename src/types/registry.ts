@@ -11,7 +11,12 @@ export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copil
 /**
  * Installation scope
  */
-export type InstallationScope = 'user' | 'workspace';
+export type InstallationScope = 'user' | 'workspace' | 'repository';
+
+/**
+ * Repository commit mode for repository-scoped installations
+ */
+export type RepositoryCommitMode = 'commit' | 'local-only';
 
 /**
  * Compression formats for bundles
@@ -96,6 +101,8 @@ export interface InstalledBundle {
     manifest: DeploymentManifest;
     sourceId?: string;  // Source ID for identity matching
     sourceType?: string;  // Source type for identity matching (github, local, etc.)
+    commitMode?: RepositoryCommitMode;  // Commit mode for repository-scoped installations
+    filesMissing?: boolean;  // Set when lockfile entry exists but files are missing (repository scope only)
 }
 
 /**
@@ -173,6 +180,7 @@ export interface InstallOptions {
     scope: InstallationScope;
     profileId?: string;
     force?: boolean;  // Overwrite existing
+    commitMode?: RepositoryCommitMode;  // Commit mode for repository-scoped installations
 }
 
 /**

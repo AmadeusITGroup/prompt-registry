@@ -51,9 +51,11 @@ Update documentation when:
 | New VS Code command | `reference/commands.md` |
 | New extension setting | `reference/settings.md` |
 | User-facing feature | `user-guide/` (appropriate file) |
+| Repository-level installation | `user-guide/repository-installation.md` |
 | Collection authoring | `author-guide/` (appropriate file) |
 | Development process | `contributor-guide/` (appropriate file) |
 | API or schema changes | `reference/` (appropriate file) |
+| Installation/scope architecture | `contributor-guide/architecture/installation-flow.md` |
 
 ## Key Files
 

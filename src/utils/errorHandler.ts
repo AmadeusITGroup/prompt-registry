@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import { Logger } from './logger';
 import { toError } from './typeGuards';
+import { WARNING_RESULTS } from './constants';
 
 /**
  * Error categories for consistent error handling
@@ -295,5 +296,22 @@ export class ConfigurationError extends RegistryError {
     constructor(message: string, context?: Record<string, any>) {
         super(message, 'CONFIGURATION_ERROR', context);
         this.name = 'ConfigurationError';
+    }
+}
+
+/**
+ * Error thrown when a bundle update is cancelled by the user
+ * Used for local modification warnings where user chooses to contribute or cancel
+ */
+export class UpdateCancelledError extends RegistryError {
+    constructor(
+        public readonly bundleId: string,
+        public readonly reason: typeof WARNING_RESULTS.CONTRIBUTE | typeof WARNING_RESULTS.CANCEL
+    ) {
+        const message = reason === 'contribute'
+            ? `Update cancelled: Please contribute your local changes before updating bundle '${bundleId}'`
+            : `Update cancelled for bundle '${bundleId}'`;
+        super(message, 'UPDATE_CANCELLED', { bundleId, reason });
+        this.name = 'UpdateCancelledError';
     }
 }

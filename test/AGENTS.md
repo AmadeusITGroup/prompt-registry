@@ -2,6 +2,76 @@
 
 Efficient test writing patterns for this repository.
 
+---
+
+## 🚨 MANDATORY: Test Behavior, Not Implementation 🚨
+
+**Tests MUST verify expected behavior through public entry points, NEVER implementation details.**
+
+### The Rule
+
+| ✅ DO | ❌ DON'T |
+|-------|----------|
+| Test public methods and their observable outcomes | Test private methods or internal state |
+| Assert on return values, side effects, and thrown errors | Assert on how internal code paths execute |
+| Mock external boundaries (HTTP, file system, VS Code API) | Mock internal collaborators within the same module |
+| Write tests that survive refactoring | Write tests that break when internals change |
+
+### What This Means in Practice
+
+**Unit Tests**: Test the public API of a class/module
+```typescript
+// ✅ CORRECT: Testing public behavior
+test('should return installed bundles sorted by name', async () => {
+    const result = await registryManager.getInstalledBundles();
+    assert.strictEqual(result[0].name, 'alpha-bundle');
+});
+
+// ❌ WRONG: Testing implementation details
+test('should call _sortBundles internally', async () => {
+    const spy = sandbox.spy(registryManager, '_sortBundles');
+    await registryManager.getInstalledBundles();
+    assert.ok(spy.called); // This tests HOW, not WHAT
+});
+```
+
+**Integration Tests**: Test real scenarios end-to-end
+```typescript
+// ✅ CORRECT: Testing a real user scenario
+test('should install bundle from GitHub and make it available', async () => {
+    await registryManager.installBundle('owner/repo');
+    const installed = await registryManager.getInstalledBundles();
+    assert.ok(installed.some(b => b.id === 'owner/repo'));
+});
+
+// ❌ WRONG: Testing internal coordination
+test('should call adapter then installer then storage', async () => {
+    const adapterSpy = sandbox.spy(adapter, 'fetchBundle');
+    const installerSpy = sandbox.spy(installer, 'install');
+    const storageSpy = sandbox.spy(storage, 'save');
+    await registryManager.installBundle('owner/repo');
+    assert.ok(adapterSpy.calledBefore(installerSpy)); // Fragile!
+    assert.ok(installerSpy.calledBefore(storageSpy)); // Fragile!
+});
+```
+
+### Why This Matters
+
+1. **Refactoring freedom**: Tests that focus on behavior allow you to change implementation without breaking tests
+2. **Meaningful failures**: When a behavior test fails, it means actual functionality is broken
+3. **Documentation value**: Behavior tests document what the code does, not how it does it
+4. **Reduced maintenance**: Implementation-focused tests require constant updates as code evolves
+
+### Red Flags Your Test Is Testing Implementation
+
+- Spying on private methods (`_methodName`)
+- Asserting on call counts of internal methods
+- Testing the order of internal operations
+- Mocking classes that are internal to the module under test
+- Test breaks when you refactor without changing behavior
+
+---
+
 ## Commands
 
 ```bash
@@ -89,6 +159,37 @@ const bundle = BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(
 const installed = createMockInstalledBundle('bundle-id', '1.0.0');
 ```
 
+### lockfileTestHelpers.ts
+```typescript
+import {
+    LockfileBuilder,              // Fluent builder for Lockfile
+    createMockLockfile,           // Factory for quick mock generation
+    LockfileGenerators            // fast-check generators for property tests
+} from '../helpers/lockfileTestHelpers';
+
+const lockfile = new LockfileBuilder()
+    .withBundle('bundle-id', { version: '1.0.0', sourceId: 'source-1' })
+    .withSource('source-1', { type: 'github', url: 'https://github.com/org/repo' })
+    .build();
+```
+
+### repositoryFixtureHelpers.ts
+```typescript
+import {
+    setupReleaseMocks,            // Configure nock for GitHub releases
+    createBundleZip,              // Generate valid bundle ZIP
+    createDeploymentManifest,     // Generate deployment manifest
+    createMockGitHubSource,       // Create mock GitHub source
+    cleanupReleaseMocks           // Clear nock mocks
+} from '../helpers/repositoryFixtureHelpers';
+
+// Set up GitHub release mocks for E2E tests
+setupReleaseMocks(
+    { owner: 'test-owner', repo: 'test-repo', manifestId: 'test-bundle' },
+    [{ tag: 'v1.0.0', version: '1.0.0', content: 'initial' }]
+);
+```
+
 ### propertyTestHelpers.ts
 ```typescript
 import {
@@ -142,14 +243,143 @@ teardown(() => { nock.cleanAll(); });
 
 ## Anti-Patterns
 
+### 🚨 Implementation Testing (FORBIDDEN)
+
+❌ **NEVER** spy on private methods: `sandbox.spy(service, '_internalMethod')`
+❌ **NEVER** assert on internal call counts: `assert.ok(internalSpy.calledOnce)`
+❌ **NEVER** test internal state: `assert.strictEqual(service._cache.size, 3)`
+❌ **NEVER** mock internal collaborators: `sandbox.stub(service, '_helper')`
+
+✅ **ALWAYS** test through public entry points
+✅ **ALWAYS** assert on observable outcomes (return values, side effects, errors)
+✅ **ALWAYS** mock only external boundaries (HTTP, file system, VS Code API)
+
+### 🚨 E2E Tests: NEVER Reimplement Production Code (CRITICAL)
+
+**E2E tests must invoke the actual code path, NOT duplicate it.**
+
+❌ **WRONG**: Manually calling internal methods with the same logic as production code:
+```typescript
+// This is NOT an E2E test - it's reimplementing production code!
+test('should migrate bundle from repository to user scope', async () => {
+    const scopeConflictResolver = new ScopeConflictResolver(storage);
+    
+    // ❌ WRONG: This duplicates BundleScopeCommands.moveToUser() logic
+    const result = await scopeConflictResolver.migrateBundle(
+        bundleId,
+        'repository',
+        'user',
+        async () => {
+            await registryManager.uninstallBundle(bundleId, 'repository');
+        },
+        async (bundle, scope) => {
+            await registryManager.installBundle(bundleId, { scope, version: bundle.version });
+        }
+    );
+    
+    assert.ok(result.success);
+});
+```
+
+**Why this is wrong:**
+1. If production code has a bug (e.g., wrong scope parameter), the test has the same bug
+2. If production code changes, the test doesn't catch regressions
+3. The test doesn't verify the actual command wiring in `extension.ts`
+
+✅ **CORRECT**: Test through the actual entry point:
+
+**Option 1: VS Code Extension Tests** (runs in real VS Code via `@vscode/test-electron`)
+```typescript
+// In test/suite/integration-scenarios.test.ts
+test('should migrate bundle via moveToUser command', async () => {
+    // Setup: Install bundle at repository scope
+    await vscode.commands.executeCommand('promptRegistry.installBundle', bundleId, {
+        scope: 'repository', version: '1.0.0'
+    });
+    
+    // Act: Execute the actual VS Code command
+    await vscode.commands.executeCommand('promptRegistry.moveToUser', bundleId);
+    
+    // Assert: Verify end state (files moved, lockfile updated)
+    const userBundles = await storage.getInstalledBundles('user');
+    assert.ok(userBundles.some(b => b.bundleId === bundleId));
+});
+```
+
+**Option 2: Test through the Command Handler Class**
+```typescript
+// If you can't run in VS Code, at least test through the actual class
+test('should migrate bundle via BundleScopeCommands.moveToUser', async () => {
+    // Create the actual command handler (like extension.ts does)
+    const bundleScopeCommands = new BundleScopeCommands(
+        registryManager,
+        scopeConflictResolver,
+        repositoryScopeService
+    );
+    
+    // Call the actual method that the VS Code command invokes
+    await bundleScopeCommands.moveToUser(bundleId);
+    
+    // Assert on end state
+    const userBundles = await storage.getInstalledBundles('user');
+    assert.ok(userBundles.some(b => b.bundleId === bundleId));
+});
+```
+
+### Test Infrastructure Overview
+
+| Test Type | Location | Runs In | Use For |
+|-----------|----------|---------|---------|
+| Unit Tests | `test/**/*.test.ts` | Node.js with mocked VS Code | Testing individual classes/methods |
+| Integration Tests | `test/e2e/*.test.ts` | Node.js with mocked VS Code | Testing multi-component workflows |
+| VS Code Extension Tests | `test/suite/*.test.ts` | Real VS Code instance | Testing actual commands and UI |
+
+**To run VS Code extension tests:**
+```bash
+node test/runExtensionTests.js
+```
+
+### 🚨 DECISION: When to Use Real VS Code Instance Tests 🚨
+
+**Before writing complex mock setups, ask: Would this test be simpler and more reliable in a real VS Code instance?**
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Testing VS Code commands (`vscode.commands.executeCommand`) | ✅ Real VS Code (`test/suite/`) |
+| Testing UI interactions (TreeView, WebView, QuickPick) | ✅ Real VS Code (`test/suite/`) |
+| Testing file system operations with workspace folders | ✅ Real VS Code (`test/suite/`) |
+| Testing extension activation and lifecycle | ✅ Real VS Code (`test/suite/`) |
+| Testing pure business logic with no VS Code dependencies | ✅ Unit tests with mocks |
+| Testing HTTP/network interactions | ✅ Unit tests with nock |
+| Testing data transformations and utilities | ✅ Unit tests with mocks |
+
+**Red flags that your test needs real VS Code:**
+- Mock setup exceeds 50 lines
+- You're mocking 5+ VS Code APIs in one test
+- Test logic duplicates production code to "simulate" VS Code behavior
+- Tests are brittle and break when VS Code API changes
+- You're fighting TypeScript to make mocks type-compatible
+
+**Benefits of real VS Code tests:**
+- No mock maintenance burden
+- Tests actual integration with VS Code APIs
+- Catches real-world issues mocks would miss
+- Simpler test code, easier to understand
+
+**Trade-offs:**
+- Slower execution (launches VS Code instance)
+- Requires display or xvfb for CI
+- Harder to isolate specific behaviors
+
+**When in doubt**: If your mock setup is becoming complex and error-prone, move the test to `test/suite/` and run it in a real VS Code instance. A working test in real VS Code is better than a broken test with elaborate mocks.
+
+### Other Anti-Patterns
+
 ❌ Over-mocking: `sandbox.createStubInstance(MyService)`
 ✅ Real instances: `new MyService(mockContext)` + stub externals only
 
 ❌ Duplicate utilities when helpers exist
 ✅ Import from `test/helpers/`
-
-❌ Testing implementation: `assert.ok(service._private.called)`
-✅ Testing behavior: `assert.strictEqual(result.status, 'success')`
 
 ❌ Repeatedly modifying test fixtures when tests fail
 ✅ First verify if the bug is in production code by reading error messages carefully
@@ -215,8 +445,10 @@ const response = require('../fixtures/github/releases-response.json');
 
 ## Checklist
 
+- [ ] **Tests verify behavior through public entry points, NOT implementation details**
 - [ ] Checked `test/helpers/` for existing utilities
 - [ ] Found similar tests in same category
 - [ ] Using Mocha TDD style (`suite`, `test`)
 - [ ] Behavior-focused names
-- [ ] Mocking only external boundaries
+- [ ] Mocking only external boundaries (HTTP, file system, VS Code API)
+- [ ] **Considered if test would be simpler in real VS Code instance** (if mock setup is complex)

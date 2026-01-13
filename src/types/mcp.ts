@@ -84,3 +84,13 @@ export interface McpConfigLocation {
     exists: boolean;
     scope: 'user' | 'workspace';
 }
+
+/**
+ * Options for installing MCP servers to a workspace (repository scope)
+ */
+export interface McpWorkspaceInstallOptions {
+    commitMode: 'commit' | 'local-only';
+    overwrite?: boolean;
+    skipOnConflict?: boolean;
+    createBackup?: boolean;
+}

@@ -12,8 +12,10 @@ import * as fc from 'fast-check';
 import { BundleInstallationCommands } from '../../src/commands/BundleInstallationCommands';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { Bundle, InstallOptions } from '../../src/types/registry';
+import { Bundle, InstallationScope, RepositoryCommitMode } from '../../src/types/registry';
+import { createScopeQuickPickItems } from '../../src/utils/scopeSelectionUI';
 import { BundleGenerators, PropertyTestConfig } from '../helpers/propertyTestHelpers';
+import { BundleBuilder } from '../helpers/bundleTestHelpers';
 
 suite('BundleInstallationCommands - Property Tests', () => {
     // ===== Test Setup =====
@@ -22,8 +24,14 @@ suite('BundleInstallationCommands - Property Tests', () => {
     let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
     let commands: BundleInstallationCommands;
     let mockShowQuickPick: sinon.SinonStub;
+    let mockCreateQuickPick: sinon.SinonStub;
     let mockWithProgress: sinon.SinonStub;
     let mockShowInformationMessage: sinon.SinonStub;
+    let originalWorkspaceFolders: typeof vscode.workspace.workspaceFolders;
+    
+    // Store event handlers for scope selection dialog
+    let acceptHandler: (() => void) | null = null;
+    let hideHandler: (() => void) | null = null;
 
     // ===== Test Utilities =====
     
@@ -31,34 +39,17 @@ suite('BundleInstallationCommands - Property Tests', () => {
     const bundleIdArb = BundleGenerators.bundleId();
     const versionArb = BundleGenerators.version();
     
-    // Factory Functions
-    const createMockBundle = (id: string, version: string = '1.0.0'): Bundle => ({
-        id,
-        name: `Bundle ${id}`,
-        description: `Description for ${id}`,
-        version,
-        author: 'Test Author',
-        sourceId: 'test-source',
-        environments: ['vscode'],
-        tags: ['test'],
-        downloads: 100,
-        rating: 4.5,
-        lastUpdated: '2024-01-01',
-        size: '1024',
-        dependencies: [],
-        homepage: `https://example.com/${id}`,
-        repository: `https://github.com/test/${id}`,
-        license: 'MIT',
-        manifestUrl: `https://example.com/${id}/manifest.yml`,
-        downloadUrl: `https://example.com/${id}.zip`,
-        isCurated: false
-    });
-
-    const createScopeQuickPickItem = (scope: 'user' | 'workspace') => ({
-        label: scope === 'user' ? '$(account) User' : '$(folder) Workspace',
-        description: scope === 'user' ? 'Install for current user (all workspaces)' : 'Install for current workspace only',
-        value: scope
-    });
+    /**
+     * Get a scope QuickPick item from the production createScopeQuickPickItems function.
+     * This ensures test data matches production behavior.
+     */
+    const getScopeQuickPickItem = (scope: InstallationScope, commitMode?: RepositoryCommitMode) => {
+        const items = createScopeQuickPickItems(true); // hasWorkspace = true
+        if (scope === 'user') {
+            return items.find(item => item._scope === 'user')!;
+        }
+        return items.find(item => item._scope === scope && item._commitMode === commitMode)!;
+    };
 
     const createAutoUpdateQuickPickItem = (enabled: boolean) => ({
         label: enabled ? '$(sync) Enable auto-update' : '$(circle-slash) Manual updates only',
@@ -67,20 +58,74 @@ suite('BundleInstallationCommands - Property Tests', () => {
         value: enabled
     });
 
+    /**
+     * Creates a mock QuickPick that simulates user interaction.
+     * 
+     * The mock simulates the VS Code QuickPick lifecycle:
+     * 1. Event handlers are registered via onDidAccept/onDidHide
+     * 2. show() triggers the simulated user action
+     * 3. For acceptance: selectedItems is set, acceptHandler fires, then hideHandler fires
+     * 4. For cancellation: hideHandler fires immediately (simulating Escape key)
+     * 
+     * @param behavior - 'accept' to simulate selection, 'cancel' to simulate dismissal
+     * @param scope - The scope to select (only used when behavior is 'accept')
+     * @param commitMode - The commit mode (only used when scope is 'repository')
+     */
+    const createMockQuickPick = (
+        behavior: 'accept' | 'cancel',
+        scope?: InstallationScope,
+        commitMode?: RepositoryCommitMode
+    ) => {
+        const mockQuickPick: any = {
+            items: [] as any[],
+            selectedItems: [] as any[],
+            title: '',
+            placeholder: '',
+            ignoreFocusOut: false,
+            onDidChangeSelection: sandbox.stub().callsFake(() => ({ dispose: () => {} })),
+            onDidAccept: sandbox.stub().callsFake((handler: () => void) => {
+                acceptHandler = handler;
+                return { dispose: () => {} };
+            }),
+            onDidHide: sandbox.stub().callsFake((handler: () => void) => {
+                hideHandler = handler;
+                return { dispose: () => {} };
+            }),
+            show: sandbox.stub().callsFake(function(this: typeof mockQuickPick) {
+                if (behavior === 'accept' && scope) {
+                    // Simulate user selecting an item and pressing Enter
+                    // Use production createScopeQuickPickItems to ensure consistency
+                    this.selectedItems = [getScopeQuickPickItem(scope, commitMode)];
+                    if (acceptHandler) {
+                        acceptHandler();
+                    }
+                }
+                // Always trigger hideHandler after show() to simulate dialog closing
+                if (hideHandler) {
+                    hideHandler();
+                }
+            }),
+            hide: sandbox.stub(),
+            dispose: sandbox.stub()
+        };
+        return mockQuickPick;
+    };
+
     // Mock Setup Helpers
-    const setupSuccessfulInstallation = (bundleId: string, bundle: Bundle, scope: 'user' | 'workspace', autoUpdate: boolean): void => {
+    const setupSuccessfulInstallation = (bundleId: string, bundle: Bundle, scope: InstallationScope, autoUpdate: boolean, commitMode?: RepositoryCommitMode): void => {
         mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
         mockRegistryManager.installBundle.resolves();
         mockStorage.setUpdatePreference.resolves();
         mockRegistryManager.getStorage.returns(mockStorage as any);
 
-        // Mock the quick pick dialogs
-        mockShowQuickPick
-            .onFirstCall().resolves(createScopeQuickPickItem(scope))
-            .onSecondCall().resolves(createAutoUpdateQuickPickItem(autoUpdate));
+        // Mock createQuickPick for scope selection dialog
+        mockCreateQuickPick.returns(createMockQuickPick('accept', scope, commitMode) as any);
+
+        // Mock showQuickPick for auto-update choice
+        mockShowQuickPick.resolves(createAutoUpdateQuickPickItem(autoUpdate));
 
         // Mock progress dialog
-        mockWithProgress.callsFake(async (options: any, task: any) => {
+        mockWithProgress.callsFake(async (_options: any, task: any) => {
             const mockProgress = { report: sinon.stub() };
             return await task(mockProgress);
         });
@@ -90,11 +135,12 @@ suite('BundleInstallationCommands - Property Tests', () => {
 
     const setupUserCancellation = (cancelAt: 'scope' | 'autoUpdate'): void => {
         if (cancelAt === 'scope') {
-            mockShowQuickPick.onFirstCall().resolves(undefined);
+            // User cancels at scope selection
+            mockCreateQuickPick.returns(createMockQuickPick('cancel') as any);
         } else {
-            mockShowQuickPick
-                .onFirstCall().resolves(createScopeQuickPickItem('user'))
-                .onSecondCall().resolves(undefined);
+            // User selects scope but cancels at auto-update
+            mockCreateQuickPick.returns(createMockQuickPick('accept', 'user') as any);
+            mockShowQuickPick.resolves(undefined);
         }
     };
 
@@ -105,8 +151,21 @@ suite('BundleInstallationCommands - Property Tests', () => {
         mockRegistryManager.getStorage.reset();
         mockStorage.setUpdatePreference.reset();
         mockShowQuickPick.reset();
+        mockCreateQuickPick.reset();
         mockWithProgress.reset();
         mockShowInformationMessage.reset();
+        acceptHandler = null;
+        hideHandler = null;
+    };
+
+    const setWorkspaceOpen = (isOpen: boolean): void => {
+        if (isOpen) {
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/mock/workspace' }, name: 'workspace', index: 0 }
+            ];
+        } else {
+            (vscode.workspace as any).workspaceFolders = undefined;
+        }
     };
 
     // ===== Test Lifecycle =====
@@ -119,8 +178,17 @@ suite('BundleInstallationCommands - Property Tests', () => {
         
         // Stub VS Code APIs
         mockShowQuickPick = sandbox.stub(vscode.window, 'showQuickPick');
+        mockCreateQuickPick = sandbox.stub(vscode.window, 'createQuickPick');
         mockWithProgress = sandbox.stub(vscode.window, 'withProgress');
         mockShowInformationMessage = sandbox.stub(vscode.window, 'showInformationMessage');
+        
+        // Save original workspace folders and set workspace as open
+        originalWorkspaceFolders = vscode.workspace.workspaceFolders;
+        setWorkspaceOpen(true);
+        
+        // Reset event handlers
+        acceptHandler = null;
+        hideHandler = null;
         
         // Create commands instance
         commands = new BundleInstallationCommands(mockRegistryManager as any);
@@ -128,6 +196,8 @@ suite('BundleInstallationCommands - Property Tests', () => {
 
     teardown(() => {
         sandbox.restore();
+        // Restore original workspace folders
+        (vscode.workspace as any).workspaceFolders = originalWorkspaceFolders;
     });
 
     // ===== Property Tests =====
@@ -146,23 +216,29 @@ suite('BundleInstallationCommands - Property Tests', () => {
                 fc.asyncProperty(
                     bundleIdArb,
                     versionArb,
-                    fc.constantFrom('user' as const, 'workspace' as const),
+                    fc.constantFrom('user' as const, 'repository' as const),
                     fc.boolean(),
                     async (bundleId, version, scope, autoUpdateChoice) => {
                         resetAllMocks();
 
-                        const bundle = createMockBundle(bundleId, version);
-                        setupSuccessfulInstallation(bundleId, bundle, scope, autoUpdateChoice);
+                        const bundle = BundleBuilder.fromSource(bundleId, 'GITHUB')
+                            .withVersion(version)
+                            .build();
+                        const commitMode = scope === 'repository' ? 'commit' as const : undefined;
+                        setupSuccessfulInstallation(bundleId, bundle, scope, autoUpdateChoice, commitMode);
 
                         // Execute: Install bundle
                         await commands.installBundle(bundleId);
 
-                        // Verify: Auto-update quick pick was shown
-                        assert.strictEqual(mockShowQuickPick.callCount, 2, 'Should show two quick pick dialogs');
+                        // Verify: Scope selection dialog was shown via createQuickPick
+                        assert.strictEqual(mockCreateQuickPick.callCount, 1, 'Should show scope selection dialog');
                         
-                        // Verify: Second quick pick is for auto-update preference
-                        const autoUpdateCall = mockShowQuickPick.secondCall;
-                        assert.ok(autoUpdateCall, 'Should have second quick pick call for auto-update');
+                        // Verify: Auto-update quick pick was shown via showQuickPick
+                        assert.strictEqual(mockShowQuickPick.callCount, 1, 'Should show auto-update quick pick');
+                        
+                        // Verify: Auto-update quick pick has correct options
+                        const autoUpdateCall = mockShowQuickPick.firstCall;
+                        assert.ok(autoUpdateCall, 'Should have auto-update quick pick call');
                         
                         const autoUpdateOptions = autoUpdateCall.args[0];
                         assert.ok(Array.isArray(autoUpdateOptions), 'Auto-update options should be an array');
@@ -204,7 +280,9 @@ suite('BundleInstallationCommands - Property Tests', () => {
                     async (bundleId, version) => {
                         resetAllMocks();
 
-                        const bundle = createMockBundle(bundleId, version);
+                        const bundle = BundleBuilder.fromSource(bundleId, 'GITHUB')
+                            .withVersion(version)
+                            .build();
                         mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
                         setupUserCancellation('autoUpdate');
 
@@ -232,15 +310,20 @@ suite('BundleInstallationCommands - Property Tests', () => {
                     async (bundleId, version) => {
                         resetAllMocks();
 
-                        const bundle = createMockBundle(bundleId, version);
+                        const bundle = BundleBuilder.fromSource(bundleId, 'GITHUB')
+                            .withVersion(version)
+                            .build();
                         mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
                         setupUserCancellation('scope');
 
                         // Execute: Install bundle (user cancels at scope choice)
                         await commands.installBundle(bundleId);
 
+                        // Verify: Scope dialog was shown
+                        assert.strictEqual(mockCreateQuickPick.callCount, 1, 'Should show scope dialog');
+                        
                         // Verify: Auto-update choice was never presented
-                        assert.strictEqual(mockShowQuickPick.callCount, 1, 'Should only show scope dialog when user cancels early');
+                        assert.strictEqual(mockShowQuickPick.callCount, 0, 'Should not show auto-update dialog when user cancels scope');
                         
                         // Verify: Installation was not attempted
                         assert.strictEqual(mockRegistryManager.installBundle.callCount, 0, 'Should not attempt installation when user cancels');
@@ -260,26 +343,30 @@ suite('BundleInstallationCommands - Property Tests', () => {
                 fc.asyncProperty(
                     bundleIdArb,
                     versionArb,
-                    fc.constantFrom('user' as const, 'workspace' as const),
+                    fc.constantFrom('user' as const, 'repository' as const),
                     fc.boolean(),
                     fc.string({ minLength: 1, maxLength: 50 }),
                     async (bundleId, version, scope, autoUpdateChoice, errorMessage) => {
                         resetAllMocks();
 
-                        const bundle = createMockBundle(bundleId, version);
+                        const bundle = BundleBuilder.fromSource(bundleId, 'GITHUB')
+                            .withVersion(version)
+                            .build();
                         mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
                         mockRegistryManager.getStorage.returns(mockStorage as any);
 
                         // Setup installation failure
                         mockRegistryManager.installBundle.rejects(new Error(errorMessage));
 
-                        // Mock the quick pick dialogs
-                        mockShowQuickPick
-                            .onFirstCall().resolves(createScopeQuickPickItem(scope))
-                            .onSecondCall().resolves(createAutoUpdateQuickPickItem(autoUpdateChoice));
+                        // Mock createQuickPick for scope selection dialog
+                        const commitMode = scope === 'repository' ? 'commit' as const : undefined;
+                        mockCreateQuickPick.returns(createMockQuickPick('accept', scope, commitMode) as any);
+
+                        // Mock showQuickPick for auto-update choice
+                        mockShowQuickPick.resolves(createAutoUpdateQuickPickItem(autoUpdateChoice));
 
                         // Mock progress dialog
-                        mockWithProgress.callsFake(async (options: any, task: any) => {
+                        mockWithProgress.callsFake(async (_options: any, task: any) => {
                             const mockProgress = { report: sinon.stub() };
                             return await task(mockProgress);
                         });

@@ -298,8 +298,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --fund=false
 
-      - name: Apply essential fixes (all platforms)
+      - name: Compile extension and tests
         run: |
+          npm run compile
           npm run compile-tests
           node .github/workflows/scripts/post-compile-fixes-essential.js
 

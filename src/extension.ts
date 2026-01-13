@@ -5,6 +5,7 @@ import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
 import { ProfileCommands } from './commands/ProfileCommands';
 import { SourceCommands } from './commands/SourceCommands';
 import { BundleCommands } from './commands/BundleCommands';
+import { BundleScopeCommands } from './commands/BundleScopeCommands';
 import { HubCommands } from './commands/HubCommands';
 import { HubProfileCommands } from './commands/HubProfileCommands';
 import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
@@ -29,6 +30,9 @@ import { UpdateChecker } from './services/UpdateChecker';
 import { NotificationManager } from './services/NotificationManager';
 import { AutoUpdateService } from './services/AutoUpdateService';
 import { BundleUpdateNotifications } from './notifications/BundleUpdateNotifications';
+import { LockfileManager } from './services/LockfileManager';
+import { RepositoryActivationService } from './services/RepositoryActivationService';
+import { ScopeConflictResolver } from './services/ScopeConflictResolver';
 
 import {
     getValidUpdateCheckFrequency,
@@ -62,6 +66,7 @@ export class PromptRegistryExtension {
     private profileCommands: ProfileCommands | undefined;
     private sourceCommands: SourceCommands | undefined;
     private bundleCommands: BundleCommands | undefined;
+    private bundleScopeCommands: BundleScopeCommands | undefined;
     private settingsCommands: SettingsCommands | undefined;
     private hubCommands: HubCommands | undefined;
     private hubIntegrationCommands: HubIntegrationCommands | undefined;
@@ -77,6 +82,10 @@ export class PromptRegistryExtension {
     private updateChecker: UpdateChecker | undefined;
     private notificationManager: NotificationManager | undefined;
     private autoUpdateService: AutoUpdateService | undefined;
+
+    // Repository-level installation services
+    private lockfileManager: LockfileManager | undefined;
+    private repositoryActivationService: RepositoryActivationService | undefined;
 
     // Legacy (to be removed)
     private readonly installationManager: InstallationManager;
@@ -142,6 +151,12 @@ export class PromptRegistryExtension {
 
             // Initialize update notification system
             await this.initializeUpdateSystem();
+
+            // Initialize repository-level installation services
+            await this.initializeRepositoryServices();
+
+            // Register workspace folder change listener
+            this.registerWorkspaceFolderListener();
 
             // Check for automatic updates if enabled
             await this.checkForAutomaticUpdates();
@@ -218,7 +233,7 @@ export class PromptRegistryExtension {
         const hubStorage = new HubStorage(hubStoragePath);
         const hubValidator = new SchemaValidator(this.context.extensionPath);
         // Pass BundleInstaller from RegistryManager to enable bundle installation during profile activation
-        const bundleInstaller = (this.registryManager as any).installer;
+        const bundleInstaller = this.registryManager.getBundleInstaller();
         this.hubManager = new HubManager(hubStorage, hubValidator, this.context.extensionPath, bundleInstaller, this.registryManager);
 		
 		// Connect HubManager to RegistryManager for profile integration
@@ -299,6 +314,41 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.browseByCategory', () => this.bundleCommands!.browseByCategory()),
             vscode.commands.registerCommand('promptRegistry.showPopular', () => this.bundleCommands!.showPopular()),
             vscode.commands.registerCommand('promptRegistry.listInstalled', () => this.bundleCommands!.listInstalled()),
+            
+            // Bundle Scope Management Commands
+            vscode.commands.registerCommand('promptRegistry.moveToRepositoryCommit', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId && this.bundleScopeCommands) {
+                    this.bundleScopeCommands.moveToRepository(bundleId, 'commit');
+                }
+            }),
+            vscode.commands.registerCommand('promptRegistry.moveToRepositoryLocalOnly', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId && this.bundleScopeCommands) {
+                    this.bundleScopeCommands.moveToRepository(bundleId, 'local-only');
+                }
+            }),
+            vscode.commands.registerCommand('promptRegistry.moveToUser', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId && this.bundleScopeCommands) {
+                    this.bundleScopeCommands.moveToUser(bundleId);
+                }
+            }),
+            vscode.commands.registerCommand('promptRegistry.switchToLocalOnly', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId && this.bundleScopeCommands) {
+                    this.bundleScopeCommands.switchCommitMode(bundleId, 'local-only');
+                }
+            }),
+            vscode.commands.registerCommand('promptRegistry.switchToCommit', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId && this.bundleScopeCommands) {
+                    this.bundleScopeCommands.switchCommitMode(bundleId, 'commit');
+                }
+            }),
+            
+            // Cleanup Commands
+            vscode.commands.registerCommand('promptRegistry.cleanupStaleLockfileEntries', () => this.bundleCommands!.cleanupStaleLockfileEntries()),
             
             // Scaffold Command - Create project structure
             vscode.commands.registerCommand('promptRegistry.scaffoldProject', () => ScaffoldCommand.runWithUI()),
@@ -641,6 +691,150 @@ export class PromptRegistryExtension {
                 }
             });
         }
+    }
+
+    /**
+     * Subscribe to lockfile changes for a workspace and refresh UI when lockfile is modified externally.
+     * This ensures the UI stays in sync when the lockfile is created, modified, or deleted outside the extension.
+     * 
+     * @param lockfileManager - The LockfileManager instance for the workspace
+     * @returns Disposable subscription that should be added to disposables
+     */
+    private subscribeLockfileChanges(lockfileManager: LockfileManager): vscode.Disposable {
+        return lockfileManager.onLockfileUpdated(() => {
+            this.logger.debug('Lockfile changed externally, refreshing repository bundles');
+            this.registryManager.handleWorkspaceFoldersChanged();
+        });
+    }
+
+    /**
+     * Initialize repository-level installation services
+     * Sets up LockfileManager and RepositoryActivationService per workspace folder
+     */
+    private async initializeRepositoryServices(): Promise<void> {
+        try {
+            this.logger.info('Initializing repository-level installation services...');
+
+            // Check if workspace is open
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                this.logger.debug('No workspace open, skipping repository services initialization');
+                return;
+            }
+
+            // Get repository path from first workspace folder
+            const repositoryPath = workspaceFolders[0].uri.fsPath;
+
+            // Initialize LockfileManager for this workspace
+            this.lockfileManager = LockfileManager.getInstance(repositoryPath);
+
+            // Subscribe to lockfile changes to refresh UI when lockfile is modified externally
+            this.disposables.push(this.subscribeLockfileChanges(this.lockfileManager));
+
+            // Initialize RepositoryActivationService for this workspace
+            const registryStorage = this.registryManager.getStorage();
+            this.repositoryActivationService = RepositoryActivationService.getInstance(
+                repositoryPath,
+                this.lockfileManager,
+                this.hubManager!,
+                registryStorage,
+                this.registryManager  // Pass RegistryManager for missing bundle installation
+            );
+
+            // Check for lockfile and prompt activation
+            await this.repositoryActivationService.checkAndPromptActivation();
+
+            // Register BundleScopeCommands (requires scope services from RegistryManager)
+            const bundleInstaller = this.registryManager.getBundleInstaller();
+            const userScopeService = bundleInstaller.getUserScopeService();
+            const repositoryScopeService = bundleInstaller.createRepositoryScopeService();
+            
+            if (repositoryScopeService) {
+                // Create ScopeConflictResolver with storage
+                const scopeConflictResolver = new ScopeConflictResolver(registryStorage);
+                
+                this.bundleScopeCommands = new BundleScopeCommands(
+                    this.registryManager,
+                    scopeConflictResolver,
+                    repositoryScopeService
+                );
+                this.logger.debug('BundleScopeCommands registered successfully');
+            } else {
+                this.logger.debug('BundleScopeCommands not registered: no workspace open');
+            }
+
+            this.logger.info('Repository-level installation services initialized successfully');
+        } catch (error) {
+            this.logger.warn('Failed to initialize repository-level installation services', error as Error);
+            // Don't fail extension activation if repository services fail
+        }
+    }
+
+    /**
+     * Initialize repository services for a specific workspace folder
+     * Used when workspace folders are added dynamically
+     * 
+     * @param workspaceFolder - The workspace folder to initialize services for
+     */
+    private async initializeRepositoryServicesForWorkspace(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
+        try {
+            const repositoryPath = workspaceFolder.uri.fsPath;
+            this.logger.info(`Initializing repository services for workspace: ${repositoryPath}`);
+
+            // Initialize LockfileManager for this workspace
+            const lockfileManager = LockfileManager.getInstance(repositoryPath);
+
+            // Subscribe to lockfile changes to refresh UI when lockfile is modified externally
+            this.disposables.push(this.subscribeLockfileChanges(lockfileManager));
+
+            // Initialize RepositoryActivationService for this workspace
+            const registryStorage = this.registryManager.getStorage();
+            const activationService = RepositoryActivationService.getInstance(
+                repositoryPath,
+                lockfileManager,
+                this.hubManager!,
+                registryStorage,
+                this.registryManager  // Pass RegistryManager for missing bundle installation
+            );
+
+            // Check for lockfile and prompt activation
+            await activationService.checkAndPromptActivation();
+
+            this.logger.info(`Repository services initialized for workspace: ${repositoryPath}`);
+        } catch (error) {
+            this.logger.warn(`Failed to initialize repository services for workspace: ${workspaceFolder.uri.fsPath}`, error as Error);
+        }
+    }
+
+    /**
+     * Register workspace folder change listener
+     * Re-initializes repository services when workspace folders change
+     */
+    private registerWorkspaceFolderListener(): void {
+        const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+            // Initialize services for newly added folders
+            for (const folder of event.added) {
+                this.logger.info(`Workspace folder added: ${folder.uri.fsPath}`);
+                await this.initializeRepositoryServicesForWorkspace(folder);
+            }
+
+            // Clean up services for removed folders
+            for (const folder of event.removed) {
+                this.logger.info(`Workspace folder removed: ${folder.uri.fsPath}`);
+                const repositoryPath = folder.uri.fsPath;
+                
+                // Reset instances for the removed workspace
+                LockfileManager.resetInstance(repositoryPath);
+                RepositoryActivationService.resetInstance(repositoryPath);
+            }
+
+            // Notify RegistryManager to refresh repository bundles
+            // This triggers UI refresh for the new workspace configuration
+            this.registryManager.handleWorkspaceFoldersChanged();
+        });
+
+        this.disposables.push(workspaceListener);
+        this.context.subscriptions.push(workspaceListener);
     }
 
     /**
@@ -988,6 +1182,18 @@ export class PromptRegistryExtension {
      */
     private async checkFirstRun(): Promise<void> {
         try {
+            // Skip first-run dialogs in test/CI environments
+            // Detection: VSCODE_TEST environment variable or extensionMode
+            const isTestEnvironment = process.env.VSCODE_TEST === '1' || 
+                                      this.context.extensionMode === vscode.ExtensionMode.Test;
+            
+            if (isTestEnvironment) {
+                this.logger.info('Test environment detected, skipping first-run dialogs');
+                // Mark as not first run to prevent future dialogs
+                await this.context.globalState.update('promptregistry.firstRun', false);
+                return;
+            }
+
             const isFirstRun = this.context.globalState.get<boolean>('promptregistry.firstRun', true);
 
             if (isFirstRun) {                // Mark as not first run

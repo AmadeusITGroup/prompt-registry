@@ -77,6 +77,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             onBundlesUninstalled: sandbox.stub().returns({ dispose: () => {} }),
             onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
             onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
+            onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
             searchBundles: sandbox.stub().resolves([]),
             listInstalledBundles: sandbox.stub().resolves([]),
             listSources: sandbox.stub().resolves([])
