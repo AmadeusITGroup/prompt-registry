@@ -5,6 +5,7 @@ import { RegistryTreeProvider, TreeItemType, RegistryTreeItem } from '../../src/
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { HubManager } from '../../src/services/HubManager';
 import { HubProfile } from '../../src/types/hub';
+import { setupTreeProviderMocks } from '../helpers/uiTestHelpers';
 
 suite('RegistryTreeProvider - Hub Profiles', () => {
     let provider: RegistryTreeProvider;
@@ -17,26 +18,8 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         registryManagerStub = sandbox.createStubInstance(RegistryManager);
         hubManagerStub = sandbox.createStubInstance(HubManager);
         
-        // Mock event emitters
-        (registryManagerStub as any).onBundleInstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundleUninstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundleUpdated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundlesInstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundlesUninstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileActivated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileDeactivated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileCreated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileUpdated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileDeleted = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceAdded = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceRemoved = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceUpdated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceSynced = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onAutoUpdatePreferenceChanged = sandbox.stub().returns({ dispose: () => {} });
-        (hubManagerStub as any).onHubImported = sandbox.stub().returns({ dispose: () => {} });
-        (hubManagerStub as any).onHubDeleted = sandbox.stub().returns({ dispose: () => {} });
-        (hubManagerStub as any).onHubSynced = sandbox.stub().returns({ dispose: () => {} });
-        (hubManagerStub as any).onFavoritesChanged = sandbox.stub().returns({ dispose: () => {} });
+        // Use shared helper for consistent mock setup
+        setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
 
         provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
     });
@@ -452,6 +435,372 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         const nestedProfileItem = subfolderChildren.find(i => i.label === 'icon Nested Profile');
         assert.ok(nestedProfileItem, 'Nested Profile not found');
     });
+});
+
+suite('RegistryTreeProvider - Dual-Scope Display', () => {
+    let provider: RegistryTreeProvider;
+    let registryManagerStub: sinon.SinonStubbedInstance<RegistryManager>;
+    let hubManagerStub: sinon.SinonStubbedInstance<HubManager>;
+    let sandbox: sinon.SinonSandbox;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        registryManagerStub = sandbox.createStubInstance(RegistryManager);
+        hubManagerStub = sandbox.createStubInstance(HubManager);
+        
+        // Use shared helper for consistent mock setup
+        setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
+
+        provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should list bundles from both user and repository scopes', async () => {
+        const userBundle = {
+            bundleId: 'user-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/user/path',
+            manifest: {} as any
+        };
+
+        const repositoryBundle = {
+            bundleId: 'repo-bundle',
+            version: '2.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            installPath: '/repo/path',
+            manifest: {} as any
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([userBundle, repositoryBundle]);
+        registryManagerStub.getBundleDetails.withArgs('user-bundle').resolves({
+            id: 'user-bundle',
+            name: 'User Bundle',
+            version: '1.0.0',
+            description: 'User bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+        registryManagerStub.getBundleDetails.withArgs('repo-bundle').resolves({
+            id: 'repo-bundle',
+            name: 'Repository Bundle',
+            version: '2.0.0',
+            description: 'Repository bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '2MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 2, 'Should display both user and repository bundles');
+        
+        const userItem = items.find(i => i.label.includes('User Bundle'));
+        const repoItem = items.find(i => i.label.includes('Repository Bundle'));
+        
+        assert.ok(userItem, 'User bundle should be displayed');
+        assert.ok(repoItem, 'Repository bundle should be displayed');
+    });
+
+    test('should show scope indicator for repository bundles', async () => {
+        const repositoryBundle = {
+            bundleId: 'repo-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([repositoryBundle]);
+        registryManagerStub.getBundleDetails.withArgs('repo-bundle').resolves({
+            id: 'repo-bundle',
+            name: 'Repository Bundle',
+            version: '1.0.0',
+            description: 'Repository bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 1);
+        const item = items[0];
+        
+        // Should have scope indicator in context value
+        assert.ok(item.contextValue, 'Should have context value');
+        assert.ok(
+            item.contextValue.includes('repository') || item.data.scope === 'repository',
+            'Should indicate repository scope'
+        );
+        
+        // Verify scope is accessible from bundle data
+        assert.strictEqual(item.data.scope, 'repository', 'Bundle data should contain repository scope');
+    });
+
+    test('should show scope indicator for user bundles', async () => {
+        const userBundle = {
+            bundleId: 'user-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/user/path',
+            manifest: {} as any
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([userBundle]);
+        registryManagerStub.getBundleDetails.withArgs('user-bundle').resolves({
+            id: 'user-bundle',
+            name: 'User Bundle',
+            version: '1.0.0',
+            description: 'User bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 1);
+        const item = items[0];
+        
+        // Verify scope is accessible from bundle data
+        assert.strictEqual(item.data.scope, 'user', 'Bundle data should contain user scope');
+    });
+
+    test('should show update indicators for both user and repository scopes', async () => {
+        const userBundle = {
+            bundleId: 'user-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/user/path',
+            manifest: {} as any
+        };
+
+        const repositoryBundle = {
+            bundleId: 'repo-bundle',
+            version: '2.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            installPath: '/repo/path',
+            manifest: {} as any
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([userBundle, repositoryBundle]);
+        registryManagerStub.getBundleDetails.withArgs('user-bundle').resolves({
+            id: 'user-bundle',
+            name: 'User Bundle',
+            version: '1.0.0',
+            description: 'User bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+        registryManagerStub.getBundleDetails.withArgs('repo-bundle').resolves({
+            id: 'repo-bundle',
+            name: 'Repository Bundle',
+            version: '2.0.0',
+            description: 'Repository bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '2MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        // Simulate updates available for both bundles
+        provider.onUpdatesDetected([
+            {
+                bundleId: 'user-bundle',
+                currentVersion: '1.0.0',
+                latestVersion: '1.1.0',
+                releaseDate: new Date().toISOString(),
+                downloadUrl: 'https://example.com/download',
+                autoUpdateEnabled: false
+            },
+            {
+                bundleId: 'repo-bundle',
+                currentVersion: '2.0.0',
+                latestVersion: '2.1.0',
+                releaseDate: new Date().toISOString(),
+                downloadUrl: 'https://example.com/download',
+                autoUpdateEnabled: false
+            }
+        ]);
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 2);
+        
+        // Both should show update indicator
+        const userItem = items.find(i => i.label.includes('User Bundle'));
+        const repoItem = items.find(i => i.label.includes('Repository Bundle'));
+        
+        assert.ok(userItem, 'User bundle should be displayed');
+        assert.ok(repoItem, 'Repository bundle should be displayed');
+        
+        // Check for update indicator (⬆️)
+        assert.ok(userItem.label.includes('⬆️'), 'User bundle should show update indicator');
+        assert.ok(repoItem.label.includes('⬆️'), 'Repository bundle should show update indicator');
+        
+        // Check version display shows both versions
+        assert.ok(userItem.description && typeof userItem.description === 'string' && userItem.description.includes('→'), 'User bundle should show version arrow');
+        assert.ok(repoItem.description && typeof repoItem.description === 'string' && repoItem.description.includes('→'), 'Repository bundle should show version arrow');
+    });
+
+    test('should differentiate commit mode in context value for repository bundles', async () => {
+        const commitBundle = {
+            bundleId: 'commit-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any
+        };
+
+        const localOnlyBundle = {
+            bundleId: 'local-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'local-only' as const,
+            installPath: '/repo/path',
+            manifest: {} as any
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([commitBundle, localOnlyBundle]);
+        registryManagerStub.getBundleDetails.withArgs('commit-bundle').resolves({
+            id: 'commit-bundle',
+            name: 'Commit Bundle',
+            version: '1.0.0',
+            description: 'Commit bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+        registryManagerStub.getBundleDetails.withArgs('local-bundle').resolves({
+            id: 'local-bundle',
+            name: 'Local Bundle',
+            version: '1.0.0',
+            description: 'Local bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 2);
+        
+        const commitItem = items.find(i => i.label.includes('Commit Bundle'));
+        const localItem = items.find(i => i.label.includes('Local Bundle'));
+        
+        assert.ok(commitItem, 'Commit bundle should be displayed');
+        assert.ok(localItem, 'Local bundle should be displayed');
+        
+        // Verify commit mode is accessible from data
+        assert.strictEqual(commitItem.data.commitMode, 'commit');
+        assert.strictEqual(localItem.data.commitMode, 'local-only');
+    });
 
     test('Favorites view should organize hub profiles by path', async () => {
         (provider as any).viewMode = 'favorites';
@@ -512,5 +861,283 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         const nestedProfileItem = subfolderChildren.find((i: RegistryTreeItem) => i.label === 'icon ⭐ Nested Profile');
         assert.ok(nestedProfileItem, 'Nested Profile not found');
         assert.strictEqual(nestedProfileItem.description, '[Active]', 'Nested profile should be indicated as active');
+    });
+});
+
+
+/**
+ * Property 11: UI Warning Display
+ * Validates: Requirements 3.3
+ * 
+ * For any bundle with `filesMissing` set to `true`, the UI SHALL display 
+ * a warning indicator distinguishing it from bundles with valid files.
+ */
+suite('RegistryTreeProvider - Files Missing Warning Indicator', () => {
+    let provider: RegistryTreeProvider;
+    let registryManagerStub: sinon.SinonStubbedInstance<RegistryManager>;
+    let hubManagerStub: sinon.SinonStubbedInstance<HubManager>;
+    let sandbox: sinon.SinonSandbox;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        registryManagerStub = sandbox.createStubInstance(RegistryManager);
+        hubManagerStub = sandbox.createStubInstance(HubManager);
+        
+        // Use shared helper for consistent mock setup
+        setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
+
+        provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should show warning indicator for bundle with filesMissing flag', async () => {
+        const bundleWithMissingFiles = {
+            bundleId: 'missing-files-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any,
+            filesMissing: true
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([bundleWithMissingFiles]);
+        registryManagerStub.getBundleDetails.withArgs('missing-files-bundle').resolves({
+            id: 'missing-files-bundle',
+            name: 'Missing Files Bundle',
+            version: '1.0.0',
+            description: 'Bundle with missing files',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 1);
+        const item = items[0];
+        
+        // Should show warning emoji prefix
+        assert.ok(item.label.includes('⚠️'), 'Bundle with missing files should show warning emoji');
+        
+        // Should have warning tooltip
+        assert.ok(
+            item.tooltip && typeof item.tooltip === 'string' && item.tooltip.includes('Files missing'),
+            'Bundle with missing files should have warning tooltip'
+        );
+        
+        // Should have warning icon
+        assert.ok(item.iconPath, 'Bundle with missing files should have warning icon');
+        assert.ok(
+            item.iconPath instanceof vscode.ThemeIcon && item.iconPath.id === 'warning',
+            'Icon should be warning ThemeIcon'
+        );
+        
+        // Should have filesMissing context value (with scope suffix for repository bundles)
+        assert.ok(
+            item.contextValue?.startsWith('installedBundle.filesMissing'),
+            `Context value should start with installedBundle.filesMissing, got: ${item.contextValue}`
+        );
+    });
+
+    test('should NOT show warning indicator for bundle without filesMissing flag', async () => {
+        const normalBundle = {
+            bundleId: 'normal-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any,
+            filesMissing: false
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([normalBundle]);
+        registryManagerStub.getBundleDetails.withArgs('normal-bundle').resolves({
+            id: 'normal-bundle',
+            name: 'Normal Bundle',
+            version: '1.0.0',
+            description: 'Normal bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 1);
+        const item = items[0];
+        
+        // Should NOT show warning emoji prefix
+        assert.ok(!item.label.includes('⚠️'), 'Normal bundle should not show warning emoji');
+        
+        // Should have normal context value (not filesMissing)
+        assert.ok(
+            !item.contextValue?.startsWith('installedBundle.filesMissing'),
+            'Normal bundle should not have filesMissing context value'
+        );
+    });
+
+    test('should show warning indicator when bundle details are not available', async () => {
+        const bundleWithMissingFiles = {
+            bundleId: 'missing-files-bundle-no-details',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any,
+            filesMissing: true
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([bundleWithMissingFiles]);
+        registryManagerStub.getBundleDetails.withArgs('missing-files-bundle-no-details').rejects(new Error('Bundle not found'));
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 1);
+        const item = items[0];
+        
+        // Should show warning emoji prefix even when details are not available
+        assert.ok(item.label.includes('⚠️'), 'Bundle with missing files should show warning emoji even without details');
+        
+        // Should have warning tooltip with bundle ID
+        assert.ok(
+            item.tooltip && typeof item.tooltip === 'string' && item.tooltip.includes('Files missing'),
+            'Bundle with missing files should have warning tooltip'
+        );
+        
+        // Should have filesMissing context value (with scope suffix for repository bundles)
+        assert.ok(
+            item.contextValue?.startsWith('installedBundle.filesMissing'),
+            `Context value should start with installedBundle.filesMissing, got: ${item.contextValue}`
+        );
+    });
+
+    test('should distinguish between bundles with and without missing files', async () => {
+        const bundleWithMissingFiles = {
+            bundleId: 'missing-files-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'repository' as const,
+            commitMode: 'commit' as const,
+            installPath: '/repo/path',
+            manifest: {} as any,
+            filesMissing: true
+        };
+
+        const normalBundle = {
+            bundleId: 'normal-bundle',
+            version: '1.0.0',
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/user/path',
+            manifest: {} as any,
+            filesMissing: false
+        };
+
+        registryManagerStub.listInstalledBundles.resolves([bundleWithMissingFiles, normalBundle]);
+        registryManagerStub.getBundleDetails.withArgs('missing-files-bundle').resolves({
+            id: 'missing-files-bundle',
+            name: 'Missing Files Bundle',
+            version: '1.0.0',
+            description: 'Bundle with missing files',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+        registryManagerStub.getBundleDetails.withArgs('normal-bundle').resolves({
+            id: 'normal-bundle',
+            name: 'Normal Bundle',
+            version: '1.0.0',
+            description: 'Normal bundle',
+            author: 'Author',
+            sourceId: 'source1',
+            environments: [],
+            tags: [],
+            lastUpdated: new Date().toISOString(),
+            size: '1MB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest',
+            downloadUrl: 'https://example.com/download'
+        });
+
+        const installedRoot = new RegistryTreeItem(
+            'Installed Bundles',
+            TreeItemType.INSTALLED_ROOT,
+            undefined,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+
+        const items = await provider.getChildren(installedRoot);
+
+        assert.strictEqual(items.length, 2);
+        
+        const missingFilesItem = items.find(i => i.label.includes('Missing Files Bundle'));
+        const normalItem = items.find(i => i.label.includes('Normal Bundle'));
+        
+        assert.ok(missingFilesItem, 'Missing files bundle should be displayed');
+        assert.ok(normalItem, 'Normal bundle should be displayed');
+        
+        // Missing files bundle should have warning indicator
+        assert.ok(missingFilesItem.label.includes('⚠️'), 'Missing files bundle should show warning emoji');
+        assert.ok(
+            missingFilesItem.contextValue?.startsWith('installedBundle.filesMissing'),
+            `Missing files bundle context value should start with installedBundle.filesMissing, got: ${missingFilesItem.contextValue}`
+        );
+        
+        // Normal bundle should NOT have warning indicator
+        assert.ok(!normalItem.label.includes('⚠️'), 'Normal bundle should not show warning emoji');
+        assert.ok(
+            !normalItem.contextValue?.startsWith('installedBundle.filesMissing'),
+            'Normal bundle should not have filesMissing context value'
+        );
     });
 });

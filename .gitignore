@@ -117,9 +117,6 @@ carry-overs/*
 repo-for-test/
 research/
 
-# Kiro specs - temporary exclusion
-.kiro/specs/
-
 
 # Temporary development files
 *_SUMMARY.md

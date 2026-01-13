@@ -8,6 +8,7 @@ import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstallOptions } from '../types/registry';
 import { Logger } from '../utils/logger';
 import { ErrorHandler } from '../utils/errorHandler';
+import { showScopeSelectionDialog } from '../utils/scopeSelectionUI';
 
 /**
  * Bundle Installation Commands Handler
@@ -34,28 +35,10 @@ export class BundleInstallationCommands {
             // Get bundle details
             const bundle = await this.registryManager.getBundleDetails(bundleId);
 
-            // Ask for installation scope
-            const scope = await vscode.window.showQuickPick(
-                [
-                    {
-                        label: '$(account) User',
-                        description: 'Install for current user (all workspaces)',
-                        value: 'user' as const
-                    },
-                    {
-                        label: '$(folder) Workspace',
-                        description: 'Install for current workspace only',
-                        value: 'workspace' as const
-                    }
-                ],
-                {
-                    placeHolder: 'Select installation scope',
-                    title: `Install ${bundle.name}`,
-                    ignoreFocusOut: true
-                }
-            );
+            // Ask for installation scope using the new combined dialog
+            const scopeSelection = await showScopeSelectionDialog(bundle.name);
 
-            if (!scope) {
+            if (!scopeSelection) {
                 return;
             }
 
@@ -87,8 +70,9 @@ export class BundleInstallationCommands {
             }
 
             const options: InstallOptions = {
-                scope: scope.value,
-                version: 'latest'
+                scope: scopeSelection.scope,
+                version: 'latest',
+                commitMode: scopeSelection.commitMode
             };
 
             // Install with progress

@@ -4,6 +4,9 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { RegistryStorage } from '../storage/RegistryStorage';
 import { RepositoryAdapterFactory, IRepositoryAdapter } from '../adapters/RepositoryAdapter';
 import { GitHubAdapter } from '../adapters/GitHubAdapter';
@@ -24,6 +27,9 @@ import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { HubManager } from './HubManager';
 import { AutoUpdateService } from './AutoUpdateService';
+import { LockfileManager } from './LockfileManager';
+import { LocalModificationWarningService } from './LocalModificationWarningService';
+import { getWorkspaceRoot } from '../utils/scopeSelectionUI';
 import {
     RegistrySource,
     Bundle,
@@ -37,10 +43,12 @@ import {
     SourceType,
     SourceSyncedEvent,
     AutoUpdatePreferenceChangedEvent,
+    InstallationScope,
 } from '../types/registry';
 import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
-import { CONCURRENCY_CONSTANTS } from '../utils/constants';
+import { CONCURRENCY_CONSTANTS, WARNING_RESULTS } from '../utils/constants';
+import { UpdateCancelledError } from '../utils/errorHandler';
 
 /**
  * Results from auto-update operations
@@ -82,6 +90,7 @@ export class RegistryManager {
     private _onSourceUpdated = new vscode.EventEmitter<string>();
     private _onSourceSynced = new vscode.EventEmitter<SourceSyncedEvent>();
     private _onAutoUpdatePreferenceChanged = new vscode.EventEmitter<AutoUpdatePreferenceChangedEvent>();
+    private _onRepositoryBundlesChanged = new vscode.EventEmitter<void>();
 
 
     // Public event accessors
@@ -100,6 +109,7 @@ export class RegistryManager {
     readonly onSourceUpdated = this._onSourceUpdated.event;
     readonly onSourceSynced = this._onSourceSynced.event;
     readonly onAutoUpdatePreferenceChanged = this._onAutoUpdatePreferenceChanged.event;
+    readonly onRepositoryBundlesChanged = this._onRepositoryBundlesChanged.event;
 
     private constructor(private context: vscode.ExtensionContext) {
         this.storage = new RegistryStorage(context);
@@ -207,6 +217,14 @@ export class RegistryManager {
      */
     getStorage(): RegistryStorage {
         return this.storage;
+    }
+
+    /**
+     * Get the bundle installer instance
+     * Used by extension.ts to access scope services for BundleScopeCommands
+     */
+    getBundleInstaller(): BundleInstaller {
+        return this.installer;
     }
 
     /**
@@ -726,7 +744,11 @@ export class RegistryManager {
         
         // Record installation FIRST (before cleanup) to ensure metadata is safe
         // If anything fails here, old versions remain and can be used as fallback
-        await this.storage.recordInstallation(installation);
+        // Note: Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+        // The lockfile is already updated by BundleInstaller during installation
+        if (options.scope !== 'repository') {
+            await this.storage.recordInstallation(installation);
+        }
 
         // Clean up old versions AFTER successful recording
         // This ensures we don't lose the old version if recording fails
@@ -779,9 +801,13 @@ export class RegistryManager {
      * This handles downgrades and version changes by removing previous installation records
      *
      * @param bundle The newly installed bundle
-     * @param scope The installation scope (user or workspace)
+     * @param scope The installation scope (user, workspace, or repository)
      */
-    private async cleanupOldVersions(bundle: Bundle, scope: 'user' | 'workspace'): Promise<void> {
+    private async cleanupOldVersions(bundle: Bundle, scope: InstallationScope): Promise<void> {
+        // Repository scope cleanup is handled by LockfileManager
+        if (scope === 'repository') {
+            return;
+        }
         try {
             // Get source information to determine sourceType
             const source = await this.getSourceForBundle(bundle);
@@ -1052,11 +1078,54 @@ export class RegistryManager {
     /**
      * Uninstall a bundle
      */
-    async uninstallBundle(bundleId: string, scope: 'user' | 'workspace' = 'user', silent: boolean = false): Promise<void> {
+    async uninstallBundle(bundleId: string, scope: InstallationScope = 'user', silent: boolean = false): Promise<void> {
         this.logger.info(`Uninstalling bundle: ${bundleId}`);
         
-        // Get installation record
-        const installed = await this.storage.getInstalledBundle(bundleId, scope);
+        // Get installation record - repository scope uses LockfileManager
+        let installed: InstalledBundle | undefined;
+        
+        if (scope === 'repository') {
+            const workspaceRoot = getWorkspaceRoot();
+            if (!workspaceRoot) {
+                throw new Error('Cannot uninstall repository-scoped bundle: no workspace is open');
+            }
+            
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            const lockfile = await lockfileManager.read();
+            
+            if (lockfile && lockfile.bundles[bundleId]) {
+                const entry = lockfile.bundles[bundleId];
+                const installPath = this.installer.getInstallPath(bundleId, 'repository');
+                
+                // Try to read manifest from install path
+                let manifest: any = { id: bundleId, name: bundleId, version: entry.version };
+                try {
+                    const manifestPath = path.join(installPath, 'deployment-manifest.yml');
+                    if (fs.existsSync(manifestPath)) {
+                        const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+                        manifest = yaml.load(manifestContent);
+                    }
+                } catch {
+                    // Use minimal manifest if we can't read the file
+                    this.logger.debug(`Could not read manifest for ${bundleId}, using minimal manifest`);
+                }
+                
+                // Construct InstalledBundle from lockfile entry
+                installed = {
+                    bundleId: bundleId,
+                    version: entry.version,
+                    installedAt: entry.installedAt,
+                    scope: 'repository',
+                    installPath: installPath,
+                    manifest: manifest,
+                    sourceId: entry.sourceId,
+                    sourceType: entry.sourceType,
+                    commitMode: entry.commitMode,
+                };
+            }
+        } else {
+            installed = await this.storage.getInstalledBundle(bundleId, scope);
+        }
         
         if (!installed) {
             throw new Error(`Bundle '${bundleId}' is not installed in ${scope} scope`);
@@ -1064,9 +1133,10 @@ export class RegistryManager {
 
         // Get source information for post-uninstall hooks
         let source: RegistrySource | undefined;
-        if (installed.sourceId) {
+        const installedSourceId = installed.sourceId;
+        if (installedSourceId) {
             const sources = await this.storage.getSources();
-            source = sources.find(s => s.id === installed.sourceId);
+            source = sources.find(s => s.id === installedSourceId);
         }
         
         // For local-skills, use symlink uninstallation (removes symlink, not source directory)
@@ -1106,7 +1176,11 @@ export class RegistryManager {
         
         // Remove installation record using the stored bundle ID from the installation record
         // This ensures we remove the correct record even for versioned bundles
-        await this.storage.removeInstallation(installed.bundleId, scope);
+        // Note: For repository scope, the lockfile is updated by BundleInstaller.uninstall()
+        // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+        if (scope !== 'repository') {
+            await this.storage.removeInstallation(installed.bundleId, scope);
+        }
         
         if (!silent) {
             this._onBundleUninstalled.fire(installed.bundleId);
@@ -1117,7 +1191,7 @@ export class RegistryManager {
     /**
      * Uninstall multiple bundles in parallel
      */
-    async uninstallBundles(bundleIds: string[], scope: 'user' | 'workspace' = 'user'): Promise<void> {
+    async uninstallBundles(bundleIds: string[], scope: InstallationScope = 'user'): Promise<void> {
         const uninstalled: string[] = [];
         const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
 
@@ -1155,13 +1229,17 @@ export class RegistryManager {
     async updateBundle(bundleId: string, version?: string): Promise<void> {
         this.logger.info(`Updating bundle: ${bundleId} to version: ${version || 'latest'}`);
         
-        // Get current installation
-        const allInstalled = await this.storage.getInstalledBundles();
+        // Get current installation - use listInstalledBundles to include repository-scoped bundles
+        const allInstalled = await this.listInstalledBundles();
         const current = allInstalled.find(b => b.bundleId === bundleId);
         
         if (!current) {
             throw new Error(`Bundle '${bundleId}' is not installed`);
         }
+
+        // For repository-scoped bundles, check for local modifications before updating
+        // Requirements: 14.1-14.10
+        await this.checkLocalModificationsBeforeUpdate(bundleId, current);
 
         // Get new bundle details
         // Extract identity for GitHub bundles to find the latest version
@@ -1224,13 +1302,17 @@ export class RegistryManager {
         // CRITICAL: Write new installation record first, then remove old record
         // This ordering ensures crash-safety - if removal fails, we have the new record
         // If write fails, the old record remains intact
+        // Note: Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+        // The lockfile is already updated by BundleInstaller during update
         this.logger.debug(`Recording new installation for '${updated.bundleId}' v${updated.version}`);
-        await this.storage.recordInstallation(updated);
+        if (current.scope !== 'repository') {
+            await this.storage.recordInstallation(updated);
+        }
         
         // Only remove old record if bundleId changed (e.g., GitHub bundles with version in ID)
         // For Awesome Copilot bundles, the bundleId doesn't include version, so old and new are the same
         // In that case, recordInstallation already overwrote the old record
-        if (updated.bundleId !== bundleId) {
+        if (updated.bundleId !== bundleId && current.scope !== 'repository') {
             this.logger.debug(`Removing old installation record for '${bundleId}' from ${current.scope} scope`);
             await this.storage.removeInstallation(bundleId, current.scope);
         } else {
@@ -1242,10 +1324,104 @@ export class RegistryManager {
     }
 
     /**
-     * List installed bundles
+     * Check for local modifications and handle user response before updating
+     * 
+     * For repository-scoped bundles, this method:
+     * 1. Detects if any bundle files have been modified locally
+     * 2. Shows a warning dialog if modifications are found
+     * 3. Handles user response (contribute, override, or cancel)
+     * 
+     * @param bundleId - The bundle ID being updated
+     * @param current - The current installed bundle
+     * @throws UpdateCancelledError if user chooses to contribute or cancel
+     * 
+     * Requirements: 14.1-14.10
      */
-    async listInstalledBundles(scope?: 'user' | 'workspace'): Promise<InstalledBundle[]> {
-        return await this.storage.getInstalledBundles(scope);
+    private async checkLocalModificationsBeforeUpdate(
+        bundleId: string,
+        current: InstalledBundle
+    ): Promise<void> {
+        // Only check for repository-scoped bundles
+        if (current.scope !== 'repository') {
+            return;
+        }
+
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return;
+        }
+
+        const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+        const warningService = new LocalModificationWarningService(lockfileManager);
+
+        // Get bundle repository URL for "Contribute Changes" action
+        const bundleRepoUrl = current.manifest?.metadata?.repository?.url ||
+                              current.manifest?.metadata?.homepage;
+
+        const warningResult = await warningService.checkAndWarn(bundleId, bundleRepoUrl);
+
+        if (warningResult === null) {
+            // No modifications detected, proceed with update
+            return;
+        }
+
+        // Handle user response
+        switch (warningResult) {
+            case WARNING_RESULTS.CONTRIBUTE:
+                this.logger.info(`Update aborted for '${bundleId}': user chose to contribute changes`);
+                throw new UpdateCancelledError(bundleId, 'contribute');
+
+            case WARNING_RESULTS.CANCEL:
+                this.logger.info(`Update cancelled for '${bundleId}': user cancelled`);
+                throw new UpdateCancelledError(bundleId, 'cancel');
+
+            case WARNING_RESULTS.OVERRIDE:
+                this.logger.info(`User chose to override local modifications for '${bundleId}'`);
+                return;
+
+            default:
+                // Unknown result, proceed with update
+                return;
+        }
+    }
+
+    /**
+     * List installed bundles
+     * 
+     * Queries the appropriate source based on scope:
+     * - 'repository': Query LockfileManager only
+     * - 'user' or 'workspace': Query RegistryStorage only
+     * - undefined (no scope): Combine results from both sources
+     * 
+     * Requirements covered:
+     * - 1.1: Repository scope queries lockfile
+     * - 1.2: Combined scope queries both sources
+     */
+    async listInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
+        const bundles: InstalledBundle[] = [];
+
+        // Query user/workspace bundles from RegistryStorage
+        if (scope !== 'repository') {
+            const storageBundles = await this.storage.getInstalledBundles(scope);
+            bundles.push(...storageBundles);
+        }
+
+        // Query repository bundles from LockfileManager
+        if (scope === 'repository' || scope === undefined) {
+            const workspaceRoot = getWorkspaceRoot();
+            if (workspaceRoot) {
+                try {
+                    const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+                    const repoBundles = await lockfileManager.getInstalledBundles();
+                    bundles.push(...repoBundles);
+                } catch (error) {
+                    this.logger.warn('Failed to query repository bundles from lockfile:', error instanceof Error ? error : undefined);
+                    // Continue without repository bundles on error
+                }
+            }
+        }
+
+        return bundles;
     }
 
     /**
@@ -2010,6 +2186,20 @@ export class RegistryManager {
     }
 
     /**
+     * Handle workspace folder changes
+     * 
+     * Called when workspace folders are added, removed, or changed.
+     * Fires the repositoryBundlesChanged event to trigger UI refresh.
+     * 
+     * Requirements covered:
+     * - 4.3: Workspace change triggers refresh
+     */
+    handleWorkspaceFoldersChanged(): void {
+        this.logger.info('Workspace folders changed, refreshing repository bundles');
+        this._onRepositoryBundlesChanged.fire();
+    }
+
+    /**
      * Dispose resources
      */
     dispose(): void {
@@ -2027,5 +2217,6 @@ export class RegistryManager {
         this._onSourceUpdated.dispose();
         this._onSourceSynced.dispose();
         this._onAutoUpdatePreferenceChanged.dispose();
+        this._onRepositoryBundlesChanged.dispose();
     }
 }

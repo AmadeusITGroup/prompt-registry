@@ -77,6 +77,15 @@ const vscode = {
           return Promise.resolve([]);
       }
     },
+    createFileSystemWatcher: (pattern) => {
+      // Return a mock FileSystemWatcher
+      return {
+        onDidChange: (listener) => ({ dispose: () => {} }),
+        onDidCreate: (listener) => ({ dispose: () => {} }),
+        onDidDelete: (listener) => ({ dispose: () => {} }),
+        dispose: () => {}
+      };
+    },
     getConfiguration: (section) => ({
       get: (key, defaultValue) => {
         // Return mock configuration values for testing
@@ -129,6 +138,22 @@ const vscode = {
     showQuickPick: (items, options) => Promise.resolve(undefined),
     showSaveDialog: (options) => Promise.resolve(undefined),
     showOpenDialog: (options) => Promise.resolve(undefined),
+    createQuickPick: () => {
+      const quickPick = {
+        items: [],
+        selectedItems: [],
+        title: '',
+        placeholder: '',
+        ignoreFocusOut: false,
+        onDidChangeSelection: () => ({ dispose: () => {} }),
+        onDidAccept: () => ({ dispose: () => {} }),
+        onDidHide: () => ({ dispose: () => {} }),
+        show: () => {},
+        hide: () => {},
+        dispose: () => {}
+      };
+      return quickPick;
+    },
     createOutputChannel: (name) => {
       const channel = {
         appendLine: function() { return undefined; },
@@ -195,7 +220,14 @@ const vscode = {
     get event() {
       return (listener) => {
         this.listeners.push(listener);
-        return { dispose: () => {} };
+        return { 
+          dispose: () => {
+            const index = this.listeners.indexOf(listener);
+            if (index !== -1) {
+              this.listeners.splice(index, 1);
+            }
+          }
+        };
       };
     }
     fire(data) {
@@ -212,7 +244,8 @@ const vscode = {
     machineId: 'mock-machine-id',
     sessionId: 'mock-session-id',
     remoteName: undefined,
-    shell: '/bin/bash'
+    shell: '/bin/bash',
+    openExternal: (uri) => Promise.resolve(true)
   },
   ConfigurationTarget: {
     Global: 1,
@@ -240,6 +273,12 @@ const vscode = {
     Expanded: 2
   },
   ThemeIcon: class ThemeIcon {
+    constructor(id, color) {
+      this.id = id;
+      this.color = color;
+    }
+  },
+  ThemeColor: class ThemeColor {
     constructor(id) {
       this.id = id;
     }
@@ -247,6 +286,12 @@ const vscode = {
   extensions: {
     getExtension: () => undefined,
     all: []
+  },
+  RelativePattern: class RelativePattern {
+    constructor(base, pattern) {
+      this.base = base;
+      this.pattern = pattern;
+    }
   }
 };
 

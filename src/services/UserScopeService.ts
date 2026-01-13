@@ -1,6 +1,6 @@
 /**
- * Copilot Sync Service
- * Syncs installed prompts to GitHub Copilot's native locations
+ * User Scope Service
+ * Syncs installed prompts to GitHub Copilot's native locations at user level
  * 
  * Instead of using a custom chat participant, we create symlinks/copies
  * of prompt files to locations where GitHub Copilot naturally discovers them.
@@ -11,6 +11,8 @@
  * - Windsurf and other forks
  * 
  * Based on: https://github.com/github/awesome-copilot
+ * 
+ * Requirements: 9.1-9.5
  */
 
 import * as vscode from 'vscode';
@@ -22,6 +24,8 @@ import * as yaml from 'js-yaml';
 import { Logger } from '../utils/logger';
 import { escapeRegex } from '../utils/regexUtils';
 import { DeploymentManifest } from '../types/registry';
+import { IScopeService, ScopeStatus, SyncBundleOptions } from './IScopeService';
+import { CopilotFileType, determineFileType, getTargetFileName } from '../utils/copilotFileTypeUtils';
 
 const readFile = promisify(fs.readFile);
 const readdir = promisify(fs.readdir);
@@ -29,11 +33,6 @@ const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 const symlink = promisify(fs.symlink);
 const lstat = promisify(fs.lstat);
-
-/**
- * Supported Copilot file types
- */
-export type CopilotFileType = 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill';
 
 export interface CopilotFile {
     bundleId: string;
@@ -44,14 +43,16 @@ export interface CopilotFile {
 }
 
 /**
- * Service to sync bundle prompts to GitHub Copilot's native directories
+ * Service to sync bundle prompts to GitHub Copilot's native directories at user level.
+ * Implements IScopeService for consistent scope handling.
  */
-export class CopilotSyncService {
+export class UserScopeService implements IScopeService {
     private logger: Logger;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
     }
+
 
     /**
      * Get the Copilot prompts directory for current VSCode flavor
@@ -84,7 +85,7 @@ export class CopilotSyncService {
             if (profilesMatch) {
                 const profileId = profilesMatch[1];
                 const profileName = this.getActiveProfileName(baseDir) || profileId;
-                this.logger.info(`[CopilotSync] Using profile: ${profileName}`);
+                this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
                 return path.join(baseDir, 'prompts');
             }
             
@@ -104,7 +105,7 @@ export class CopilotSyncService {
             // Profile-based path: include the profile directory
             const profileId = profilesMatch[1];
             const profileName = this.getActiveProfileName(userDir) || profileId;
-            this.logger.info(`[CopilotSync] Using profile: ${profileName}`);
+            this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
             return path.join(userDir, 'profiles', profileId, 'prompts');
         }
         
@@ -112,12 +113,12 @@ export class CopilotSyncService {
         // Use combined detection method (storage.json + filesystem heuristic)
         const detectedProfile = this.detectActiveProfile(userDir);
         if (detectedProfile) {
-            this.logger.info(`[CopilotSync] Using profile: ${detectedProfile.name}`);
+            this.logger.info(`[UserScopeService] Using profile: ${detectedProfile.name}`);
             return path.join(userDir, 'profiles', detectedProfile.id, 'prompts');
         }
         
         // Standard path: User/prompts
-        this.logger.info(`[CopilotSync] Using default profile`);
+        this.logger.info(`[UserScopeService] Using default profile`);
         return path.join(userDir, 'prompts');
     }
 
@@ -181,7 +182,7 @@ export class CopilotSyncService {
                 }
                 
                 if (profileId) {
-                    this.logger.debug(`[CopilotSync] Profile detected from storage.json: ${profileId}`);
+                    this.logger.debug(`[UserScopeService] Profile detected from storage.json: ${profileId}`);
                     return { id: profileId, name: profileName || profileId };
                 }
             }
@@ -199,7 +200,7 @@ export class CopilotSyncService {
                     
                     // If modified in last 5 minutes, likely the active profile
                     if (ageMinutes < 5) {
-                        this.logger.debug(`[CopilotSync] Profile detected from filesystem heuristic: ${candidateId}`);
+                        this.logger.debug(`[UserScopeService] Profile detected from filesystem heuristic: ${candidateId}`);
                         return { id: candidateId, name: candidateId };
                     }
                 }
@@ -250,6 +251,7 @@ export class CopilotSyncService {
         }
     }
 
+
     /**
      * Sync all prompts from installed bundles to Copilot directory
      */
@@ -289,8 +291,13 @@ export class CopilotSyncService {
 
     /**
      * Sync a single bundle to Copilot directory
+     * Implements IScopeService.syncBundle
+     * 
+     * @param bundleId - The unique identifier of the bundle
+     * @param bundlePath - The path to the installed bundle directory
+     * @param _options - Ignored for user scope (commitMode only applies to repository scope)
      */
-    async syncBundle(bundleId: string, bundlePath: string): Promise<void> {
+    async syncBundle(bundleId: string, bundlePath: string, _options?: SyncBundleOptions): Promise<void> {
         try {
             this.logger.debug(`Syncing bundle: ${bundleId}`);
             
@@ -377,6 +384,7 @@ export class CopilotSyncService {
 
     /**
      * Determine Copilot file type and target path
+     * Uses shared utility for file type detection
      */
     private determineCopilotFileType(
         promptDef: any,
@@ -385,26 +393,17 @@ export class CopilotSyncService {
     ): CopilotFile {
         // Check if tags or filename indicate type
         const tags = promptDef.tags || [];
-        const fileName = path.basename(sourcePath, path.extname(sourcePath));
         
-        let type: CopilotFileType = 'prompt'; // default
-        
-        // Detect type from tags
-        if (tags.includes('instructions') || fileName.includes('instructions')) {
-            type = 'instructions';
-        } else if (tags.includes('chatmode') || tags.includes('mode')) {
-            type = 'chatmode';
-        } else if (tags.includes('agent')) {
-            type = 'agent';
-        }
-        
-        // Or from manifest type field if exists
+        // Use manifest type if provided, otherwise detect from file
+        let type: CopilotFileType;
         if (promptDef.type) {
             type = promptDef.type as CopilotFileType;
+        } else {
+            type = determineFileType(sourcePath, tags);
         }
         
         // Create target path: promptId.type.md directly in prompts directory
-        const targetFileName = `${promptDef.id}.${type}.md`;
+        const targetFileName = getTargetFileName(promptDef.id, type);
         const promptsDir = this.getCopilotPromptsDirectory();
         const targetPath = path.join(promptsDir, targetFileName);
         
@@ -468,8 +467,10 @@ export class CopilotSyncService {
         }
     }
 
+
     /**
      * Remove synced files for a bundle
+     * Implements IScopeService.unsyncBundle
      * Since we use a flat structure, we need to read the bundle's manifest to know which files to remove
      */
     async unsyncBundle(bundleId: string): Promise<void> {
@@ -593,17 +594,30 @@ export class CopilotSyncService {
     }
 
     /**
-     * Get status of Copilot integration
+     * Get the target path for a file of a given type.
+     * Implements IScopeService.getTargetPath
+     * 
+     * @param fileType - The Copilot file type
+     * @param fileName - The name of the file (without extension)
+     * @returns The full target path where the file should be placed
      */
-    async getStatus(): Promise<{
-        copilotDir: string;
-        dirExists: boolean;
-        syncedFiles: number;
-        files: string[];
-    }> {
+    getTargetPath(fileType: CopilotFileType, fileName: string): string {
+        const promptsDir = this.getCopilotPromptsDirectory();
+        const targetFileName = getTargetFileName(fileName, fileType);
+        return path.join(promptsDir, targetFileName);
+    }
+
+    /**
+     * Get status of Copilot integration
+     * Implements IScopeService.getStatus
+     * 
+     * Note: Returns both `baseDirectory` (IScopeService) and `copilotDir` (backward compatibility)
+     */
+    async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
         const promptsDir = this.getCopilotPromptsDirectory();
         const status = {
-            copilotDir: promptsDir,
+            baseDirectory: promptsDir,
+            copilotDir: promptsDir, // Backward compatibility alias
             dirExists: fs.existsSync(promptsDir),
             syncedFiles: 0,
             files: [] as string[]
@@ -643,6 +657,7 @@ export class CopilotSyncService {
             this.logger.debug(`Created directory: ${dir}`);
         }
     }
+
 
     /**
      * Get the Copilot skills directory
@@ -852,3 +867,6 @@ export class CopilotSyncService {
         return status;
     }
 }
+
+// Re-export CopilotFileType for convenience
+export { CopilotFileType } from '../utils/copilotFileTypeUtils';
