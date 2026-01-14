@@ -149,6 +149,25 @@ export class SchemaValidator {
     }
 
     /**
+     * Validate a hub configuration against the schema
+     * @param data Hub configuration data
+     * @param options Validation options
+     * @returns Validation result
+     */
+    async validateHub(
+        data: any,
+        options: ValidationOptions = {}
+    ): Promise<ValidationResult> {
+        const schemaPath = path.join(this.extensionPath, 'schemas', 'hub-config.schema.json');
+        const result = await this.validate(data, schemaPath, options);
+        
+        // Add hub-specific warnings
+        result.warnings.push(...this.generateHubWarnings(data));
+        
+        return result;
+    }
+
+    /**
      * Format AJV errors into user-friendly messages
      * @param errors AJV error objects
      * @returns Formatted error messages
@@ -239,6 +258,45 @@ export class SchemaValidator {
         // Warn about missing author
         if (!data.author) {
             warnings.push('No author specified. Consider adding author information.');
+        }
+
+        return warnings;
+    }
+
+    /**
+     * Generate hub-specific warnings for best practices
+     * @param data Hub configuration data
+     * @returns Warning messages
+     */
+    private generateHubWarnings(data: any): string[] {
+        const warnings: string[] = [];
+
+        // Warn about disabled sources with high priority
+        if (data.sources && Array.isArray(data.sources)) {
+            const disabledHighPriority = data.sources.filter((s: any) => !s.enabled && s.priority >= 80);
+            if (disabledHighPriority.length > 0) {
+                const ids = disabledHighPriority.map((s: any) => s.id).join(', ');
+                warnings.push(`High priority sources are disabled: ${ids}. Consider lowering priority or enabling them.`);
+            }
+        }
+
+        // Check metadata description length
+        if (data.metadata?.description && data.metadata.description.length > 500) {
+            warnings.push('Hub description is very long (>500 characters). Consider keeping it concise.');
+        }
+
+        // Warn if multiple profiles are marked as active
+        if (data.profiles && Array.isArray(data.profiles)) {
+            const activeProfiles = data.profiles.filter((p: any) => p.active);
+            if (activeProfiles.length > 1) {
+                const ids = activeProfiles.map((p: any) => p.id).join(', ');
+                warnings.push(`Multiple profiles are marked as active: ${ids}. Only one profile should be active at a time.`);
+            }
+        }
+
+        // Warn about long hub names
+        if (data.metadata?.name && data.metadata.name.length > 100) {
+            warnings.push('Hub name is at maximum length (100 characters). Consider shortening for better display.');
         }
 
         return warnings;
