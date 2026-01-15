@@ -281,5 +281,46 @@ items: [unclosed bracket
             assert.ok(paths.includes('skills/my-skill/assets/image.png'), 'Should include skill assets');
             assert.ok(paths.includes('prompts/simple.prompt.md'), 'Should include regular prompt');
         });
+
+        test('enables detection of changes to skill subdirectory files', function() {
+            // This test verifies that detect-affected-collections.js can find
+            // collections affected by changes to files in skill subdirectories
+            // (e.g., skills/my-skill/scripts/helper.py)
+            project = createTestProject('wf-collections-', { copyScripts: false, initGit: false });
+            const { root } = project;
+
+            // Create skill directory structure matching ospo.skills-collection
+            writeFile(root, 'skills/github-issues-triage/SKILL.md', '# GitHub Issues Triage');
+            writeFile(root, 'skills/github-issues-triage/scripts/triage_issues.py', 'print("triage")');
+            writeFile(root, 'skills/github-issues-triage/assets/report.template.md', '# Report');
+            writeFile(root, 'skills/github-issues-triage/references/EXAMPLES.md', '# Examples');
+
+            const collection = {
+                id: 'amadeus-ospo',
+                name: 'Amadeus OSPO',
+                items: [
+                    { path: 'skills/github-issues-triage/SKILL.md', kind: 'skill' },
+                ]
+            };
+
+            const resolvedPaths = collectionsLib.resolveCollectionItemPaths(root, collection);
+            const itemPathsSet = new Set(resolvedPaths);
+
+            // Simulate detect-affected-collections.js logic:
+            // Check if a changed file in a skill subdirectory is detected
+            const changedFile = 'skills/github-issues-triage/scripts/triage_issues.py';
+            const isDetected = itemPathsSet.has(changedFile);
+
+            assert.ok(isDetected, 
+                `Change to ${changedFile} should be detected as affecting the collection. ` +
+                `Resolved paths: ${JSON.stringify(resolvedPaths)}`
+            );
+
+            // Also verify other subdirectory files are included
+            assert.ok(itemPathsSet.has('skills/github-issues-triage/assets/report.template.md'),
+                'Should include assets files');
+            assert.ok(itemPathsSet.has('skills/github-issues-triage/references/EXAMPLES.md'),
+                'Should include references files');
+        });
     });
 });
