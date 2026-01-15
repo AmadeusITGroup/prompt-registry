@@ -772,6 +772,9 @@
     "yauzl": "^2.10.0"
   },
   "extensionDependencies": [],
+  "overrides": {
+    "undici": "^7.18.2"
+  },
   "nyc": {
     "extends": "@istanbuljs/nyc-config-typescript",
     "all": true,
