@@ -8,6 +8,7 @@ on:
       - "*.json"
       - "*.js"
       - "*.ts"
+      - "!lib/**"
   pull_request:
     branches: [main, develop]
     paths:
@@ -15,6 +16,7 @@ on:
       - "*.json"
       - "*.js"
       - "*.ts"
+      - "!lib/**"
   workflow_dispatch:
 
 # Security: Restrict permissions to minimum necessary (SLSA Level 2)
