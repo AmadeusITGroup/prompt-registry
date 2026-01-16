@@ -33,7 +33,7 @@ graph TD
     subgraph SVC["🔧 Service Layer"]
         C1[RegistryManager<br/>Central Orchestrator]
         C2[BundleInstaller<br/>Download & Install]
-        C3[CopilotSyncService<br/>Sync to Copilot]
+        C3[UserScopeService<br/>Sync to Copilot]
         C4[UpdateService<br/>Auto Updates]
         C5[McpServerManager<br/>MCP Integration]
     end
@@ -63,7 +63,7 @@ graph TD
 |-----------|---------------|
 | **RegistryManager** | Orchestrates sources, bundles, installations |
 | **BundleInstaller** | Extraction, validation, installation, MCP integration |
-| **CopilotSyncService** | Syncs bundles to Copilot directories |
+| **UserScopeService** | Syncs bundles to Copilot directories |
 | **UpdateScheduler** | Manages timing of update checks |
 | **UpdateChecker** | Detects available updates |
 | **AutoUpdateService** | Background bundle updates with rollback |

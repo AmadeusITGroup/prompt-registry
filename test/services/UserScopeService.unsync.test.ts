@@ -4,14 +4,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as vscode from 'vscode';
-import { CopilotSyncService } from '../../src/services/CopilotSyncService';
+import { UserScopeService } from '../../src/services/UserScopeService';
 
-suite('CopilotSyncService - Unsync Bundle Fix', () => {
+suite('UserScopeService - Unsync Bundle Fix', () => {
     let tempDir: string;
     let bundlesDir: string;
     let copilotDir: string;
     let context: vscode.ExtensionContext;
-    let service: CopilotSyncService;
+    let service: UserScopeService;
 
     setup(() => {
         // Create temp directory structure
@@ -36,7 +36,7 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
             subscriptions: [],
         } as any;
 
-        service = new CopilotSyncService(context);
+        service = new UserScopeService(context);
     });
 
     teardown(() => {

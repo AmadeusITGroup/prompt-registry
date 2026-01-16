@@ -1,5 +1,5 @@
 /**
- * CopilotSyncService Unit Tests
+ * UserScopeService Unit Tests
  * Tests cross-platform path resolution and sync functionality
  * 
  * Note: Most tests require VS Code integration test environment
@@ -9,10 +9,10 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
-import { CopilotSyncService } from '../../src/services/CopilotSyncService';
+import { UserScopeService } from '../../src/services/UserScopeService';
 
-suite('CopilotSyncService', () => {
-    let service: CopilotSyncService;
+suite('UserScopeService', () => {
+    let service: UserScopeService;
     let mockContext: any;
     let tempDir: string;
 
@@ -34,7 +34,7 @@ suite('CopilotSyncService', () => {
             fs.mkdirSync(tempDir, { recursive: true });
         }
 
-        service = new CopilotSyncService(mockContext);
+        service = new UserScopeService(mockContext);
     });
 
     teardown(() => {
@@ -105,7 +105,7 @@ suite('CopilotSyncService', () => {
                     subscriptions: [],
                 } as any;
                 
-                const testService = new CopilotSyncService(testContext);
+                const testService = new UserScopeService(testContext);
                 const status = await testService.getStatus();
                 
                 assert.strictEqual(status.copilotDir, expectedPath, `Should resolve correct path for ${name}`);
@@ -124,7 +124,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const winService = new CopilotSyncService(winContext);
+            const winService = new UserScopeService(winContext);
             const status = await winService.getStatus();
             
             const expectedPath = path.join(winBasePath, 'prompts');
@@ -154,7 +154,7 @@ suite('CopilotSyncService', () => {
                     subscriptions: [],
                 } as any;
                 
-                const testService = new CopilotSyncService(testContext);
+                const testService = new UserScopeService(testContext);
                 const status = await testService.getStatus();
                 
                 assert.strictEqual(status.copilotDir, expectedPath);
@@ -172,7 +172,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const winProfileService = new CopilotSyncService(winProfileContext);
+            const winProfileService = new UserScopeService(winProfileContext);
             const status = await winProfileService.getStatus();
             
             const expectedPath = path.join(winProfileBase, 'prompts');
@@ -196,7 +196,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const winService = new CopilotSyncService(winContext);
+            const winService = new UserScopeService(winContext);
             
             // The key test: should not throw "Invalid regular expression" or "Unterminated character class"
             const status = await winService.getStatus();
@@ -223,7 +223,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const winProfileService = new CopilotSyncService(winProfileContext);
+            const winProfileService = new UserScopeService(winProfileContext);
             
             // The key test: should not throw regex errors
             const status = await winProfileService.getStatus();
@@ -251,7 +251,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const customService = new CopilotSyncService(customContext);
+            const customService = new UserScopeService(customContext);
             
             // The key test: should not throw regex errors
             const status = await customService.getStatus();
@@ -279,7 +279,7 @@ suite('CopilotSyncService', () => {
                 subscriptions: [],
             } as any;
             
-            const testService = new CopilotSyncService(testContext);
+            const testService = new UserScopeService(testContext);
             
             // Should not throw regex errors regardless of platform
             try {
@@ -502,7 +502,7 @@ prompts:
                 subscriptions: [],
             } as any;
 
-            const testService = new CopilotSyncService(mockContext);
+            const testService = new UserScopeService(mockContext);
             const status = await testService.getStatus();
 
             const expectedPath = path.join(userPath, 'profiles', profileId, 'prompts');
@@ -521,7 +521,7 @@ prompts:
                 subscriptions: [],
             } as any;
 
-            const testService = new CopilotSyncService(mockContext);
+            const testService = new UserScopeService(mockContext);
             const status = await testService.getStatus();
 
             const expectedPath = path.join(customDataDir, 'profiles', profileId, 'prompts');
@@ -539,7 +539,7 @@ prompts:
                 subscriptions: [],
             } as any;
 
-            const testService = new CopilotSyncService(mockContext);
+            const testService = new UserScopeService(mockContext);
             const status = await testService.getStatus();
 
             const expectedPath = path.join(customDataDir, 'prompts');
@@ -569,7 +569,7 @@ prompts:
             // Touch the profile's globalStorage to make it "recently active"
             fs.utimesSync(profileGlobalStorage, new Date(), new Date());
             
-            const globalService = new CopilotSyncService(globalExtContext);
+            const globalService = new UserScopeService(globalExtContext);
             const status = await globalService.getStatus();
             
             // Should detect the active profile using filesystem heuristic
@@ -635,7 +635,7 @@ prompts:
                 }
             }));
             
-            const testService = new CopilotSyncService(globalExtContext);
+            const testService = new UserScopeService(globalExtContext);
             const status = await testService.getStatus();
             
             // Should use storage.json (new profile) not filesystem heuristic (old profile)
@@ -665,7 +665,7 @@ prompts:
             (global as any).vscode.env = { remoteName: 'wsl', appName: 'Visual Studio Code' };
 
             try {
-                const wslService = new CopilotSyncService(wslMountContext);
+                const wslService = new UserScopeService(wslMountContext);
                 const status = await wslService.getStatus();
                 
                 assert.ok(
@@ -704,7 +704,7 @@ prompts:
             (global as any).vscode.env = { remoteName: 'wsl', appName: 'Visual Studio Code' };
 
             try {
-                const wslService = new CopilotSyncService(wslDriveContext);
+                const wslService = new UserScopeService(wslDriveContext);
                 const status = await wslService.getStatus();
                 
                 assert.ok(
@@ -738,7 +738,7 @@ prompts:
             (global as any).vscode.env = { remoteName: 'wsl', appName: 'Visual Studio Code Insiders' };
 
             try {
-                const wslService = new CopilotSyncService(wslInsidersContext);
+                const wslService = new UserScopeService(wslInsidersContext);
                 const status = await wslService.getStatus();
                 
                 assert.ok(
@@ -772,7 +772,7 @@ prompts:
             (global as any).vscode.env = { remoteName: 'wsl', appName: 'Visual Studio Code' };
 
             try {
-                const wslService = new CopilotSyncService(wslProfileContext);
+                const wslService = new UserScopeService(wslProfileContext);
                 const status = await wslService.getStatus();
                 
                 assert.ok(
@@ -806,7 +806,7 @@ prompts:
             (global as any).vscode.env = { remoteName: undefined, appName: 'Visual Studio Code' };
 
             try {
-                const localService = new CopilotSyncService(localContext);
+                const localService = new UserScopeService(localContext);
                 const status = await localService.getStatus();
                 
                 assert.ok(
@@ -840,7 +840,7 @@ prompts:
             (global as any).vscode.env = { remoteName: 'ssh-remote', appName: 'Visual Studio Code' };
 
             try {
-                const sshService = new CopilotSyncService(sshContext);
+                const sshService = new UserScopeService(sshContext);
                 const status = await sshService.getStatus();
                 
                 // SSH should use existing logic, not WSL-specific handling

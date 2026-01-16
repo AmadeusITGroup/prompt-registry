@@ -14,6 +14,7 @@ import {
     InstalledBundle,
     Bundle,
     RegistrySettings,
+    InstallationScope,
 } from '../types/registry';
 
 const readFile = promisify(fs.readFile);
@@ -87,6 +88,13 @@ export class RegistryStorage {
             profiles: path.join(storagePath, 'profiles'),
             logs: path.join(storagePath, 'logs'),
         };
+    }
+
+    /**
+     * Get the extension context
+     */
+    getContext(): vscode.ExtensionContext {
+        return this.context;
     }
 
     /**
@@ -397,7 +405,12 @@ export class RegistryStorage {
     /**
      * Remove installation record
      */
-    async removeInstallation(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
+    async removeInstallation(bundleId: string, scope: InstallationScope): Promise<void> {
+        // Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
+        // See: src/services/LockfileManager.ts - remove() method
+        if (scope === 'repository') {
+            return;
+        }
         const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
         const sanitizedId = this.sanitizeFilename(bundleId);
         const filepath = path.join(scopePath, `${sanitizedId}.json`);
@@ -410,10 +423,11 @@ export class RegistryStorage {
     /**
      * Get all installed bundles
      */
-    async getInstalledBundles(scope?: 'user' | 'workspace'): Promise<InstalledBundle[]> {
+    async getInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
         const bundles: InstalledBundle[] = [];
         
-        const scopes = scope ? [scope] : ['user', 'workspace'];
+        // Get the list of scopes to query
+        const scopes = this.getSupportedScopes(scope);
         
         for (const s of scopes) {
             const scopePath = s === 'user' ? this.paths.userInstalled : this.paths.installed;
@@ -441,9 +455,34 @@ export class RegistryStorage {
     }
 
     /**
+     * Get the list of supported scopes for querying installed bundles.
+     * Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
+     * See: src/services/LockfileManager.ts - read() method for repository bundle queries
+     * 
+     * @param scope - Optional scope to filter by
+     * @returns Array of supported scopes to query
+     */
+    private getSupportedScopes(scope?: InstallationScope): Array<'user' | 'workspace'> {
+        // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+        if (scope === 'repository') {
+            return [];
+        }
+        if (scope === 'user' || scope === 'workspace') {
+            return [scope];
+        }
+        // No scope specified - return all supported scopes
+        return ['user', 'workspace'];
+    }
+
+    /**
      * Get installed bundle metadata
      */
-    async getInstalledBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<InstalledBundle | undefined> {
+    async getInstalledBundle(bundleId: string, scope: InstallationScope): Promise<InstalledBundle | undefined> {
+        // Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
+        // See: src/services/LockfileManager.ts - read() method for repository bundle queries
+        if (scope === 'repository') {
+            return undefined;
+        }
         try {
             const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
             const sanitizedId = this.sanitizeFilename(bundleId);

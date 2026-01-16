@@ -2,6 +2,101 @@
 
 This guide provides patterns and best practices for writing End-to-End tests in the Prompt Registry extension.
 
+---
+
+## 🚨 CRITICAL: NEVER Reimplement Production Code in E2E Tests 🚨
+
+**E2E tests must invoke the actual code path, NOT duplicate it.**
+
+### ❌ WRONG: Duplicating Production Code Logic
+
+```typescript
+// This is NOT an E2E test - it reimplements BundleScopeCommands.moveToUser()!
+test('should migrate bundle from repository to user scope', async () => {
+    const scopeConflictResolver = new ScopeConflictResolver(storage);
+    
+    // ❌ WRONG: This duplicates the production code logic
+    const result = await scopeConflictResolver.migrateBundle(
+        bundleId,
+        'repository',
+        'user',
+        async () => {
+            await registryManager.uninstallBundle(bundleId, 'repository');
+        },
+        async (bundle, scope) => {
+            await registryManager.installBundle(bundleId, { scope, version: bundle.version });
+        }
+    );
+    
+    assert.ok(result.success);
+});
+```
+
+**Why this is wrong:**
+1. If production code has a bug (e.g., wrong scope parameter), the test has the same bug
+2. If production code changes, the test doesn't catch regressions
+3. The test doesn't verify the actual command wiring in `extension.ts`
+4. You're testing your test code, not the production code
+
+### ✅ CORRECT: Test Through Actual Entry Points
+
+**Option 1: VS Code Extension Tests** (runs in real VS Code via `@vscode/test-electron`)
+
+Location: `test/suite/*.test.ts`
+
+```typescript
+// This runs in a real VS Code instance where commands are registered
+test('should migrate bundle via moveToUser command', async () => {
+    // Setup: Install bundle at repository scope
+    await vscode.commands.executeCommand('promptRegistry.installBundle', bundleId, {
+        scope: 'repository', version: '1.0.0'
+    });
+    
+    // Act: Execute the actual VS Code command (the real entry point!)
+    await vscode.commands.executeCommand('promptRegistry.moveToUser', bundleId);
+    
+    // Assert: Verify end state
+    const userBundles = await storage.getInstalledBundles('user');
+    assert.ok(userBundles.some(b => b.bundleId === bundleId));
+});
+```
+
+Run with: `node test/runExtensionTests.js`
+
+**Option 2: Test Through Command Handler Class** (when VS Code host isn't available)
+
+```typescript
+// Create the actual command handler (like extension.ts does)
+const bundleScopeCommands = new BundleScopeCommands(
+    registryManager,
+    scopeConflictResolver,
+    repositoryScopeService
+);
+
+// Call the actual method that the VS Code command invokes
+await bundleScopeCommands.moveToUser(bundleId);
+
+// Assert on end state, NOT on how it was achieved
+const userBundles = await storage.getInstalledBundles('user');
+assert.ok(userBundles.some(b => b.bundleId === bundleId));
+```
+
+### Test Infrastructure Overview
+
+| Test Type | Location | Runs In | Use For |
+|-----------|----------|---------|---------|
+| Unit Tests | `test/**/*.test.ts` | Node.js with mocked VS Code | Testing individual classes/methods |
+| Integration Tests | `test/e2e/*.test.ts` | Node.js with mocked VS Code | Testing multi-component workflows |
+| VS Code Extension Tests | `test/suite/*.test.ts` | Real VS Code instance | Testing actual commands and UI |
+
+### When to Use Each
+
+- **Unit tests**: Testing a single class's behavior with mocked dependencies
+- **Integration tests** (`test/e2e/`): Testing workflows across multiple real components (but mocked VS Code)
+- **VS Code extension tests** (`test/suite/`): Testing actual command registration and execution in real VS Code
+
+---
+
 ## Test Structure
 
 E2E tests validate complete workflows across multiple components. Each test file should focus on a specific feature or workflow.
@@ -20,6 +115,12 @@ Use the `E2ETestContext` helper for isolated test environments:
 
 ```typescript
 import { createE2ETestContext, E2ETestContext, generateTestId } from '../helpers/e2eTestHelpers';
+import {
+    setupReleaseMocks,
+    createMockGitHubSource,
+    cleanupReleaseMocks,
+    RepositoryTestConfig
+} from '../helpers/repositoryFixtureHelpers';
 
 suite('E2E: My Feature Tests', () => {
     let testContext: E2ETestContext;
@@ -34,12 +135,50 @@ suite('E2E: My Feature Tests', () => {
     teardown(async function() {
         this.timeout(10000);
         await testContext.cleanup();
-        nock.cleanAll();
+        cleanupReleaseMocks();
     });
 });
 ```
 
+## Shared Repository Fixtures
+
+Use the shared repository fixture helpers for GitHub release mocking:
+
+```typescript
+import {
+    setupReleaseMocks,
+    createBundleZip,
+    createDeploymentManifest,
+    createMockGitHubSource,
+    cleanupReleaseMocks,
+    RepositoryTestConfig,
+    ReleaseConfig
+} from '../helpers/repositoryFixtureHelpers';
+
+// Configure test repository
+const config: RepositoryTestConfig = {
+    owner: 'test-owner',
+    repo: 'test-repo',
+    manifestId: 'test-bundle'
+};
+
+// Set up releases
+const releases: ReleaseConfig[] = [
+    { tag: 'v1.0.0', version: '1.0.0', content: 'initial' },
+    { tag: 'v2.0.0', version: '2.0.0', content: 'updated' }
+];
+
+setupReleaseMocks(config, releases);
+
+// Create matching source
+const source = createMockGitHubSource('test-source', config);
+```
+
+This replaces inline mock setup and ensures consistent test fixtures across E2E tests.
+
 ## HTTP Mocking with Nock
+
+For custom HTTP mocking beyond the shared fixtures, use nock directly:
 
 ### Basic Pattern
 

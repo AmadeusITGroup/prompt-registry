@@ -127,6 +127,37 @@ nock('https://api.github.com')
     .reply(200, require('./fixtures/github/releases-response.json'));
 ```
 
+### With Repository Fixture Helpers (E2E Tests)
+
+For E2E tests involving GitHub releases, use the shared repository fixture helpers:
+
+```typescript
+import {
+    setupReleaseMocks,
+    createMockGitHubSource,
+    cleanupReleaseMocks
+} from '../helpers/repositoryFixtureHelpers';
+
+// Set up complete GitHub release mocks
+setupReleaseMocks(
+    { owner: 'test-owner', repo: 'test-repo', manifestId: 'test-bundle' },
+    [
+        { tag: 'v1.0.0', version: '1.0.0', content: 'initial' },
+        { tag: 'v2.0.0', version: '2.0.0', content: 'updated' }
+    ]
+);
+
+// Create matching source
+const source = createMockGitHubSource('test-source', {
+    owner: 'test-owner',
+    repo: 'test-repo',
+    manifestId: 'test-bundle'
+});
+
+// Clean up after test
+cleanupReleaseMocks();
+```
+
 ## Creating New Fixtures
 
 ### Local Bundle Structure

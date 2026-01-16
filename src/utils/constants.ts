@@ -4,6 +4,24 @@
  */
 
 /**
+ * Installation scope constants
+ */
+export const INSTALLATION_SCOPES = {
+    USER: 'user',
+    WORKSPACE: 'workspace',
+    REPOSITORY: 'repository'
+} as const;
+
+/**
+ * Modification warning dialog result constants
+ */
+export const WARNING_RESULTS = {
+    CONTRIBUTE: 'contribute',
+    OVERRIDE: 'override',
+    CANCEL: 'cancel'
+} as const;
+
+/**
  * Concurrency and batch processing constants
  */
 export const CONCURRENCY_CONSTANTS = {

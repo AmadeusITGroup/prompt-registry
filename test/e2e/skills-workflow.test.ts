@@ -349,7 +349,7 @@ items:
         });
     });
 
-    suite('CopilotSyncService with Skills', () => {
+    suite('UserScopeService with Skills', () => {
         test('Sync recognizes skill files by pattern', async function() {
             this.timeout(30000);
             

@@ -15,6 +15,65 @@ This document lists all VS Code commands provided by the Prompt Registry extensi
 | `promptRegistry.enableAutoUpdate` | Enable Auto-Update | Enable automatic updates for a bundle |
 | `promptRegistry.disableAutoUpdate` | Disable Auto-Update | Disable automatic updates for a bundle |
 
+## Scope Management
+
+Commands for managing bundle installation scope. These are available via context menu on installed bundles in the Registry Explorer.
+
+| Command | Title | Description |
+|---------|-------|-------------|
+| `promptRegistry.moveToRepositoryCommit` | Move to Repository (Commit) | Move a user-scoped bundle to repository scope, tracked in Git |
+| `promptRegistry.moveToRepositoryLocalOnly` | Move to Repository (Local Only) | Move a user-scoped bundle to repository scope, excluded from Git |
+| `promptRegistry.moveToUser` | Move to User | Move a repository-scoped bundle to user scope |
+| `promptRegistry.switchToLocalOnly` | Switch to Local Only | Change a repository bundle from commit to local-only mode |
+| `promptRegistry.switchToCommit` | Switch to Commit | Change a repository bundle from local-only to commit mode |
+| `promptRegistry.cleanupStaleLockfileEntries` | Clean Up Stale Repository Bundles | Remove lockfile entries where files no longer exist |
+
+### Move to Repository
+
+Migrates a bundle from user scope to repository scope.
+
+**Commands:**
+- `promptRegistry.moveToRepositoryCommit` — Files tracked in version control
+- `promptRegistry.moveToRepositoryLocalOnly` — Files excluded via `.git/info/exclude`
+
+**Parameters:**
+- `bundleId` — The ID of the bundle to move
+
+**Requirements:** A workspace must be open.
+
+### Move to User
+
+Migrates a bundle from repository scope to user scope.
+
+**Command:** `promptRegistry.moveToUser`
+
+**Parameters:**
+- `bundleId` — The ID of the bundle to move
+
+The bundle becomes available across all workspaces after migration.
+
+### Switch Commit Mode
+
+Changes how a repository-scoped bundle interacts with Git.
+
+**Commands:**
+- `promptRegistry.switchToLocalOnly` — Exclude files from Git (adds to `.git/info/exclude`)
+- `promptRegistry.switchToCommit` — Track files in Git (removes from `.git/info/exclude`)
+
+**Parameters:**
+- `bundleId` — The ID of the bundle
+
+### Clean Up Stale Repository Bundles
+
+Removes lockfile entries where the corresponding files no longer exist in the repository.
+
+**Command:** `promptRegistry.cleanupStaleLockfileEntries`
+
+This is useful when bundle files have been manually deleted but the lockfile still references them. The command:
+1. Scans the lockfile for bundles with missing files
+2. Shows a confirmation dialog with the count of stale entries
+3. Removes confirmed stale entries from the lockfile
+
 ## Version Management
 
 | Command | Title | Description |

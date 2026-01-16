@@ -70,6 +70,22 @@ module.exports = {
     showWarningMessage: () => Promise.resolve(),
     showErrorMessage: () => Promise.resolve(),
     showQuickPick: () => Promise.resolve(),
+    createQuickPick: () => {
+      const quickPick = {
+        items: [],
+        selectedItems: [],
+        title: '',
+        placeholder: '',
+        ignoreFocusOut: false,
+        onDidChangeSelection: () => ({ dispose: () => {} }),
+        onDidAccept: () => ({ dispose: () => {} }),
+        onDidHide: () => ({ dispose: () => {} }),
+        show: () => {},
+        hide: () => {},
+        dispose: () => {}
+      };
+      return quickPick;
+    },
     createOutputChannel: (name) => ({
       appendLine: () => undefined,
       show: () => undefined,
@@ -126,7 +142,8 @@ module.exports = {
     machineId: 'mock-machine-id',
     sessionId: 'mock-session-id',
     remoteName: undefined,
-    shell: '/bin/bash'
+    shell: '/bin/bash',
+    openExternal: () => Promise.resolve(true)
   },
   authentication: {
     getSession: () => Promise.resolve(undefined)

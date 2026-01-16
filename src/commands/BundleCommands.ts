@@ -3,11 +3,15 @@
  * Orchestrates bundle operations through specialized command handlers
  */
 
+import * as vscode from 'vscode';
 import { RegistryManager } from '../services/RegistryManager';
 import { BundleInstallationCommands } from './BundleInstallationCommands';
 import { BundleUpdateCommands } from './BundleUpdateCommands';
 import { BundleBrowsingCommands } from './BundleBrowsingCommands';
 import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
+import { LockfileManager } from '../services/LockfileManager';
+import { getWorkspaceRoot } from '../utils/scopeSelectionUI';
+import { Logger } from '../utils/logger';
 
 /**
  * Bundle Commands Handler
@@ -17,6 +21,7 @@ export class BundleCommands {
     private installationCommands: BundleInstallationCommands;
     private updateCommands: BundleUpdateCommands;
     private browsingCommands: BundleBrowsingCommands;
+    private logger: Logger;
 
     constructor(registryManager: RegistryManager) {
         this.installationCommands = new BundleInstallationCommands(registryManager);
@@ -26,6 +31,7 @@ export class BundleCommands {
         this.updateCommands = new BundleUpdateCommands(registryManager, bundleNotifications);
         
         this.browsingCommands = new BundleBrowsingCommands(registryManager);
+        this.logger = Logger.getInstance();
     }
 
     // ===== Installation Commands =====
@@ -126,5 +132,69 @@ export class BundleCommands {
      */
     async listInstalled(): Promise<void> {
         return await this.browsingCommands.listInstalled();
+    }
+
+    // ===== Cleanup Commands =====
+
+    /**
+     * Clean up stale lockfile entries where files no longer exist.
+     * Gets bundles with filesMissing flag, shows confirmation dialog,
+     * removes stale entries from lockfile, and shows success/info message.
+     * 
+     * Requirements covered:
+     * - 3.4: Provide command to clean up stale lockfile entries
+     */
+    async cleanupStaleLockfileEntries(): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        
+        if (!workspaceRoot) {
+            vscode.window.showWarningMessage('No workspace open. Please open a workspace to clean up stale repository bundles.');
+            return;
+        }
+
+        try {
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            const bundles = await lockfileManager.getInstalledBundles();
+            const staleBundles = bundles.filter(b => b.filesMissing);
+
+            if (staleBundles.length === 0) {
+                vscode.window.showInformationMessage('No stale repository bundle entries found.');
+                return;
+            }
+
+            // Show confirmation dialog with count
+            const bundleList = staleBundles.map(b => `• ${b.bundleId}`).join('\n');
+            const confirm = await vscode.window.showWarningMessage(
+                `Found ${staleBundles.length} stale bundle(s) with missing files:\n\n${bundleList}\n\nRemove these entries from the lockfile?`,
+                { modal: true },
+                'Remove', 'Cancel'
+            );
+
+            if (confirm !== 'Remove') {
+                return;
+            }
+
+            // Remove stale entries from lockfile
+            let removedCount = 0;
+            for (const bundle of staleBundles) {
+                try {
+                    await lockfileManager.remove(bundle.bundleId);
+                    removedCount++;
+                    this.logger.info(`Removed stale lockfile entry: ${bundle.bundleId}`);
+                } catch (error) {
+                    this.logger.error(`Failed to remove stale entry ${bundle.bundleId}:`, error instanceof Error ? error : undefined);
+                }
+            }
+
+            // Show success message
+            if (removedCount === staleBundles.length) {
+                vscode.window.showInformationMessage(`Successfully removed ${removedCount} stale bundle entries from the lockfile.`);
+            } else {
+                vscode.window.showWarningMessage(`Removed ${removedCount} of ${staleBundles.length} stale entries. Some entries could not be removed.`);
+            }
+        } catch (error) {
+            this.logger.error('Failed to clean up stale lockfile entries:', error instanceof Error ? error : undefined);
+            vscode.window.showErrorMessage(`Failed to clean up stale entries: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 }

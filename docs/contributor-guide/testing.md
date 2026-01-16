@@ -91,9 +91,26 @@ import {
     ErrorCheckers
 } from '../helpers/propertyTestHelpers';
 
+import {
+    LockfileBuilder,
+    createMockLockfile,
+    LockfileGenerators
+} from '../helpers/lockfileTestHelpers';
+
+import {
+    setupReleaseMocks,
+    createBundleZip,
+    createMockGitHubSource
+} from '../helpers/repositoryFixtureHelpers';
+
 // Create test bundles
 const bundle = BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build();
 const installed = createMockInstalledBundle('bundle-id', '1.0.0');
+
+// Create test lockfiles
+const lockfile = new LockfileBuilder()
+    .withBundle('bundle-id', { version: '1.0.0', sourceId: 'source-1' })
+    .build();
 ```
 
 ### Property-Based Tests

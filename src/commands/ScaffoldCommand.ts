@@ -228,7 +228,7 @@ export class ScaffoldCommand {
         try {
             // Step 1: Select scaffold type
             const scaffoldType = await ScaffoldCommand.promptForScaffoldType();
-            if (!scaffoldType) return;
+            if (!scaffoldType) {return;}
 
             // Step 2: Handle skill creation in existing project
             if (scaffoldType.value === ScaffoldType.Skill && await ScaffoldCommand.handleSkillInExistingProject()) {
@@ -237,11 +237,11 @@ export class ScaffoldCommand {
 
             // Step 3: Select target directory
             const targetPath = await ScaffoldCommand.promptForTargetDirectory(scaffoldType.label);
-            if (!targetPath) return;
+            if (!targetPath) {return;}
 
             // Step 4: Collect project details
             const options = await ScaffoldCommand.promptForProjectDetails(scaffoldType.value);
-            if (!options) return;
+            if (!options) {return;}
 
             // Step 5: Execute scaffold with progress
             await vscode.window.withProgress(
@@ -266,7 +266,7 @@ export class ScaffoldCommand {
      */
     private static async handleSkillInExistingProject(): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) return false;
+        if (!workspaceFolders || workspaceFolders.length === 0) {return false;}
 
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
         const skillWizard = new SkillWizard();
