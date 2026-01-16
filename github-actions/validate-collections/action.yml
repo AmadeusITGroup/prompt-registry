@@ -1,0 +1,5 @@
+name: 'Validate collections'
+description: 'Validate prompt registry collections'
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

@@ -803,5 +803,8 @@
     ],
     "report-dir": "coverage",
     "temp-dir": ".nyc_output"
-  }
+  },
+  "workspaces": [
+    "github-actions/*"
+  ]
 }
