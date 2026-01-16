@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Fill PR Template",
+  "description": "Automatically fills the pull request template and description based on the content of the pull request using the template found in the .github folder",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Review the changes in this pull request and fill out the pull request template found in the prompt-registry/.github folder. Generate a comprehensive PR description that includes: 1) A summary of what changed, 2) Why these changes were made, 3) Any relevant context or testing notes. Format the output according to the template structure. The content should be based on the diff between the current branch and the main branch and can look at the requirements defined in the spec folder. Give the result in PR-DESCRIPTION.md file so that I can easily copy paste it."
+  }
+}

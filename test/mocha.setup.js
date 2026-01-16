@@ -243,6 +243,10 @@ const vscode = {
     constructor(id) {
       this.id = id;
     }
+  },
+  extensions: {
+    getExtension: () => undefined,
+    all: []
   }
 };
 

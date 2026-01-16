@@ -48,9 +48,8 @@ export interface TestProject {
     cleanup: () => void;
 }
 
-// Path to the scaffolded scripts and schemas in templates
+// Path to the scaffolded scripts in templates
 const TEMPLATE_SCRIPTS_DIR = path.resolve(__dirname, '../../templates/scaffolds/github/scripts');
-const TEMPLATE_SCHEMAS_DIR = path.resolve(__dirname, '../../templates/scaffolds/github/schemas');
 
 /**
  * Run a command synchronously
@@ -199,16 +198,12 @@ export function makeMinimalPackageJson(root: string): void {
 }
 
 /**
- * Copy scaffold scripts and schemas to a project directory
+ * Copy scaffold scripts to a project directory
  * Also symlinks node_modules so scripts can find their dependencies
  */
 export function copyScriptsToProject(root: string): string {
     const scriptsDir = path.join(root, 'scripts');
     copyDir(TEMPLATE_SCRIPTS_DIR, scriptsDir);
-    
-    // Copy schemas directory (required by validate.js)
-    const schemasDir = path.join(root, 'schemas');
-    copyDir(TEMPLATE_SCHEMAS_DIR, schemasDir);
     
     // Symlink node_modules from prompt-registry so scripts can find dependencies
     // (archiver, semver, js-yaml, yauzl, etc.)

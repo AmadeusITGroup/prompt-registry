@@ -170,12 +170,6 @@
             "required": true,
             "variables": []
         },
-        "collection-schema": {
-            "path": "schemas/collection.schema.json",
-            "description": "JSON schema for collection validation",
-            "required": true,
-            "variables": []
-        },
         "pre-commit-hook": {
             "path": ".githooks/pre-commit",
             "description": "Pre-commit hook for validation",

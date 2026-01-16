@@ -27,10 +27,14 @@ suite('E2E: GitHub Bundle Update Tests', () => {
     let sandbox: sinon.SinonSandbox;
 
     // Test fixtures for deployment manifest
-    // Note: For GitHub bundles, the manifest ID must match the GitHubAdapter's bundle ID format
-    // which is: owner-repo-tag (e.g., test-owner-test-repo-v1.0.0, with the 'v' prefix from tag)
-    const createDeploymentManifest = (version: string, tag: string, content: string = 'initial') => ({
-        id: `test-owner-test-repo-${tag}`,
+    // Note: For GitHub bundles, the manifest ID is used in generateGitHubBundleId.
+    // If manifestId is provided, bundle ID becomes: owner-repo-manifestId-version
+    // If manifestId is NOT provided (undefined), bundle ID becomes: owner-repo-tag (legacy format)
+    // 
+    // For these tests, we use a simple collection ID to get predictable bundle IDs:
+    // manifestId = "test-collection" → bundleId = "test-owner-test-repo-test-collection-1.0.0"
+    const createDeploymentManifest = (version: string, _tag: string, content: string = 'initial') => ({
+        id: 'test-collection',
         name: `Test Bundle - ${content}`,
         version: version,
         description: `Test bundle for E2E tests - ${content}`,
@@ -48,13 +52,13 @@ Content: ${content}
 `;
 
     // Create a valid bundle ZIP file
-    // Note: For GitHub bundles, the manifest ID must match the GitHubAdapter's bundle ID format
-    // which is: owner-repo-tag (e.g., test-owner-test-repo-v1.0.0, with the 'v' prefix from tag)
-    const createBundleZip = (version: string, tag: string, content: string = 'initial'): Buffer => {
+    // Note: Bundle ID format with manifestId: owner-repo-manifestId-version
+    // e.g., test-owner-test-repo-test-collection-1.0.0
+    const createBundleZip = (version: string, _tag: string, content: string = 'initial'): Buffer => {
         const zip = new AdmZip();
         
-        // Add deployment manifest - ID must match the GitHubAdapter format: owner-repo-tag
-        const manifest = `id: test-owner-test-repo-${tag}
+        // Add deployment manifest with simple collection ID
+        const manifest = `id: test-collection
 name: Test Bundle - ${content}
 version: ${version}
 description: Test bundle for E2E tests - ${content}
@@ -248,8 +252,8 @@ license: MIT
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
             assert.ok(rawBundles.length >= 2, 'Should have both versions in cache');
             
-            // Find the v1.0.0 bundle by its full ID (includes tag)
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            // Find the v1.0.0 bundle by its full ID (owner-repo-manifestId-version format)
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             assert.ok(v1Bundle, 'Should find v1.0.0 bundle');
             
             // Step 4: Install v1.0.0 using the version option to get the specific version
@@ -280,7 +284,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             assert.ok(v1Bundle, 'Should find v1.0.0 bundle');
             
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
@@ -314,7 +318,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using full bundle ID with version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
             
             // Check for updates
@@ -348,7 +352,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using full bundle ID with version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             assert.ok(v1Bundle, 'Should find v1.0.0 bundle');
             
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
@@ -385,7 +389,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using full bundle ID with version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
             
@@ -424,7 +428,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using full bundle ID with version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
             
@@ -477,7 +481,7 @@ license: MIT
             
             // Get raw bundles from cache and install v1.0.0 using full bundle ID with version option
             const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
-            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-v1.0.0');
+            const v1Bundle = rawBundles.find(b => b.id === 'test-owner-test-repo-test-collection-1.0.0');
             
             await testContext.registryManager.installBundle(v1Bundle!.id, { scope: 'user', version: '1.0.0' });
             

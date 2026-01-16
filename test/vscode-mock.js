@@ -143,5 +143,9 @@ module.exports = {
     Notification: 15,
     Window: 10,
     SourceControl: 1
+  },
+  extensions: {
+    getExtension: () => undefined,
+    all: []
   }
 };

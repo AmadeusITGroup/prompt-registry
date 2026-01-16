@@ -120,9 +120,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
             '.vscode/settings.json',
             '.vscode/extensions.json',
             
-            // Schema files (Requirements 9.1)
-            'schemas/collection.schema.json',
-            
             // Pre-commit hook (Requirements 6.4)
             '.githooks/pre-commit',
         ];
@@ -141,7 +138,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
             '.github/actions/publish-common',
             '.vscode',
             '.githooks',
-            'schemas',
         ];
 
         await fc.assert(
@@ -221,7 +217,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
             'prompts/example.prompt.md',
             'instructions/example.instructions.md',
             'README.md',
-            'schemas/collection.schema.json',
         ];
 
         await fc.assert(

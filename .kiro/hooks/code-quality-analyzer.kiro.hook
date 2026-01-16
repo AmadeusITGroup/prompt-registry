@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "name": "Code Quality Analyzer",
+  "description": "Monitors source code files for changes and provides suggestions for code quality improvements, including identifying code smells, recommending design patterns, and highlighting best practices for better readability, maintainability, and performance.",
+  "version": "1",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the modified code in the changed files for potential improvements. Focus on:\n\n1. **Code Smells**: Identify any code smells such as duplicated code, long methods, large classes, excessive parameters, or inappropriate intimacy between classes.\n\n2. **Design Patterns**: Suggest applicable design patterns that could improve the code structure and maintainability.\n\n3. **Best Practices**: Check for adherence to best practices including:\n   - Proper error handling\n   - Appropriate use of async/await\n   - Type safety (for TypeScript)\n   - Naming conventions\n   - Code organization and modularity\n   - SOLID principles\n\n4. **Readability**: Suggest improvements for code clarity, including better variable names, clearer logic flow, and appropriate comments where needed.\n\n5. **Maintainability**: Identify areas that could be refactored to make the code easier to maintain and extend.\n\n6. **Performance**: Highlight potential performance optimizations without sacrificing readability.\n\n7. **Tests**: Make sure tests are passing and testing the expected behavior and not the implementation. Also compare if tests are really testing what they claim they are testing. If a spec is associated to the change confirm against the spec.\n\nProvide specific, actionable suggestions while ensuring the existing functionality remains intact. Prioritize the most impactful improvements."
+  },
+  "workspaceFolderName": "prompt-registry",
+  "shortName": "code-quality-analyzer"
+}

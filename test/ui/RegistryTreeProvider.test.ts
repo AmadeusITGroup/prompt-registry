@@ -31,6 +31,8 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         (registryManagerStub as any).onSourceAdded = sandbox.stub().returns({ dispose: () => {} });
         (registryManagerStub as any).onSourceRemoved = sandbox.stub().returns({ dispose: () => {} });
         (registryManagerStub as any).onSourceUpdated = sandbox.stub().returns({ dispose: () => {} });
+        (registryManagerStub as any).onSourceSynced = sandbox.stub().returns({ dispose: () => {} });
+        (registryManagerStub as any).onAutoUpdatePreferenceChanged = sandbox.stub().returns({ dispose: () => {} });
         (hubManagerStub as any).onHubImported = sandbox.stub().returns({ dispose: () => {} });
         (hubManagerStub as any).onHubDeleted = sandbox.stub().returns({ dispose: () => {} });
         (hubManagerStub as any).onHubSynced = sandbox.stub().returns({ dispose: () => {} });

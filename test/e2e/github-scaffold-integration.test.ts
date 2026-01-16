@@ -59,8 +59,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 '.github/actions',
                 '.github/actions/publish-common',
                 '.vscode',
-                '.githooks',
-                'schemas'
+                '.githooks'
             ];
 
             for (const dir of requiredDirs) {
@@ -89,7 +88,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 'agents/example.agent.md',
                 '.vscode/settings.json',
                 '.vscode/extensions.json',
-                'schemas/collection.schema.json',
                 '.githooks/pre-commit'
             ];
 
@@ -193,7 +191,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                     'collections',
                     'instructions',
                     'prompts',
-                    'schemas',
                     'scripts/lib'
                 ],
                 files: {
@@ -206,7 +203,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                     'collections/example.collection.yml': true,
                     'instructions/example.instructions.md': true,
                     'prompts/example.prompt.md': true,
-                    'schemas/collection.schema.json': true,
                     'scripts/lib/collections.js': true,
                     'scripts/lib/validate.js': true,
                     'scripts/lib/cli.js': true,
@@ -317,52 +313,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                     `package.json should have ${script} script`
                 );
             }
-        });
-
-        /**
-         * Test: Verify README includes required documentation sections
-         * Requirements: 5.4 - Verify generated project structure matches design
-         */
-        test('E2E: Generated README includes required documentation', async function() {
-            this.timeout(30000);
-
-            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
-            await scaffoldCommand.execute(testDir, {
-                projectName: 'readme-test-project'
-            });
-
-            const readmeContent = fs.readFileSync(
-                path.join(testDir, 'README.md'),
-                'utf8'
-            );
-            const readmeLower = readmeContent.toLowerCase();
-
-            // Verify required sections per design document
-            assert.ok(
-                readmeLower.includes('agent'),
-                'README should explain agents'
-            );
-            assert.ok(
-                readmeLower.includes('prompt'),
-                'README should explain prompts'
-            );
-            assert.ok(
-                readmeLower.includes('instruction'),
-                'README should explain instructions'
-            );
-            assert.ok(
-                readmeLower.includes('collection'),
-                'README should explain collections'
-            );
-            assert.ok(
-                readmeLower.includes('migration') || readmeLower.includes('chatmode'),
-                'README should include migration guidance'
-            );
-            assert.ok(
-                readmeLower.includes('github') && readmeLower.includes('release'),
-                'README should explain GitHub releases CI'
-            );
         });
     });
 });

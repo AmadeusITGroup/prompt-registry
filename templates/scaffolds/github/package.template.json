@@ -5,6 +5,10 @@
   "scripts": {
     "validate": "node scripts/validate-collections.js",
     "validate:verbose": "node scripts/validate-collections.js --verbose",
+    "build-collection-bundle": "node scripts/build-collection-bundle.js",
+    "publish-collections": "node scripts/publish-collections.js",
+    "list-collections": "node scripts/list-collections.js",
+    "compute-collection-version": "node scripts/compute-collection-version.js",
     "install-hooks": "git config core.hooksPath .githooks",
     "skill:validate": "node scripts/validate-skills.js",
     "skill:create": "node scripts/create-skill.js"
