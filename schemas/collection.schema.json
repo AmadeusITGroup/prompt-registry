@@ -102,12 +102,18 @@
               "type": "object",
               "description": "MCP server configuration",
               "required": [
-                "command"
+                "type"
               ],
               "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["stdio", "http"],
+                  "description": "Server connection type (stdio for local process, http for remote endpoint)",
+                  "default": "stdio"
+                },
                 "command": {
                   "type": "string",
-                  "description": "Command to start the MCP server",
+                  "description": "Command to start the MCP server (required for stdio type)",
                   "examples": [
                     "node",
                     "python",
@@ -116,7 +122,7 @@
                 },
                 "args": {
                   "type": "array",
-                  "description": "Arguments for the server command",
+                  "description": "Arguments for the server command (stdio only)",
                   "items": {
                     "type": "string"
                   },
@@ -132,6 +138,15 @@
                     ]
                   ]
                 },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "HTTP endpoint URL (required for http type)",
+                  "examples": [
+                    "http://localhost:3000/mcp",
+                    "https://api.example.com/mcp"
+                  ]
+                },
                 "env": {
                   "type": "object",
                   "description": "Environment variables for the server",
@@ -145,6 +160,32 @@
                   "default": false
                 }
               },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "stdio"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": ["command"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "http"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": ["url"]
+                  }
+                }
+              ],
               "additionalProperties": false
             }
           },
