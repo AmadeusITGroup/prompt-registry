@@ -38,26 +38,21 @@ run_step() {
 
 # 1. Clean previous builds
 run_step "Clean build artifacts" "npm run coverage:clean 2>/dev/null || true"
-
-# 2. Install dependencies
+# 2. Clean test-dist
+run_step "Clean test-dist" "rm -rf test-dist"
+# 3. Install dependencies
 run_step "Install dependencies" "npm ci --fund=false"
-
-# 3. Security audit
+# 4. Security audit
 run_step "Security audit (npm)" "npm audit --omit=dev --audit-level=moderate || echo 'Audit warnings found'"
-
-# 4. Lint code
+# 5. Lint code
 run_step "ESLint validation" "npm run lint"
-
-# 5. Type checking & compilation
+# 6. Type checking & compilation
 run_step "TypeScript compilation" "npm run compile"
-
-# 6. Compile tests
+# 7. Compile tests
 run_step "Compile test suite" "npm run compile-tests"
-
-# 7. Run unit tests
+# 8. Run unit tests
 run_step "Unit tests" "npm run test:unit"
-
-# 8. Run integration tests (if display available)
+# 9. Run integration tests (if display available)
 if [ -n "$DISPLAY" ] || command -v xvfb-run &> /dev/null; then
     if command -v xvfb-run &> /dev/null; then
         run_step "Integration tests (xvfb)" "xvfb-run -a npm run test:integration"
@@ -68,10 +63,10 @@ else
     echo -e "${YELLOW}⚠ Skipping integration tests (no display available)${NC}"
 fi
 
-# 9. Package VSIX (with production config)
+# 10. Package VSIX (with production config)
 run_step "Package VSIX (production mode)" "npm run package:full"
 
-# 10. Validate VSIX contents
+# 11. Validate VSIX contents
 run_step "Validate VSIX package" "
     VSIX_FILE=\$(ls -t *.vsix 2>/dev/null | head -1)
     if [ -n \"\$VSIX_FILE\" ]; then
@@ -85,7 +80,7 @@ run_step "Validate VSIX package" "
     fi
 "
 
-# 11. License compliance check (optional)
+# 12. License compliance check (optional)
 if command -v npx &> /dev/null; then
     run_step "License compliance check" "npx license-checker --summary 2>/dev/null || echo 'license-checker not available'"
 fi
