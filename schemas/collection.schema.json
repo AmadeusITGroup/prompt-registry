@@ -101,15 +101,13 @@
             "^[a-zA-Z0-9_-]+$": {
               "type": "object",
               "description": "MCP server configuration",
-              "required": [
-                "type"
-              ],
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["stdio", "http"],
-                  "description": "Server connection type (stdio for local process, http for remote endpoint)",
-                  "default": "stdio"
+                  "description": "Transport type for the MCP server",
+                  "enum": ["stdio", "http", "sse"],
+                  "default": "stdio",
+                  "examples": ["stdio", "http", "sse"]
                 },
                 "command": {
                   "type": "string",
@@ -138,21 +136,42 @@
                     ]
                   ]
                 },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "HTTP endpoint URL (required for http type)",
-                  "examples": [
-                    "http://localhost:3000/mcp",
-                    "https://api.example.com/mcp"
-                  ]
-                },
                 "env": {
                   "type": "object",
-                  "description": "Environment variables for the server",
+                  "description": "Environment variables for the server (stdio only)",
                   "additionalProperties": {
                     "type": "string"
                   }
+                },
+                "envFile": {
+                  "type": "string",
+                  "description": "Path to an environment file to load variables from (stdio only)",
+                  "examples": [
+                    "${workspaceFolder}/.env",
+                    "${bundlePath}/.env"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL for the remote MCP server (required for http/sse types). Supports HTTP/HTTPS URLs, Unix sockets (unix:///path), and Windows named pipes (pipe:///pipe/name)",
+                  "examples": [
+                    "http://localhost:3000/mcp",
+                    "https://api.example.com/mcp",
+                    "unix:///tmp/mcp.sock",
+                    "pipe:///pipe/mcp-server"
+                  ]
+                },
+                "headers": {
+                  "type": "object",
+                  "description": "HTTP headers for authentication or configuration (http/sse only)",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "examples": [
+                    {
+                      "Authorization": "Bearer ${input:api-token}"
+                    }
+                  ]
                 },
                 "disabled": {
                   "type": "boolean",
@@ -175,14 +194,40 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "type": {
-                        "const": "http"
+                    "not": {
+                      "properties": {
+                        "type": {
+                          "const": "stdio"
+                        }
                       }
-                    }
+                    },
+                    "required": ["type"]
                   },
                   "then": {
                     "required": ["url"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "enum": ["http", "sse"]
+                      }
+                    },
+                    "required": ["type"]
+                  },
+                  "then": {
+                    "required": ["url"]
+                  }
+                },
+                {
+                  "if": {
+                    "not": {
+                      "required": ["type"]
+                    }
+                  },
+                  "then": {
+                    "required": ["command"]
                   }
                 }
               ],

@@ -304,7 +304,8 @@ suite('McpServerManager Repository Scope Test Suite', () => {
             assert.ok(config);
             const serverConfig = config.servers['prompt-registry:test-bundle:my-server'];
             assert.ok(serverConfig);
-            assert.strictEqual(serverConfig.command, 'node', 'server should be overwritten');
+            assert.ok(!serverConfig.type || serverConfig.type === 'stdio', 'should be stdio server');
+            assert.strictEqual((serverConfig as any).command, 'node', 'server should be overwritten');
         });
 
         test('should add .vscode/mcp.json to git exclude for local-only mode', async () => {

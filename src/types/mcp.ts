@@ -2,14 +2,38 @@
  * MCP (Model Context Protocol) Configuration Types
  */
 
-export interface McpServerConfig {
-    type?: string;  // e.g., "stdio" - optional, defaults to stdio
-    command: string;
-    args?: string[];
-    env?: Record<string, string>;
+/**
+ * Base MCP server configuration
+ */
+export interface McpServerConfigBase {
     disabled?: boolean;
     description?: string;
 }
+
+/**
+ * Stdio MCP server configuration (local process)
+ */
+export interface McpStdioServerConfig extends McpServerConfigBase {
+    type?: 'stdio';  // Optional, defaults to stdio for backward compatibility
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    envFile?: string;  // Path to environment file
+}
+
+/**
+ * Remote MCP server configuration (HTTP/SSE)
+ */
+export interface McpRemoteServerConfig extends McpServerConfigBase {
+    type: 'http' | 'sse';
+    url: string;  // Supports http://, https://, unix://, pipe://
+    headers?: Record<string, string>;  // For authentication
+}
+
+/**
+ * Union type for all MCP server configurations
+ */
+export type McpServerConfig = McpStdioServerConfig | McpRemoteServerConfig;
 
 export interface McpTaskDefinition {
     input?: string;
@@ -26,13 +50,10 @@ export interface McpConfiguration {
     inputs?: any[];  // Legacy field, preserved for compatibility
 }
 
-export interface McpServerDefinition {
-    command: string;
-    args?: string[];
-    env?: Record<string, string>;
-    disabled?: boolean;
-    description?: string;
-}
+/**
+ * Legacy type alias for backward compatibility
+ */
+export type McpServerDefinition = McpStdioServerConfig;
 
 export type McpServersManifest = Record<string, McpServerDefinition>;
 
