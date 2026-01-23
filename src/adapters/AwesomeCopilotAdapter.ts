@@ -413,16 +413,26 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
                     // Add each item file
                     for (const item of collection.items) {
-                        const itemUrl = this.buildRawUrl(item.path);
-                        const content = await this.fetchUrl(itemUrl);
-                        
-                        // For skills, preserve directory structure
+                        // For skills, preserve directory structure and fetch ALL files in the skill directory
                         if (item.kind === 'skill') {
                             // item.path is like skills/my-skill/SKILL.md
-                            archive.append(content, { name: item.path });
-                            this.logger.debug(`Added ${item.path} (${content.length} bytes)`);
+                            // We need to fetch the entire skill directory, not just SKILL.md
+                            const skillDirPath = item.path.substring(0, item.path.lastIndexOf('/'));
+                            this.logger.debug(`Fetching all files in skill directory: ${skillDirPath}`);
+                            
+                            const skillFiles = await this.listDirectoryContentsRecursively(skillDirPath);
+                            this.logger.debug(`Found ${skillFiles.length} files in skill directory: ${skillFiles.join(', ')}`);
+                            
+                            for (const filePath of skillFiles) {
+                                const fileUrl = this.buildRawUrl(filePath);
+                                const content = await this.fetchUrl(fileUrl);
+                                archive.append(content, { name: filePath });
+                                this.logger.debug(`Added ${filePath} (${content.length} bytes)`);
+                            }
                         } else {
-                            // For other types, put in prompts/ folder
+                            // For other types, fetch single file and put in prompts/ folder
+                            const itemUrl = this.buildRawUrl(item.path);
+                            const content = await this.fetchUrl(itemUrl);
                             const filename = item.path.split('/').pop() || 'unknown';
                             archive.append(content, { name: `prompts/${filename}` });
                             this.logger.debug(`Added ${filename} (${content.length} bytes)`);
@@ -576,6 +586,35 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private buildApiUrl(path: string): string {
         const { owner, repo } = this.parseGitHubUrl();
         return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${this.config.branch}`;
+    }
+
+    /**
+     * List all files in a directory recursively via GitHub API
+     * @param dirPath - Directory path in the repository
+     * @returns Array of file paths relative to repo root
+     */
+    private async listDirectoryContentsRecursively(dirPath: string): Promise<string[]> {
+        const filePaths: string[] = [];
+        
+        try {
+            const apiUrl = this.buildApiUrl(dirPath);
+            const response = await this.fetchUrl(apiUrl);
+            const contents = JSON.parse(response) as GitHubContent[];
+            
+            for (const item of contents) {
+                if (item.type === 'file') {
+                    filePaths.push(item.path);
+                } else if (item.type === 'dir') {
+                    // Recursively list subdirectory
+                    const subFiles = await this.listDirectoryContentsRecursively(item.path);
+                    filePaths.push(...subFiles);
+                }
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to list directory ${dirPath}: ${(error as Error).message}`);
+        }
+        
+        return filePaths;
     }
 
     /**

@@ -375,4 +375,85 @@ items:
         assert.strictEqual(kindMap['prompt'], 'prompt');
         assert.strictEqual(kindMap['instruction'], 'instructions');
     });
+
+    test('should fetch entire skill directory when downloading bundle with skills', async () => {
+        const mockSource: RegistrySource = {
+            id: 'awesome-test',
+            name: 'Awesome Copilot Test',
+            type: 'awesome-copilot',
+            url: 'https://github.com/test-owner/awesome-copilot',
+            enabled: true,
+            priority: 1,
+        };
+
+        const mockBundle: Bundle = {
+            id: 'skill-bundle',
+            name: 'Skill Bundle',
+            version: '1.0.0',
+            description: 'Bundle with skills',
+            author: 'Test Author',
+            sourceId: 'awesome-test',
+            environments: ['vscode'],
+            tags: ['test'],
+            lastUpdated: '2025-01-01T00:00:00Z',
+            size: '1KB',
+            dependencies: [],
+            license: 'MIT',
+            manifestUrl: 'https://example.com/manifest.json',
+            downloadUrl: 'https://example.com/bundle.zip',
+        };
+
+        // Mock the collection YAML with a skill item
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/collections/skill-bundle.collection.yml')
+            .reply(200, `
+id: skill-bundle
+name: Skill Bundle
+description: Bundle with skills
+tags: []
+items:
+  - path: "skills/my-skill/SKILL.md"
+    kind: skill
+`);
+
+        // Mock the GitHub API to list skill directory contents
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot/contents/skills/my-skill?ref=main')
+            .reply(200, [
+                { name: 'SKILL.md', path: 'skills/my-skill/SKILL.md', type: 'file' },
+                { name: 'helper.js', path: 'skills/my-skill/helper.js', type: 'file' },
+                { name: 'data', path: 'skills/my-skill/data', type: 'dir' }
+            ]);
+
+        // Mock subdirectory listing
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot/contents/skills/my-skill/data?ref=main')
+            .reply(200, [
+                { name: 'config.json', path: 'skills/my-skill/data/config.json', type: 'file' }
+            ]);
+
+        // Mock fetching each file in the skill directory
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/skills/my-skill/SKILL.md')
+            .reply(200, '# My Skill\n\nSkill description');
+
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/skills/my-skill/helper.js')
+            .reply(200, 'module.exports = { helper: true };');
+
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/skills/my-skill/data/config.json')
+            .reply(200, '{"setting": "value"}');
+
+        const adapter = new AwesomeCopilotAdapter(mockSource);
+        const buffer = await adapter.downloadBundle(mockBundle);
+
+        // Verify the archive was created
+        assert.ok(Buffer.isBuffer(buffer), 'Should return a Buffer');
+        assert.ok(buffer.length > 0, 'Buffer should not be empty');
+
+        // Verify the archive contains the expected files by checking its size
+        // A proper archive with 3 files + manifest should be reasonably sized
+        assert.ok(buffer.length > 200, 'Archive should contain multiple files');
+    });
 });

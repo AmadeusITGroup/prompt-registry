@@ -580,7 +580,7 @@ export class SkillsAdapter extends RepositoryAdapter {
                     id: skill.id,
                     name: skill.name,
                     description: skill.description,
-                    file: `skills/${skill.id}/SKILL.md`,
+                    file: `SKILL.md`,
                     type: 'skill',
                     tags: ['skill', 'anthropic']
                 }
