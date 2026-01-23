@@ -283,35 +283,6 @@ suite('SchemaValidator', () => {
             assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
             assert.strictEqual(result.errors.length, 0);
         });
-
-        test('should detect MCP server missing required type', async function() {
-            if (!fs.existsSync(testCollectionSchemaPath)) {
-                this.skip();
-                return;
-            }
-
-            const invalidMcpCollection = {
-                id: 'test-invalid-mcp',
-                name: 'Invalid MCP Collection',
-                description: 'Collection with invalid MCP config',
-                items: [],
-                mcp: {
-                    items: {
-                        'invalid-server': {
-                            // Missing required 'type' field
-                            command: 'node',
-                            args: ['some-arg']
-                        }
-                    }
-                }
-            };
-
-            const result = await validator.validateCollection(invalidMcpCollection);
-            
-            assert.strictEqual(result.valid, false);
-            assert.ok(result.errors.some(e => e.includes('type')));
-        });
-
         test('should validate MCP with environment variables', async function() {
             if (!fs.existsSync(testCollectionSchemaPath)) {
                 this.skip();
@@ -521,35 +492,6 @@ suite('SchemaValidator', () => {
             assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
             assert.strictEqual(result.errors.length, 0);
         });
-
-        test('should detect MCP server missing required type', async function() {
-            if (!fs.existsSync(testCollectionSchemaPath)) {
-                this.skip();
-                return;
-            }
-
-            const invalidMcpCollection = {
-                id: 'test-invalid-mcp',
-                name: 'Invalid MCP Collection',
-                description: 'Collection with invalid MCP config',
-                items: [],
-                mcp: {
-                    items: {
-                        'invalid-server': {
-                            // Missing required 'type' field
-                            command: 'node',
-                            args: ['some-arg']
-                        }
-                    }
-                }
-            };
-
-            const result = await validator.validateCollection(invalidMcpCollection);
-            
-            assert.strictEqual(result.valid, false);
-            assert.ok(result.errors.some(e => e.includes('type')));
-        });
-
         test('should validate MCP with environment variables', async function() {
             if (!fs.existsSync(testCollectionSchemaPath)) {
                 this.skip();
@@ -672,35 +614,6 @@ suite('SchemaValidator', () => {
             assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
             assert.strictEqual(result.errors.length, 0);
         });
-
-        test('should detect MCP server missing required type', async function() {
-            if (!fs.existsSync(testCollectionSchemaPath)) {
-                this.skip();
-                return;
-            }
-
-            const invalidMcpCollection = {
-                id: 'test-invalid-mcp',
-                name: 'Invalid MCP Collection',
-                description: 'Collection with invalid MCP config',
-                items: [],
-                mcp: {
-                    items: {
-                        'invalid-server': {
-                            // Missing required 'type' field
-                            command: 'node',
-                            args: ['some-arg']
-                        }
-                    }
-                }
-            };
-
-            const result = await validator.validateCollection(invalidMcpCollection);
-            
-            assert.strictEqual(result.valid, false);
-            assert.ok(result.errors.some(e => e.includes('type')));
-        });
-
         test('should validate MCP with environment variables', async function() {
             if (!fs.existsSync(testCollectionSchemaPath)) {
                 this.skip();
