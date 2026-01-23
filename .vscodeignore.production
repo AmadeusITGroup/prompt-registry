@@ -148,6 +148,7 @@ INTEGRATION_TEST_*.md
 # Project-specific exclusions
 .specification/
 .tmp/
+lib/
 
 # Test results
 test-results/

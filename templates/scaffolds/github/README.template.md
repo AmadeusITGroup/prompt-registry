@@ -19,13 +19,36 @@ Welcome to your prompt collection! This repository contains prompts, instruction
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Setup GitHub Packages Authentication
+
+This project uses `@prompt-registry/collection-scripts` from GitHub Packages.
+
+**Option A: Using GitHub CLI (Recommended)**
+```bash
+# One-time setup
+gh auth login --scopes read:packages
+
+# Configure npm
+npm config set @prompt-registry:registry https://npm.pkg.github.com
+npm config set //npm.pkg.github.com/:_authToken $(gh auth token)
+```
+
+**Option B: Manual Setup**
+```bash
+# Create .npmrc with your GitHub token
+echo "@prompt-registry:registry=https://npm.pkg.github.com" >> .npmrc
+echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> .npmrc
+```
+
+> **Note**: Your token needs `read:packages` scope. Create one at [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
+
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Validate Your Collections
+### 3. Validate Your Collections
 
 ```bash
 npm run validate
@@ -37,7 +60,7 @@ Checks:
 - ✅ File references exist
 - ✅ Valid YAML syntax
 
-### 3. Validate Your Skills
+### 4. Validate Your Skills
 
 ```bash
 npm run skill:validate
@@ -49,7 +72,7 @@ Checks:
 - ✅ No duplicate skill names
 - ✅ Bundled asset size limits (max 5MB per file)
 
-### 4. Use with VS Code
+### 5. Use with VS Code
 
 The scaffold includes VS Code configuration:
 
@@ -61,13 +84,13 @@ The scaffold includes VS Code configuration:
 - IntelliSense for collection properties
 - Real-time validation errors
 
-### 5. Ensure that the GitHub runner label is correctly configured
+### 6. Ensure that the GitHub runner label is correctly configured
 
 - open `.github/workflows/validate-collections.yml`
 - look for `runs-on:`
 - ensure you are using the runner label as per recommendations of your organisation
 
-### 6. (Optional) Enable MCP Servers
+### 7. (Optional) Enable MCP Servers
 
 **What is MCP?** Model Context Protocol allows your collection to provide custom tools and context to GitHub Copilot.
 
@@ -78,7 +101,7 @@ The scaffold includes VS Code configuration:
 
 See `mcp-server/README.md` for detailed instructions.
 
-### 7. Publish to GitHub
+### 8. Publish to GitHub
 
 ```bash
 # Initialize git (if needed)
@@ -92,7 +115,7 @@ git branch -M main
 git push -u origin main
 ```
 
-### 8. Use with Prompt Registry Extension
+### 9. Use with Prompt Registry Extension
 
 **Option A: Add as Source**
 1. Open VS Code Command Palette (`Ctrl+Shift+P`)

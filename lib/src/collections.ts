@@ -1,39 +1,39 @@
 /**
  * Collection file utilities.
- * @module lib/collections
+ * @module collections
  */
-const fs = require('fs');
-const path = require('path');
-const yaml = require('js-yaml');
-
-const { normalizeRepoRelativePath } = require('./validate');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
+import { normalizeRepoRelativePath } from './validate';
+import type { Collection } from './types';
 
 /**
  * List all collection files in the repository.
- * @param {string} repoRoot - Repository root path
- * @returns {string[]} Array of collection file paths (repo-relative)
+ * @param repoRoot - Repository root path
+ * @returns Array of collection file paths (repo-relative)
  */
-function listCollectionFiles(repoRoot) {
+export function listCollectionFiles(repoRoot: string): string[] {
   const collectionsDir = path.join(repoRoot, 'collections');
   return fs
     .readdirSync(collectionsDir)
-    .filter(f => f.endsWith('.collection.yml'))
-    .map(f => path.join('collections', f));
+    .filter((f) => f.endsWith('.collection.yml'))
+    .map((f) => path.join('collections', f));
 }
 
 /**
  * Read and parse a collection YAML file.
- * @param {string} repoRoot - Repository root path
- * @param {string} collectionFile - Collection file path (absolute or repo-relative)
- * @returns {Object} Parsed collection object
- * @throws {Error} If file is invalid YAML or not an object
+ * @param repoRoot - Repository root path
+ * @param collectionFile - Collection file path (absolute or repo-relative)
+ * @returns Parsed collection object
+ * @throws Error if file is invalid YAML or not an object
  */
-function readCollection(repoRoot, collectionFile) {
+export function readCollection(repoRoot: string, collectionFile: string): Collection {
   const abs = path.isAbsolute(collectionFile)
     ? collectionFile
     : path.join(repoRoot, collectionFile);
   const content = fs.readFileSync(abs, 'utf8');
-  const collection = yaml.load(content);
+  const collection = yaml.load(content) as Collection;
 
   if (!collection || typeof collection !== 'object') {
     throw new Error(`Invalid collection YAML: ${collectionFile}`);
@@ -44,12 +44,12 @@ function readCollection(repoRoot, collectionFile) {
 
 /**
  * Recursively list all files in a directory.
- * @param {string} dirPath - Absolute path to directory
- * @param {string} basePath - Base path for relative paths
- * @returns {string[]} Array of repo-relative file paths
+ * @param dirPath - Absolute path to directory
+ * @param basePath - Base path for relative paths
+ * @returns Array of repo-relative file paths
  */
-function listFilesRecursively(dirPath, basePath) {
-  const results = [];
+function listFilesRecursively(dirPath: string, basePath: string): string[] {
+  const results: string[] = [];
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
@@ -66,16 +66,18 @@ function listFilesRecursively(dirPath, basePath) {
 /**
  * Resolve all item paths referenced in a collection.
  * For skills, expands the skill directory to include all files.
- * @param {string} repoRoot - Repository root path
- * @param {Object} collection - Parsed collection object
- * @returns {string[]} Array of normalized repo-relative paths
+ * @param repoRoot - Repository root path
+ * @param collection - Parsed collection object
+ * @returns Array of normalized repo-relative paths
  */
-function resolveCollectionItemPaths(repoRoot, collection) {
+export function resolveCollectionItemPaths(repoRoot: string, collection: Collection): string[] {
   const items = Array.isArray(collection.items) ? collection.items : [];
-  const allPaths = [];
+  const allPaths: string[] = [];
 
   for (const item of items) {
-    if (!item || !item.path) continue;
+    if (!item || !item.path) {
+      continue;
+    }
 
     const normalizedPath = normalizeRepoRelativePath(item.path);
 
@@ -96,9 +98,3 @@ function resolveCollectionItemPaths(repoRoot, collection) {
 
   return allPaths;
 }
-
-module.exports = {
-  listCollectionFiles,
-  readCollection,
-  resolveCollectionItemPaths,
-};

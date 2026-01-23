@@ -1,29 +1,40 @@
 /**
  * Collection validation utilities.
- * @module lib/validate
+ * @module validate
  * 
  * Shared validation logic for collection files.
- * Used by validate-collections.js, build-collection-bundle.js, and publish-collections.js
- * to ensure consistent validation across all components (per Requirement 12.2).
+ * Used by validate-collections, build-collection-bundle, and publish-collections
+ * to ensure consistent validation across all components.
  */
-const fs = require('fs');
-const path = require('path');
-const yaml = require('js-yaml');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
+import type {
+  ValidationResult,
+  ObjectValidationResult,
+  FileValidationResult,
+  AllCollectionsResult,
+  Collection,
+  ValidationRules,
+} from './types';
 
 /**
  * Load valid item kinds from the JSON schema (single source of truth).
  * Falls back to a default list if schema cannot be loaded.
- * @returns {string[]} Array of valid item kinds
+ * @param schemaDir - Directory containing the schema file
+ * @returns Array of valid item kinds
  */
-function loadItemKindsFromSchema() {
+export function loadItemKindsFromSchema(schemaDir?: string): string[] {
   try {
-    const schemaPath = path.join(__dirname, '..', '..', 'schemas', 'collection.schema.json');
+    const schemaPath = schemaDir
+      ? path.join(schemaDir, 'collection.schema.json')
+      : path.join(__dirname, '..', '..', 'schemas', 'collection.schema.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     const kinds = schema?.properties?.items?.items?.properties?.kind?.enum;
     if (Array.isArray(kinds) && kinds.length > 0) {
       return kinds;
     }
-  } catch (e) {
+  } catch {
     // Schema unavailable or malformed, use fallback
   }
   return ['prompt', 'instruction', 'agent', 'skill'];
@@ -33,47 +44,46 @@ function loadItemKindsFromSchema() {
  * Validation rules for collections.
  * These rules are shared across all validation components for consistency.
  * Item kinds are loaded from the JSON schema for single source of truth.
- * @constant {Object}
  */
-const VALIDATION_RULES = {
+export const VALIDATION_RULES: ValidationRules = {
   collectionId: {
     maxLength: 100,
     pattern: /^[a-z0-9-]+$/,
-    description: 'lowercase letters, numbers, and hyphens only'
+    description: 'lowercase letters, numbers, and hyphens only',
   },
   version: {
     pattern: /^\d+\.\d+\.\d+$/,
     default: '1.0.0',
-    description: 'semantic versioning format (X.Y.Z)'
+    description: 'semantic versioning format (X.Y.Z)',
   },
   itemKinds: loadItemKindsFromSchema(),
   deprecatedKinds: {
-    'chatmode': 'agent',
-    'chat-mode': 'agent'
-  }
+    chatmode: 'agent',
+    'chat-mode': 'agent',
+  },
 };
 
 /**
  * Validate a collection ID.
- * @param {string} id - Collection ID to validate
- * @returns {{valid: boolean, error?: string}} Validation result
+ * @param id - Collection ID to validate
+ * @returns Validation result
  */
-function validateCollectionId(id) {
+export function validateCollectionId(id: string): ValidationResult {
   if (!id || typeof id !== 'string') {
     return { valid: false, error: 'Collection ID is required and must be a string' };
   }
 
   if (id.length > VALIDATION_RULES.collectionId.maxLength) {
-    return { 
-      valid: false, 
-      error: `Collection ID must be at most ${VALIDATION_RULES.collectionId.maxLength} characters (got ${id.length})` 
+    return {
+      valid: false,
+      error: `Collection ID must be at most ${VALIDATION_RULES.collectionId.maxLength} characters (got ${id.length})`,
     };
   }
 
   if (!VALIDATION_RULES.collectionId.pattern.test(id)) {
-    return { 
-      valid: false, 
-      error: `Collection ID must contain only ${VALIDATION_RULES.collectionId.description}` 
+    return {
+      valid: false,
+      error: `Collection ID must contain only ${VALIDATION_RULES.collectionId.description}`,
     };
   }
 
@@ -82,10 +92,10 @@ function validateCollectionId(id) {
 
 /**
  * Validate a version string.
- * @param {string} version - Version string to validate
- * @returns {{valid: boolean, error?: string, normalized?: string}} Validation result
+ * @param version - Version string to validate
+ * @returns Validation result with normalized version
  */
-function validateVersion(version) {
+export function validateVersion(version?: string | null): ValidationResult {
   // If no version provided, use default
   if (version === undefined || version === null) {
     return { valid: true, normalized: VALIDATION_RULES.version.default };
@@ -96,9 +106,9 @@ function validateVersion(version) {
   }
 
   if (!VALIDATION_RULES.version.pattern.test(version)) {
-    return { 
-      valid: false, 
-      error: `Version must follow ${VALIDATION_RULES.version.description} (got "${version}")` 
+    return {
+      valid: false,
+      error: `Version must follow ${VALIDATION_RULES.version.description} (got "${version}")`,
     };
   }
 
@@ -107,10 +117,10 @@ function validateVersion(version) {
 
 /**
  * Validate an item kind.
- * @param {string} kind - Item kind to validate
- * @returns {{valid: boolean, error?: string, deprecated?: boolean, replacement?: string}} Validation result
+ * @param kind - Item kind to validate
+ * @returns Validation result
  */
-function validateItemKind(kind) {
+export function validateItemKind(kind: string): ValidationResult {
   if (!kind || typeof kind !== 'string') {
     return { valid: false, error: 'Item kind is required and must be a string' };
   }
@@ -120,19 +130,19 @@ function validateItemKind(kind) {
   // Check for deprecated kinds (chatmode)
   if (VALIDATION_RULES.deprecatedKinds[normalizedKind]) {
     const replacement = VALIDATION_RULES.deprecatedKinds[normalizedKind];
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       error: `Item kind '${kind}' is deprecated. Use '${replacement}' instead`,
       deprecated: true,
-      replacement
+      replacement,
     };
   }
 
   // Check for valid kinds
   if (!VALIDATION_RULES.itemKinds.includes(normalizedKind)) {
-    return { 
-      valid: false, 
-      error: `Invalid item kind '${kind}'. Must be one of: ${VALIDATION_RULES.itemKinds.join(', ')}` 
+    return {
+      valid: false,
+      error: `Invalid item kind '${kind}'. Must be one of: ${VALIDATION_RULES.itemKinds.join(', ')}`,
     };
   }
 
@@ -143,29 +153,37 @@ function validateItemKind(kind) {
  * Normalize a path to be repo-root relative.
  * Uses POSIX normalization since collection paths are repo-root relative
  * and should work consistently across platforms.
- * @param {string} p - Path to normalize
- * @returns {string} Normalized repo-relative path
- * @throws {Error} If path is empty, traverses outside repo, or is absolute
+ * @param p - Path to normalize
+ * @returns Normalized repo-relative path
+ * @throws Error if path is empty, traverses outside repo, or is absolute
  */
-function normalizeRepoRelativePath(p) {
-  if (!p || typeof p !== 'string') throw new Error('path must be a non-empty string');
+export function normalizeRepoRelativePath(p: string): string {
+  if (!p || typeof p !== 'string') {
+    throw new Error('path must be a non-empty string');
+  }
 
   const s = String(p).trim().replace(/\\/g, '/').replace(/^\//, '');
-  if (!s) throw new Error('path must be a non-empty string');
+  if (!s) {
+    throw new Error('path must be a non-empty string');
+  }
 
   // Use posix normalization since collection paths are repo-root relative.
   const normalized = path.posix.normalize(s);
-  if (normalized.startsWith('../') || normalized === '..') throw new Error('path must not traverse outside repo');
-  if (normalized.startsWith('/')) throw new Error('path must be repo-root relative');
+  if (normalized.startsWith('../') || normalized === '..') {
+    throw new Error('path must not traverse outside repo');
+  }
+  if (normalized.startsWith('/')) {
+    throw new Error('path must be repo-root relative');
+  }
   return normalized;
 }
 
 /**
  * Check if a path is a safe repo-relative path.
- * @param {string} p - Path to check
- * @returns {boolean} True if path is valid and safe
+ * @param p - Path to check
+ * @returns True if path is valid and safe
  */
-function isSafeRepoRelativePath(p) {
+export function isSafeRepoRelativePath(p: string): boolean {
   try {
     normalizeRepoRelativePath(p);
     return true;
@@ -176,64 +194,70 @@ function isSafeRepoRelativePath(p) {
 
 /**
  * Validate a collection object structure.
- * @param {Object} collection - Parsed collection object
- * @param {string} sourceLabel - Label for error messages
- * @returns {{ok: boolean, errors: string[]}} Validation result
+ * @param collection - Parsed collection object
+ * @param sourceLabel - Label for error messages
+ * @returns Validation result
  */
-function validateCollectionObject(collection, sourceLabel) {
-  const errors = [];
+export function validateCollectionObject(
+  collection: unknown,
+  sourceLabel: string
+): ObjectValidationResult {
+  const errors: string[] = [];
 
   if (!collection || typeof collection !== 'object') {
     return { ok: false, errors: [`${sourceLabel}: YAML did not parse to an object`] };
   }
 
+  const col = collection as Record<string, unknown>;
+
   // Validate collection ID
-  if (!collection.id || typeof collection.id !== 'string') {
+  if (!col.id || typeof col.id !== 'string') {
     errors.push(`${sourceLabel}: Missing required field: id`);
   } else {
-    const idResult = validateCollectionId(collection.id);
+    const idResult = validateCollectionId(col.id);
     if (!idResult.valid) {
       errors.push(`${sourceLabel}: ${idResult.error}`);
     }
   }
 
-  if (!collection.name || typeof collection.name !== 'string') {
+  if (!col.name || typeof col.name !== 'string') {
     errors.push(`${sourceLabel}: Missing required field: name`);
   }
 
   // Validate version if present
-  if (collection.version !== undefined) {
-    const versionResult = validateVersion(collection.version);
+  if (col.version !== undefined) {
+    const versionResult = validateVersion(col.version as string);
     if (!versionResult.valid) {
       errors.push(`${sourceLabel}: ${versionResult.error}`);
     }
   }
 
-  if (!Array.isArray(collection.items)) {
+  if (!Array.isArray(col.items)) {
     errors.push(`${sourceLabel}: Missing required field: items (array)`);
   }
 
-  if (Array.isArray(collection.items)) {
-    collection.items.forEach((item, idx) => {
+  if (Array.isArray(col.items)) {
+    col.items.forEach((item: unknown, idx: number) => {
       const prefix = `${sourceLabel}: items[${idx}]`;
       if (!item || typeof item !== 'object') {
         errors.push(`${prefix}: must be an object`);
         return;
       }
-      if (!item.path || typeof item.path !== 'string') {
+      const it = item as Record<string, unknown>;
+      if (!it.path || typeof it.path !== 'string') {
         errors.push(`${prefix}: Missing required field: path`);
       } else {
         try {
-          normalizeRepoRelativePath(item.path);
+          normalizeRepoRelativePath(it.path);
         } catch {
-          errors.push(`${prefix}: Invalid path (must be repo-root relative): ${item.path}`);
+          errors.push(`${prefix}: Invalid path (must be repo-root relative): ${it.path}`);
         }
       }
-      if (!item.kind || typeof item.kind !== 'string') {
+      if (!it.kind || typeof it.kind !== 'string') {
         errors.push(`${prefix}: Missing required field: kind`);
       } else {
         // Validate item kind (including chatmode rejection)
-        const kindResult = validateItemKind(item.kind);
+        const kindResult = validateItemKind(it.kind);
         if (!kindResult.valid) {
           errors.push(`${prefix}: ${kindResult.error}`);
         }
@@ -247,27 +271,31 @@ function validateCollectionObject(collection, sourceLabel) {
 /**
  * Validate a collection file from disk.
  * Checks YAML syntax, required fields, and referenced file existence.
- * @param {string} repoRoot - Repository root path
- * @param {string} collectionFile - Collection file path (absolute or repo-relative)
- * @returns {{ok: boolean, errors: string[], collection?: Object}} Validation result with parsed collection
+ * @param repoRoot - Repository root path
+ * @param collectionFile - Collection file path (absolute or repo-relative)
+ * @returns Validation result with parsed collection
  */
-function validateCollectionFile(repoRoot, collectionFile) {
+export function validateCollectionFile(
+  repoRoot: string,
+  collectionFile: string
+): FileValidationResult {
   const rel = collectionFile.replace(/\\/g, '/');
   const abs = path.isAbsolute(collectionFile)
     ? collectionFile
     : path.join(repoRoot, collectionFile);
 
-  const errors = [];
+  const errors: string[] = [];
 
   if (!fs.existsSync(abs)) {
     return { ok: false, errors: [`${rel}: Collection file not found`] };
   }
 
-  let collection;
+  let collection: Collection;
   try {
-    collection = yaml.load(fs.readFileSync(abs, 'utf8'));
+    collection = yaml.load(fs.readFileSync(abs, 'utf8')) as Collection;
   } catch (e) {
-    return { ok: false, errors: [`${rel}: YAML parse error: ${e.message}`] };
+    const message = e instanceof Error ? e.message : String(e);
+    return { ok: false, errors: [`${rel}: YAML parse error: ${message}`] };
   }
 
   const schema = validateCollectionObject(collection, rel);
@@ -275,8 +303,10 @@ function validateCollectionFile(repoRoot, collectionFile) {
 
   if (Array.isArray(collection?.items)) {
     collection.items.forEach((item, idx) => {
-      if (!item?.path || typeof item.path !== 'string') return;
-      let relPath;
+      if (!item?.path || typeof item.path !== 'string') {
+        return;
+      }
+      let relPath: string;
       try {
         relPath = normalizeRepoRelativePath(item.path);
       } catch {
@@ -295,15 +325,18 @@ function validateCollectionFile(repoRoot, collectionFile) {
 
 /**
  * Validate all collections in a repository, including duplicate detection.
- * @param {string} repoRoot - Repository root path
- * @param {string[]} collectionFiles - Array of collection file paths (repo-relative)
- * @returns {{ok: boolean, errors: string[], fileResults: Object[]}} Validation result
+ * @param repoRoot - Repository root path
+ * @param collectionFiles - Array of collection file paths (repo-relative)
+ * @returns Validation result
  */
-function validateAllCollections(repoRoot, collectionFiles) {
-  const errors = [];
-  const fileResults = [];
-  const seenIds = new Map(); // id -> file path
-  const seenNames = new Map(); // name -> file path
+export function validateAllCollections(
+  repoRoot: string,
+  collectionFiles: string[]
+): AllCollectionsResult {
+  const errors: string[] = [];
+  const fileResults: Array<{ file: string } & FileValidationResult> = [];
+  const seenIds = new Map<string, string>(); // id -> file path
+  const seenNames = new Map<string, string>(); // name -> file path
 
   for (const file of collectionFiles) {
     const result = validateCollectionFile(repoRoot, file);
@@ -313,7 +346,7 @@ function validateAllCollections(repoRoot, collectionFiles) {
     // Check for duplicate IDs and names
     if (result.collection) {
       const { id, name } = result.collection;
-      
+
       if (id && seenIds.has(id)) {
         errors.push(`${file}: Duplicate collection ID '${id}' (also in ${seenIds.get(id)})`);
       } else if (id) {
@@ -333,44 +366,22 @@ function validateAllCollections(repoRoot, collectionFiles) {
 
 /**
  * Generate markdown content for PR comment from validation result.
- * @param {Object} result - Result from validateAllCollections
- * @param {number} totalFiles - Total number of collection files
- * @returns {string} Markdown content
+ * @param result - Result from validateAllCollections
+ * @param totalFiles - Total number of collection files
+ * @returns Markdown content
  */
-function generateMarkdown(result, totalFiles) {
+export function generateMarkdown(result: AllCollectionsResult, totalFiles: number): string {
   let md = '## 📋 Collection Validation Results\n\n';
-  
+
   if (result.ok) {
     md += `✅ **All ${totalFiles} collection(s) validated successfully!**\n`;
   } else {
     md += `❌ **Validation failed with ${result.errors.length} error(s)**\n\n`;
     md += '### Errors\n\n';
-    result.errors.forEach(err => {
+    result.errors.forEach((err) => {
       md += `- ${err}\n`;
     });
   }
-  
+
   return md;
 }
-
-module.exports = {
-  // Validation rules (for consistency across components)
-  VALIDATION_RULES,
-  
-  // Individual validators
-  validateCollectionId,
-  validateVersion,
-  validateItemKind,
-  
-  // Path utilities
-  normalizeRepoRelativePath,
-  isSafeRepoRelativePath,
-  
-  // Collection validators
-  validateCollectionFile,
-  validateCollectionObject,
-  validateAllCollections,
-  
-  // Output formatters
-  generateMarkdown,
-};

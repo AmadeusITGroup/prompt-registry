@@ -1,15 +1,15 @@
 /**
  * Shared CLI argument parsing utilities.
- * @module lib/cli
+ * @module cli
  */
 
 /**
  * Parse a single-value CLI argument.
- * @param {string[]} argv - Command line arguments
- * @param {string} flag - Flag name (e.g., '--collection-file')
- * @returns {string|undefined} The value if found, undefined otherwise
+ * @param argv - Command line arguments
+ * @param flag - Flag name (e.g., '--collection-file')
+ * @returns The value if found, undefined otherwise
  */
-function parseSingleArg(argv, flag) {
+export function parseSingleArg(argv: string[], flag: string): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === flag && argv[i + 1]) {
       return argv[i + 1];
@@ -20,12 +20,12 @@ function parseSingleArg(argv, flag) {
 
 /**
  * Parse a multi-value CLI argument (can appear multiple times).
- * @param {string[]} argv - Command line arguments
- * @param {string} flag - Flag name (e.g., '--changed-path')
- * @returns {string[]} Array of values
+ * @param argv - Command line arguments
+ * @param flag - Flag name (e.g., '--changed-path')
+ * @returns Array of values
  */
-function parseMultiArg(argv, flag) {
-  const values = [];
+export function parseMultiArg(argv: string[], flag: string): string[] {
+  const values: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === flag && argv[i + 1]) {
       values.push(argv[i + 1]);
@@ -37,21 +37,21 @@ function parseMultiArg(argv, flag) {
 
 /**
  * Check if a boolean flag is present.
- * @param {string[]} argv - Command line arguments
- * @param {string} flag - Flag name (e.g., '--dry-run')
- * @returns {boolean} True if flag is present
+ * @param argv - Command line arguments
+ * @param flag - Flag name (e.g., '--dry-run')
+ * @returns True if flag is present
  */
-function hasFlag(argv, flag) {
+export function hasFlag(argv: string[], flag: string): boolean {
   return argv.includes(flag);
 }
 
 /**
  * Get positional argument at index (after filtering out flags).
- * @param {string[]} argv - Command line arguments
- * @param {number} index - Positional index (0-based)
- * @returns {string|undefined} The positional argument if found
+ * @param argv - Command line arguments
+ * @param index - Positional index (0-based)
+ * @returns The positional argument if found
  */
-function getPositionalArg(argv, index) {
+export function getPositionalArg(argv: string[], index: number): string | undefined {
   let posIndex = 0;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -69,10 +69,3 @@ function getPositionalArg(argv, index) {
   }
   return undefined;
 }
-
-module.exports = {
-  parseSingleArg,
-  parseMultiArg,
-  hasFlag,
-  getPositionalArg,
-};

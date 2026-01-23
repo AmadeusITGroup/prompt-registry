@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "description": "Prompt collection for GitHub Copilot",
   "scripts": {
-    "validate": "node scripts/validate-collections.js",
-    "validate:verbose": "node scripts/validate-collections.js --verbose",
-    "build-collection-bundle": "node scripts/build-collection-bundle.js",
-    "publish-collections": "node scripts/publish-collections.js",
-    "list-collections": "node scripts/list-collections.js",
-    "compute-collection-version": "node scripts/compute-collection-version.js",
+    "validate": "validate-collections",
+    "validate:verbose": "validate-collections --verbose",
+    "build-collection-bundle": "build-collection-bundle",
+    "publish-collections": "publish-collections",
+    "list-collections": "list-collections",
+    "compute-collection-version": "compute-collection-version",
     "install-hooks": "git config core.hooksPath .githooks",
-    "skill:validate": "node scripts/validate-skills.js",
-    "skill:create": "node scripts/create-skill.js"
+    "skill:validate": "validate-skills",
+    "skill:create": "create-skill",
+    "build": "build-collection-bundle",
+    "publish": "publish-collections"
   },
   "keywords": [
     "copilot",
@@ -32,11 +34,8 @@
     "deployment-manifest.yml",
     "*.zip"
   ],
-  "dependencies": {
-    "archiver": "^7.0.1",
-    "js-yaml": "^4.1.0",
-    "semver": "^7.6.3",
-    "yauzl": "^3.2.0"
+  "devDependencies": {
+    "@prompt-registry/collection-scripts": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

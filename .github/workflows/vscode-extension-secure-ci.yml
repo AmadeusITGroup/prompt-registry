@@ -8,6 +8,7 @@ on:
       - "*.json"
       - "*.js"
       - "*.ts"
+      - "!lib/**"
   pull_request:
     branches: [main, develop]
     paths:
@@ -15,6 +16,7 @@ on:
       - "*.json"
       - "*.js"
       - "*.ts"
+      - "!lib/**"
   workflow_dispatch:
 
 # Security: Restrict permissions to minimum necessary (SLSA Level 2)
@@ -52,6 +54,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
+
+      - name: Build lib package
+        working-directory: lib
+        shell: bash
+        run: |
+          npm ci --fund=false
+          npm run build
 
       - name: Install dependencies with audit
         working-directory: ${{ env.EXTENSION_DIR }}
@@ -96,6 +105,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: "package-lock.json"
+
+      - name: Build lib package
+        working-directory: lib
+        run: |
+          npm ci --fund=false
+          npm run build
 
       - name: Install dependencies
         run: npm ci --fund=false
@@ -155,6 +170,12 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
           cache-dependency-path: "package-lock.json"
+
+      - name: Build lib package
+        working-directory: lib
+        run: |
+          npm ci --fund=false
+          npm run build
 
       - name: Install dependencies
         run: npm ci --fund=false
@@ -294,6 +315,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: "package-lock.json"
+
+      - name: Build lib package
+        working-directory: lib
+        run: |
+          npm ci --fund=false
+          npm run build
 
       - name: Install dependencies
         run: npm ci --fund=false

@@ -14,6 +14,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       contents: write
+      packages: read
     
     steps:
       - name: Checkout code
@@ -40,7 +41,7 @@ jobs:
           GITHUB_BASE_SHA: ${{ github.event.before }}
           GITHUB_HEAD_SHA: ${{ github.sha }}
         run: |
-          node scripts/publish-collections.js
+          npx publish-collections
 
   publish-preview:
     name: Preview Collection Releases (PR)
@@ -48,6 +49,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
+      packages: read
       pull-requests: write
 
     steps:
@@ -76,7 +78,7 @@ jobs:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          node scripts/publish-collections.js --dry-run
+          npx publish-collections --dry-run
 
       - name: Upload preview artifacts
         if: always()

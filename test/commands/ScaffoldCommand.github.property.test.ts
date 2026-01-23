@@ -83,27 +83,14 @@ suite('GitHub Scaffold Property-Based Tests', () => {
         this.timeout(PropertyTestConfig.TIMEOUT);
 
         // Required files that must exist after scaffolding
+        // Note: Scripts are now provided via @prompt-registry/collection-scripts npm package
         const requiredFiles = [
             // GitHub workflows (Requirements 2.1)
             '.github/workflows/publish.yml',
             '.github/actions/publish-common/action.yml',
             
-            // Collection management scripts (Requirements 7.1, 7.2, 7.3, 7.4, 7.5)
-            'scripts/validate-collections.js',
-            'scripts/detect-affected-collections.js',
-            'scripts/compute-collection-version.js',
-            'scripts/build-collection-bundle.js',
-            'scripts/publish-collections.js',
-            'scripts/generate-manifest.js',
-            'scripts/list-collections.js',
-            'scripts/resolve-collection-files.js',
-            'scripts/extract-affected-files.js',
-            
-            // Script libraries (Requirements 7.6)
-            'scripts/lib/collections.js',
-            'scripts/lib/validate.js',
-            'scripts/lib/cli.js',
-            'scripts/lib/bundle-id.js',
+            // Scripts directory documentation (npm package provides CLI commands)
+            'scripts/README.md',
             
             // Example content files (Requirements 6.6)
             'prompts/example.prompt.md',
@@ -125,13 +112,13 @@ suite('GitHub Scaffold Property-Based Tests', () => {
         ];
 
         // Required directories
+        // Note: scripts/lib no longer needed - scripts provided via npm package
         const requiredDirectories = [
             'prompts',
             'instructions',
             'agents',
             'collections',
             'scripts',
-            'scripts/lib',
             '.github',
             '.github/workflows',
             '.github/actions',

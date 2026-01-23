@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { SchemaValidator } from '../services/SchemaValidator';
 import { TextDecoder } from 'util';
+import { validateCollectionFile, validateAllCollections, listCollectionFiles } from '@prompt-registry/collection-scripts';
 
 interface ValidationResult {
     errors: string[];

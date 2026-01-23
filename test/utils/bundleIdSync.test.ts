@@ -1,23 +1,23 @@
 /**
  * Bundle ID Synchronization Tests
  * 
- * Verifies that the TypeScript runtime implementation and JavaScript build script
+ * Verifies that the TypeScript runtime implementation and the shared library
  * implementation produce identical bundle IDs.
  * 
  * This is critical because:
  * - Runtime (TS): src/utils/bundleNameUtils.ts - generateBuildScriptBundleId
- * - Build scripts (JS): templates/scaffolds/github/scripts/lib/bundle-id.js - generateBundleId
+ * - Shared library: @prompt-registry/collection-scripts - generateBundleId
  * 
  * If these drift, bundles built by CI won't match what the runtime expects.
  */
 
 import * as assert from 'assert';
-import * as path from 'path';
 import { generateBuildScriptBundleId } from '../../src/utils/bundleNameUtils';
+import { generateBundleId } from '@prompt-registry/collection-scripts';
 
 suite('Bundle ID Synchronization', () => {
-    // Load the JS implementation
-    const bundleIdJs = require(path.join(process.cwd(), 'templates/scaffolds/github/scripts/lib/bundle-id.js'));
+    // Use the shared library implementation
+    const bundleIdJs = { generateBundleId };
 
     const testCases = [
         { repoSlug: 'owner/repo', collectionId: 'my-collection', version: '1.0.0' },

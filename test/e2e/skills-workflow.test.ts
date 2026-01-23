@@ -165,19 +165,19 @@ This is an example prompt for testing.
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-validation' });
             
-            // Verify validation script exists
-            const validateSkillsScript = path.join(projectDir, 'scripts', 'validate-skills.js');
-            assert.ok(fs.existsSync(validateSkillsScript), 'Skill validation script should exist');
+            // Verify scripts README exists (validation is now via npm package)
+            const scriptsReadme = path.join(projectDir, 'scripts', 'README.md');
+            assert.ok(fs.existsSync(scriptsReadme), 'Scripts README should exist');
             
-            // Verify script content references Agent Skills spec
-            const scriptContent = fs.readFileSync(validateSkillsScript, 'utf8');
+            // Verify README references the npm package validation command
+            const readmeContent = fs.readFileSync(scriptsReadme, 'utf8');
             assert.ok(
-                scriptContent.includes('SKILL.md') || scriptContent.includes('agentskills'),
-                'Validation script should reference SKILL.md or agentskills'
+                readmeContent.includes('validate-skills') || readmeContent.includes('@prompt-registry/collection-scripts'),
+                'Scripts README should reference validate-skills command or npm package'
             );
         });
 
-        test('Scaffold creates skill creation wizard script', async function() {
+        test('Scaffold includes npm package for skill creation', async function() {
             this.timeout(30000);
             
             const projectDir = path.join(testContext.tempStoragePath, 'scaffold-wizard-test');
@@ -188,9 +188,14 @@ This is an example prompt for testing.
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-wizard' });
             
-            // Verify creation script exists
-            const createSkillScript = path.join(projectDir, 'scripts', 'create-skill.js');
-            assert.ok(fs.existsSync(createSkillScript), 'Skill creation script should exist');
+            // Verify package.json includes the npm package for skill creation
+            const packageJsonPath = path.join(projectDir, 'package.json');
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+            assert.ok(
+                packageJson.devDependencies?.['@prompt-registry/collection-scripts'] ||
+                packageJson.dependencies?.['@prompt-registry/collection-scripts'],
+                'Package should include @prompt-registry/collection-scripts for skill creation'
+            );
         });
 
         test('Scaffolded package.json includes skill scripts', async function() {

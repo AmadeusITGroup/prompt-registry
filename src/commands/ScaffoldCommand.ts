@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { SkillWizard } from '../commands/SkillWizard';
 import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
-import { NpmCliWrapper } from '../utils/NpmCliWrapper';
 import { FileUtils } from '../utils/fileUtils';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
 
@@ -52,12 +51,10 @@ export class ScaffoldCommand {
     private readonly logger: Logger;
     private readonly templateEngine: TemplateEngine;
     private readonly scaffoldType: ScaffoldType;
-    private readonly npmWrapper: NpmCliWrapper;
 
     constructor(extensionPathOrTemplateRoot?: string, scaffoldType: ScaffoldType = ScaffoldType.GitHub) {
         this.logger = Logger.getInstance();
         this.scaffoldType = scaffoldType;
-        this.npmWrapper = NpmCliWrapper.getInstance();
         
         // Initialize template engine with scaffold templates
         // If path includes 'templates/scaffolds', use it directly (for tests)
@@ -469,24 +466,65 @@ export class ScaffoldCommand {
      * Handle post-scaffold actions: npm install and folder opening
      */
     private static async handlePostScaffoldActions(typeLabel: string, targetPath: vscode.Uri): Promise<void> {
-        // Prompt for npm install
-        const npmWrapper = NpmCliWrapper.getInstance();
-        const npmResult = await npmWrapper.promptAndInstall(targetPath.fsPath, false);
-
-        // Offer to open folder
-        const openChoice = await vscode.window.showInformationMessage(
-            `${typeLabel} scaffolded successfully!`,
-            'Open Folder'
+        // For GitHub scaffold, show authentication setup instructions first
+        // The @prompt-registry/collection-scripts package requires GitHub Packages auth
+        const setupChoice = await vscode.window.showInformationMessage(
+            `${typeLabel} scaffolded successfully! Before running npm install, you need to set up GitHub Packages authentication.`,
+            'View Setup Instructions',
+            'Open Folder',
+            'Skip'
         );
 
-        if (openChoice === 'Open Folder') {
-            await vscode.commands.executeCommand('vscode.openFolder', targetPath);
-        }
+        if (setupChoice === 'View Setup Instructions') {
+            // Show detailed instructions
+            const instructions = `
+## GitHub Packages Authentication Setup
 
-        // Show npm install warning if there was an issue
-        if (!npmResult.success && npmResult.error) {
-            vscode.window.showWarningMessage(
-                `Note: npm install ${npmResult.error.includes('cancelled') ? 'was cancelled' : 'failed'}. You can run 'npm install' manually in the project directory.`
+The scaffolded project uses \`@prompt-registry/collection-scripts\` from GitHub Packages, which requires authentication.
+
+### Option 1: Environment Variable (Recommended)
+Set the \`GITHUB_TOKEN\` environment variable with a GitHub Personal Access Token (PAT) that has \`read:packages\` scope:
+
+\`\`\`bash
+export GITHUB_TOKEN=ghp_your_token_here
+npm install
+\`\`\`
+
+### Option 2: .npmrc with Token
+Edit the \`.npmrc\` file in your project and replace \`\${GITHUB_TOKEN}\` with your actual token:
+
+\`\`\`
+@prompt-registry:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=ghp_your_token_here
+\`\`\`
+
+### Creating a GitHub PAT
+1. Go to GitHub Settings → Developer settings → Personal access tokens
+2. Generate a new token with \`read:packages\` scope
+3. Copy the token and use it as described above
+
+After setting up authentication, run \`npm install\` in the project directory.
+`;
+            // Create a virtual document to show instructions
+            const doc = await vscode.workspace.openTextDocument({
+                content: instructions,
+                language: 'markdown'
+            });
+            await vscode.window.showTextDocument(doc, { preview: true });
+            
+            // Also offer to open the folder
+            const openAfter = await vscode.window.showInformationMessage(
+                'Would you like to open the project folder?',
+                'Open Folder',
+                'No'
+            );
+            if (openAfter === 'Open Folder') {
+                await vscode.commands.executeCommand('vscode.openFolder', targetPath);
+            }
+        } else if (setupChoice === 'Open Folder') {
+            await vscode.commands.executeCommand('vscode.openFolder', targetPath);
+            vscode.window.showInformationMessage(
+                'Remember to set up GitHub Packages authentication before running npm install. See the .npmrc file for details.'
             );
         }
     }
