@@ -79,7 +79,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Type of the source repository (github, gitlab, http/url, local, awesome-copilot, local-awesome-copilot, apm, local-apm)",
+            "description": "Type of the source repository (github, gitlab, http/url, local, awesome-copilot, local-awesome-copilot, apm, local-apm, skills)",
             "enum": [
               "github",
               "gitlab",
@@ -89,7 +89,8 @@
               "awesome-copilot",
               "local-awesome-copilot",
               "apm",
-              "local-apm"
+              "local-apm",
+              "skills"
             ]
           },
           "url": {
@@ -229,7 +230,7 @@
                   "description": "Bundle identifier",
                   "pattern": "^[\\w\\.\\-]+$",
                   "minLength": 1,
-                  "maxLength": 50
+                  "maxLength": 200
                 },
                 "version": {
                   "type": "string",
