@@ -568,3 +568,112 @@ suite('HubManager', () => {
     });
 
 });
+
+import nock from 'nock';
+
+suite('HubManager HTTP Redirect Handling', () => {
+    let hubManager: HubManager;
+    let storage: HubStorage;
+    let mockValidator: any;
+    let tempDir: string;
+
+    setup(() => {
+        // Create temp directory
+        tempDir = path.join(__dirname, '..', '..', 'test-temp-hubmanager-redirect');
+
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true });
+        }
+        fs.mkdirSync(tempDir, { recursive: true });
+
+        // Initialize services
+        storage = new HubStorage(tempDir);
+        mockValidator = {
+            async validate() {
+                return { valid: true, errors: [], warnings: [] };
+            }
+        };
+        hubManager = new HubManager(storage, mockValidator, process.cwd(), undefined, undefined);
+    });
+
+    teardown(() => {
+        nock.cleanAll();
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true });
+        }
+    });
+
+    test('should follow HTTP 301 redirects when importing hub from URL', async () => {
+        const hubConfigYaml = `
+version: "1.0.0"
+metadata:
+  name: Redirect Test Hub
+  description: Hub for testing redirect handling
+  maintainer: test@example.com
+  updatedAt: "2025-01-01T00:00:00Z"
+sources: []
+profiles: []
+`;
+        // First request returns 301 redirect
+        nock('https://raw.githubusercontent.com')
+            .get('/old-owner/old-repo/main/hub-config.yml')
+            .query(true)
+            .reply(301, '', { location: 'https://raw.githubusercontent.com/new-owner/new-repo/main/hub-config.yml' });
+
+        // Redirect target returns the actual content
+        nock('https://raw.githubusercontent.com')
+            .get('/new-owner/new-repo/main/hub-config.yml')
+            .reply(200, hubConfigYaml);
+
+        const reference = {
+            type: 'github' as const,
+            location: 'old-owner/old-repo'
+        };
+
+        const hubId = await hubManager.importHub(reference, 'redirect-test-hub');
+        assert.strictEqual(hubId, 'redirect-test-hub');
+
+        // Verify hub was imported successfully
+        const loaded = await storage.loadHub('redirect-test-hub');
+        assert.strictEqual(loaded.config.metadata.name, 'Redirect Test Hub');
+    });
+
+    test('should follow HTTP 302 redirects when syncing hub', async () => {
+        // First, import a hub using local file
+        const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+        const localRef = { type: 'local' as const, location: fixturePath };
+        const hubId = await hubManager.importHub(localRef, 'sync-redirect-hub');
+
+        // Now update the reference to use URL and mock the sync with redirect
+        const hubConfigYaml = `
+version: "1.0.0"
+metadata:
+  name: Updated Hub After Redirect
+  description: Hub synced after following redirect
+  maintainer: test@example.com
+  updatedAt: "2025-01-02T00:00:00Z"
+sources: []
+profiles: []
+`;
+        // Update the hub reference to URL type for sync test
+        await storage.saveHub(hubId, yaml.load(fs.readFileSync(fixturePath, 'utf-8')) as HubConfig, {
+            type: 'url',
+            location: 'https://raw.githubusercontent.com/test-owner/test-repo/main/hub-config.yml'
+        });
+
+        // Mock the sync request with 302 redirect
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/test-repo/main/hub-config.yml')
+            .reply(302, '', { location: 'https://raw.githubusercontent.com/test-owner/test-repo-v2/main/hub-config.yml' });
+
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/test-repo-v2/main/hub-config.yml')
+            .reply(200, hubConfigYaml);
+
+        await hubManager.syncHub(hubId);
+
+        // Verify hub was synced successfully
+        const loaded = await storage.loadHub(hubId);
+        assert.strictEqual(loaded.config.metadata.name, 'Updated Hub After Redirect');
+    });
+});

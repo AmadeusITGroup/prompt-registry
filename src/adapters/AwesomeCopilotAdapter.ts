@@ -741,8 +741,18 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
     /**
      * Fetch URL content with authentication
+     * Handles redirects (301/302) by following the Location header
      */
-    private async fetchUrl(url: string): Promise<string> {
+    private async fetchUrl(url: string, redirectDepth: number = 0): Promise<string> {
+        /**
+         * Maximum redirect depth to prevent infinite loops.
+         */
+        const MAX_REDIRECTS = 10;
+        if (redirectDepth >= MAX_REDIRECTS) {
+            this.logger.error(`[AwesomeCopilotAdapter] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+            throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+        }
+
         const token = await this.getAuthenticationToken();
         const headers: Record<string, string> = {
             'User-Agent': 'VSCode-Prompt-Registry'
@@ -764,6 +774,16 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
         return new Promise((resolve, reject) => {
             https.get(url, { headers }, (res) => {
+                // Handle redirects (301/302)
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    const redirectUrl = res.headers.location;
+                    if (redirectUrl) {
+                        this.logger.debug(`[AwesomeCopilotAdapter] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
+                        this.fetchUrl(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {

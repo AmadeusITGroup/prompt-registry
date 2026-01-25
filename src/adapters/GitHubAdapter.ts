@@ -270,8 +270,18 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Make HTTP request to GitHub API with authentication and automatic retry on auth failures
+     * Handles redirects (301/302) by following the Location header
      */
-    private async makeRequest(url: string, retryCount: number = 0): Promise<any> {
+    private async makeRequest(url: string, retryCount: number = 0, redirectDepth: number = 0): Promise<any> {
+        /**
+         * Maximum redirect depth to prevent infinite loops.
+         */
+        const MAX_REDIRECTS = 10;
+        if (redirectDepth >= MAX_REDIRECTS) {
+            this.logger.error(`[GitHubAdapter] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+            throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+        }
+
         const headers = this.getHeaders();
         
         // Get authentication token using fallback chain
@@ -293,6 +303,16 @@ export class GitHubAdapter extends RepositoryAdapter {
 
         return new Promise((resolve, reject) => {
             https.get(url, { headers }, (res) => {
+                // Handle redirects (301/302)
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    const redirectUrl = res.headers.location;
+                    if (redirectUrl) {
+                        this.logger.debug(`[GitHubAdapter] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
+                        this.makeRequest(redirectUrl, retryCount, redirectDepth + 1).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+
                 let data = '';
 
                 res.on('data', (chunk) => {

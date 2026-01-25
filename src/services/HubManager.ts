@@ -511,10 +511,20 @@ export class HubManager {
 
     /**
      * Fetch hub config from URL
+     * Handles redirects (301/302) by following the Location header
      * @param url URL to fetch from
+     * @param redirectDepth Current redirect depth (for loop prevention)
      * @returns Hub configuration
      */
-    private async fetchFromUrl(url: string): Promise<HubConfig> {
+    private async fetchFromUrl(url: string, redirectDepth: number = 0): Promise<HubConfig> {
+        /**
+         * Maximum redirect depth to prevent infinite loops.
+         */
+        const MAX_REDIRECTS = 10;
+        if (redirectDepth >= MAX_REDIRECTS) {
+            this.logger.error(`[HubManager] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+            throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+        }
         
         // Prepare headers with authentication for GitHub URLs
         const headers: { [key: string]: string } = {};
@@ -540,6 +550,16 @@ export class HubManager {
             const protocol = url.startsWith('https') ? https : http;
             const options: any = { headers };
             protocol.get(url, options, (res) => {
+                // Handle redirects (301/302)
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    const redirectUrl = res.headers.location;
+                    if (redirectUrl) {
+                        this.logger.debug(`[HubManager] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
+                        this.fetchFromUrl(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+
                 if (res.statusCode !== 200) {
                     this.logger.error(`[HubManager] Failed to fetch hub config: HTTP ${res.statusCode}`, undefined);
                     reject(new Error(`Failed to fetch hub config: HTTP ${res.statusCode}`));

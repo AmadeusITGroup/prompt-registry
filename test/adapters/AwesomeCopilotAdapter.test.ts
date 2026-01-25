@@ -457,3 +457,77 @@ items:
         assert.ok(buffer.length > 200, 'Archive should contain multiple files');
     });
 });
+
+suite('AwesomeCopilotAdapter HTTP Redirect Handling', () => {
+    const mockSource: RegistrySource = {
+        id: 'awesome-test',
+        name: 'Awesome Copilot Test',
+        type: 'awesome-copilot',
+        url: 'https://github.com/test-owner/awesome-copilot',
+        enabled: true,
+        priority: 1,
+    };
+
+    teardown(() => {
+        nock.cleanAll();
+    });
+
+    test('should follow HTTP 301 redirects when fetching collections', async () => {
+        // Mock the collections directory listing with a redirect
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+            .reply(301, '', { location: 'https://api.github.com/repos/new-owner/new-repo/contents/collections?ref=main' });
+
+        nock('https://api.github.com')
+            .get('/repos/new-owner/new-repo/contents/collections?ref=main')
+            .reply(200, [
+                {
+                    name: 'redirect-test.collection.yml',
+                    type: 'file',
+                    download_url: 'https://raw.githubusercontent.com/new-owner/new-repo/main/collections/redirect-test.collection.yml'
+                }
+            ]);
+
+        // Mock the collection file content
+        nock('https://raw.githubusercontent.com')
+            .get('/test-owner/awesome-copilot/main/collections/redirect-test.collection.yml')
+            .reply(301, '', { location: 'https://raw.githubusercontent.com/new-owner/new-repo/main/collections/redirect-test.collection.yml' });
+
+        nock('https://raw.githubusercontent.com')
+            .get('/new-owner/new-repo/main/collections/redirect-test.collection.yml')
+            .reply(200, `
+id: redirect-test
+name: Redirect Test Collection
+description: Test collection for redirect handling
+tags: ["test"]
+items:
+- path: "prompts/test.prompt.md"
+  kind: prompt
+`);
+
+        const adapter = new AwesomeCopilotAdapter(mockSource);
+        const bundles = await adapter.fetchBundles();
+
+        assert.strictEqual(bundles.length, 1);
+        assert.strictEqual(bundles[0].id, 'redirect-test');
+    });
+
+    test('should follow HTTP 302 redirects when validating repository', async () => {
+        // Mock the collections directory with a temporary redirect
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
+            .reply(302, '', { location: 'https://api.github.com/repos/test-owner/awesome-copilot-v2/contents/collections?ref=main' });
+
+        nock('https://api.github.com')
+            .get('/repos/test-owner/awesome-copilot-v2/contents/collections?ref=main')
+            .reply(200, [
+                { name: 'test.collection.yml', type: 'file' }
+            ]);
+
+        const adapter = new AwesomeCopilotAdapter(mockSource);
+        const result = await adapter.validate();
+
+        assert.strictEqual(result.valid, true);
+        assert.strictEqual(result.bundlesFound, 1);
+    });
+});

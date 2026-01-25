@@ -321,6 +321,75 @@ tags:
             assert.strictEqual(result.valid, false);
             assert.ok(result.errors[0].includes('401'));
         });
+
+        test('should follow HTTP 301 redirects when validating repository', async () => {
+            // Simulate a renamed repository that returns 301 redirect
+            // Both the repo metadata and releases endpoints will redirect
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo')
+                .reply(301, '', { location: 'https://api.github.com/repos/new-owner/new-repo' });
+
+            nock('https://api.github.com')
+                .get('/repos/new-owner/new-repo')
+                .reply(200, { name: 'new-repo' });
+
+            // The releases endpoint also needs to handle redirect since adapter uses original URL
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(301, '', { location: 'https://api.github.com/repos/new-owner/new-repo/releases' });
+
+            nock('https://api.github.com')
+                .get('/repos/new-owner/new-repo/releases')
+                .reply(200, []);
+
+            const adapter = new GitHubAdapter(mockSource);
+            const result = await adapter.validate();
+
+            assert.strictEqual(result.valid, true, 'Should successfully validate after following redirect');
+            assert.strictEqual(result.errors.length, 0);
+        });
+
+        test('should follow HTTP 302 redirects when validating repository', async () => {
+            // Simulate a temporary redirect
+            // Both the repo metadata and releases endpoints will redirect
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo')
+                .reply(302, '', { location: 'https://api.github.com/repos/test-owner/test-repo-v2' });
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo-v2')
+                .reply(200, { name: 'test-repo-v2' });
+
+            // The releases endpoint also needs to handle redirect
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(302, '', { location: 'https://api.github.com/repos/test-owner/test-repo-v2/releases' });
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo-v2/releases')
+                .reply(200, [{ tag_name: 'v1.0.0' }]);
+
+            const adapter = new GitHubAdapter(mockSource);
+            const result = await adapter.validate();
+
+            assert.strictEqual(result.valid, true, 'Should successfully validate after following redirect');
+        });
+
+        test('should follow redirects when fetching bundles', async () => {
+            // First request to releases endpoint gets redirected
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(301, '', { location: 'https://api.github.com/repos/new-owner/new-repo/releases' });
+
+            nock('https://api.github.com')
+                .get('/repos/new-owner/new-repo/releases')
+                .reply(200, []);
+
+            const adapter = new GitHubAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 0);
+        });
     });
 
     suite('URL Generation', () => {
