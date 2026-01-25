@@ -45,6 +45,22 @@ export const CONCURRENCY_CONSTANTS = {
     REGISTRY_BATCH_LIMIT: 5,
     
     /**
+     * Concurrency limit for parallel source synchronization
+     * - Controls how many sources are synced simultaneously
+     * - Balances speed with network/API rate limits
+     * - Higher values = faster sync but more concurrent requests
+     */
+    SOURCE_SYNC_CONCURRENCY: 5,
+    
+    /**
+     * Concurrency limit for parallel manifest downloads in GitHub adapter
+     * - Controls how many deployment manifests are downloaded simultaneously
+     * - Higher values = faster bundle discovery but more concurrent requests
+     * - GitHub API rate limit is 5000 requests/hour for authenticated users
+     */
+    MANIFEST_DOWNLOAD_CONCURRENCY: 10,
+    
+    /**
      * Maximum number of popular bundles to display in quick pick
      * - Prevents UI overflow in bundle selection dialogs
      * - Maintains reasonable response times for bundle loading
@@ -109,4 +125,11 @@ export const UI_CONSTANTS = {
      * - Used by tree and marketplace views to avoid excessive refreshes
      */
     SOURCE_SYNC_DEBOUNCE_MS: 500,
+
+    /**
+     * Delay before loading bundles after webview resolves (in milliseconds)
+     * - Ensures webview JavaScript is ready to receive messages
+     * - The webview also sends a refresh request as a backup
+     */
+    WEBVIEW_READY_DELAY_MS: 100,
 } as const;

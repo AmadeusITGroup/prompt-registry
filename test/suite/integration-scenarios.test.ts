@@ -273,7 +273,61 @@ describe('Prompt Registry Integration Test Scenarios', () => {
         });
     });
 
-    describe('Scenario 5: Scope Migration Commands', () => {
+    describe('Scenario 5: Extension Activation Performance', () => {
+        /**
+         * EXTENSION ACTIVATION TESTS
+         * 
+         * These tests verify basic activation behavior. They serve as smoke tests
+         * to ensure the extension activates and registers commands.
+         * 
+         * LIMITATION: The "webview not stuck during sync" behavior cannot be
+         * reliably tested in an automated way because:
+         * 1. Test environment has no configured sources, so sync completes instantly
+         * 2. Testing would require a slow source and timing-dependent assertions
+         * 
+         * The non-blocking sync behavior should be verified through:
+         * - Manual testing: Open marketplace while sync is running with real sources
+         * - Code review: Ensure syncAllSources() uses .then() not await in activate()
+         * 
+         * REQUIREMENT: In extension.ts, syncAllSources() must be called with
+         * .then().catch() pattern (non-blocking), NOT await (blocking).
+         * This allows the webview to resolve immediately and show cached bundles.
+         */
+        
+        it('should activate extension and register commands', async function() {
+            this.timeout(10000);
+            
+            // Find and activate the extension
+            const allExtensions = vscode.extensions.all;
+            const promptRegistryExt = allExtensions.find(ext => 
+                ext.id.toLowerCase().includes('prompt-registry') || 
+                ext.id.toLowerCase().includes('promptregistry')
+            );
+            
+            assert.ok(promptRegistryExt, 'Prompt Registry extension should be found');
+            
+            // If not already active, activate it
+            if (!promptRegistryExt.isActive) {
+                await promptRegistryExt.activate();
+            }
+            
+            assert.ok(promptRegistryExt.isActive, 'Extension should be active after activation');
+        });
+
+        it('should have sync command available after activation', async function() {
+            this.timeout(5000);
+            
+            const commands = await vscode.commands.getCommands(true);
+            
+            // Verify sync command is registered
+            assert.ok(
+                commands.includes('promptRegistry.syncAllSources'),
+                'promptRegistry.syncAllSources command should be available'
+            );
+        });
+    });
+
+    describe('Scenario 6: Scope Migration Commands', () => {
         /**
          * SCOPE MIGRATION COMMAND REGISTRATION TESTS
          * 

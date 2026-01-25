@@ -170,6 +170,8 @@ export interface SearchQuery {
     sortBy?: 'relevance' | 'downloads' | 'rating' | 'recent';
     limit?: number;
     offset?: number;
+    /** If true, only return cached bundles without fetching from network */
+    cacheOnly?: boolean;
 }
 
 /**
