@@ -199,12 +199,13 @@ suite('LockfileManager', () => {
                 assert.ok(lockfile!.bundles['my-bundle'].installedAt);
             });
 
-            test('should include commitMode in bundle entry', async () => {
-                // Requirements: 4.6
+            test('should NOT include commitMode in bundle entry (implicit based on file)', async () => {
+                // Requirements: 1.4, 1.5 - commitMode is implicit based on which lockfile contains the entry
                 const manager = LockfileManager.getInstance(tempDir);
                 await manager.createOrUpdate(createTestOptions('my-bundle'));
                 const lockfile = readLockfileFromDisk();
-                assert.ok(['commit', 'local-only'].includes(lockfile!.bundles['my-bundle'].commitMode));
+                // commitMode should NOT be present in the bundle entry
+                assert.strictEqual(lockfile!.bundles['my-bundle'].commitMode, undefined);
             });
 
             test('should include files array with checksums', async () => {
@@ -398,6 +399,193 @@ suite('LockfileManager', () => {
                 assert.ok(lockfile!.bundles);
             });
         });
+
+        suite('Dual-Lockfile Write Operations', () => {
+            const localLockfilePath = () => path.join(tempDir, 'prompt-registry.local.lock.json');
+            
+            const readLocalLockfileFromDisk = (): Lockfile | null => {
+                const localPath = localLockfilePath();
+                if (!fs.existsSync(localPath)) {
+                    return null;
+                }
+                return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+            };
+
+            test('should write commit mode bundles to main lockfile', async () => {
+                // Requirements: 1.2 - Write commit bundles to prompt-registry.lock.json
+                const manager = LockfileManager.getInstance(tempDir);
+                const options = createTestOptions('commit-bundle');
+                options.commitMode = 'commit';
+                
+                await manager.createOrUpdate(options);
+                
+                // Verify bundle is in main lockfile
+                const mainLockfile = readLockfileFromDisk();
+                assert.ok(mainLockfile, 'Main lockfile should exist');
+                assert.ok(mainLockfile!.bundles['commit-bundle'], 'Bundle should be in main lockfile');
+                
+                // Verify bundle is NOT in local lockfile
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.strictEqual(localLockfile, null, 'Local lockfile should not exist');
+            });
+
+            test('should write local-only mode bundles to local lockfile', async () => {
+                // Requirements: 1.1 - Write local-only bundles to prompt-registry.local.lock.json
+                const manager = LockfileManager.getInstance(tempDir);
+                const options = createTestOptions('local-bundle');
+                options.commitMode = 'local-only';
+                
+                await manager.createOrUpdate(options);
+                
+                // Verify bundle is in local lockfile
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.ok(localLockfile, 'Local lockfile should exist');
+                assert.ok(localLockfile!.bundles['local-bundle'], 'Bundle should be in local lockfile');
+                
+                // Verify bundle is NOT in main lockfile
+                const mainLockfile = readLockfileFromDisk();
+                assert.strictEqual(mainLockfile, null, 'Main lockfile should not exist');
+            });
+
+            test('should NOT include commitMode field in bundle entries for commit mode', async () => {
+                // Requirements: 1.5 - commitMode field should not be included in main lockfile entries
+                const manager = LockfileManager.getInstance(tempDir);
+                const options = createTestOptions('commit-bundle');
+                options.commitMode = 'commit';
+                
+                await manager.createOrUpdate(options);
+                
+                const mainLockfile = readLockfileFromDisk();
+                assert.ok(mainLockfile, 'Main lockfile should exist');
+                assert.strictEqual(
+                    mainLockfile!.bundles['commit-bundle'].commitMode, 
+                    undefined, 
+                    'commitMode should NOT be in bundle entry'
+                );
+            });
+
+            test('should NOT include commitMode field in bundle entries for local-only mode', async () => {
+                // Requirements: 1.4 - commitMode field should not be included in local lockfile entries
+                const manager = LockfileManager.getInstance(tempDir);
+                const options = createTestOptions('local-bundle');
+                options.commitMode = 'local-only';
+                
+                await manager.createOrUpdate(options);
+                
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.ok(localLockfile, 'Local lockfile should exist');
+                assert.strictEqual(
+                    localLockfile!.bundles['local-bundle'].commitMode, 
+                    undefined, 
+                    'commitMode should NOT be in bundle entry'
+                );
+            });
+
+            test('should keep commit and local-only bundles in separate lockfiles', async () => {
+                // Requirements: 1.1, 1.2 - Bundles should be in correct lockfiles based on commitMode
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Create commit mode bundle
+                const commitOptions = createTestOptions('commit-bundle');
+                commitOptions.commitMode = 'commit';
+                await manager.createOrUpdate(commitOptions);
+                
+                // Create local-only mode bundle
+                const localOptions = createTestOptions('local-bundle');
+                localOptions.commitMode = 'local-only';
+                localOptions.sourceId = 'local-source';
+                await manager.createOrUpdate(localOptions);
+                
+                // Verify commit bundle is only in main lockfile
+                const mainLockfile = readLockfileFromDisk();
+                assert.ok(mainLockfile!.bundles['commit-bundle'], 'Commit bundle should be in main lockfile');
+                assert.strictEqual(mainLockfile!.bundles['local-bundle'], undefined, 'Local bundle should NOT be in main lockfile');
+                
+                // Verify local-only bundle is only in local lockfile
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.ok(localLockfile!.bundles['local-bundle'], 'Local bundle should be in local lockfile');
+                assert.strictEqual(localLockfile!.bundles['commit-bundle'], undefined, 'Commit bundle should NOT be in local lockfile');
+            });
+
+            test('should add local lockfile to git exclude on first local-only bundle creation', async () => {
+                // Requirements: 2.1 - Add prompt-registry.local.lock.json to .git/info/exclude
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Create .git/info directory
+                const gitInfoDir = path.join(tempDir, '.git', 'info');
+                fs.mkdirSync(gitInfoDir, { recursive: true });
+                
+                // Create local-only bundle
+                const options = createTestOptions('local-bundle');
+                options.commitMode = 'local-only';
+                await manager.createOrUpdate(options);
+                
+                // Verify .git/info/exclude has the local lockfile entry
+                const excludePath = path.join(gitInfoDir, 'exclude');
+                assert.ok(fs.existsSync(excludePath), '.git/info/exclude should exist');
+                
+                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                assert.ok(
+                    excludeContent.includes('prompt-registry.local.lock.json'),
+                    'Local lockfile should be in git exclude'
+                );
+                assert.ok(
+                    excludeContent.includes('# Prompt Registry (local)'),
+                    'Git exclude should have Prompt Registry section header'
+                );
+            });
+
+            test('should not add to git exclude when .git directory does not exist', async () => {
+                // Requirements: 2.3 - Skip git exclude operations if .git directory does not exist
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Ensure .git directory does NOT exist
+                const gitDir = path.join(tempDir, '.git');
+                if (fs.existsSync(gitDir)) {
+                    fs.rmSync(gitDir, { recursive: true });
+                }
+                
+                // Create local-only bundle - should not throw
+                const options = createTestOptions('local-bundle');
+                options.commitMode = 'local-only';
+                await manager.createOrUpdate(options);
+                
+                // Verify local lockfile was created
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.ok(localLockfile, 'Local lockfile should exist');
+                
+                // Verify .git/info/exclude was NOT created
+                const excludePath = path.join(tempDir, '.git', 'info', 'exclude');
+                assert.ok(!fs.existsSync(excludePath), '.git/info/exclude should NOT exist');
+            });
+
+            test('should not duplicate git exclude entry on subsequent local-only bundle creations', async () => {
+                // Requirements: 2.5 - Prevent duplicate entries in git exclude
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Create .git/info directory
+                const gitInfoDir = path.join(tempDir, '.git', 'info');
+                fs.mkdirSync(gitInfoDir, { recursive: true });
+                
+                // Create first local-only bundle
+                const options1 = createTestOptions('local-bundle-1');
+                options1.commitMode = 'local-only';
+                await manager.createOrUpdate(options1);
+                
+                // Create second local-only bundle
+                const options2 = createTestOptions('local-bundle-2');
+                options2.commitMode = 'local-only';
+                options2.sourceId = 'source-2';
+                await manager.createOrUpdate(options2);
+                
+                // Verify .git/info/exclude has only one entry for local lockfile
+                const excludePath = path.join(gitInfoDir, 'exclude');
+                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                
+                const matches = excludeContent.match(/prompt-registry\.local\.lock\.json/g);
+                assert.strictEqual(matches?.length, 1, 'Local lockfile should appear only once in git exclude');
+            });
+        });
     });
 
     suite('remove()', () => {
@@ -462,34 +650,213 @@ suite('LockfileManager', () => {
             assert.ok(!updated!.sources['source-1'], 'Orphaned source should be removed');
             assert.ok(updated!.sources['source-2'], 'Referenced source should remain');
         });
+
+        suite('Dual-Lockfile Remove Operations', () => {
+            // Requirements: 5.1, 5.2, 5.3, 5.4 - Remove from correct lockfile
+            
+            const localLockfilePath = () => path.join(tempDir, 'prompt-registry.local.lock.json');
+            
+            const readLocalLockfileFromDisk = (): Lockfile | null => {
+                const localPath = localLockfilePath();
+                if (!fs.existsSync(localPath)) {
+                    return null;
+                }
+                return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+            };
+
+            const writeLocalLockfile = (lockfile: Lockfile): void => {
+                fs.writeFileSync(localLockfilePath(), JSON.stringify(lockfile, null, 2));
+            };
+
+            test('should remove local-only bundle from local lockfile', async () => {
+                // Requirements: 5.1 - Remove local-only bundle from Local_Lockfile
+                const localLockfile = createMockLockfile(2);
+                writeLocalLockfile(localLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                await manager.remove('bundle-0');
+                
+                // Bundle should be removed from local lockfile
+                const updatedLocal = readLocalLockfileFromDisk();
+                assert.ok(updatedLocal, 'Local lockfile should still exist');
+                assert.ok(!updatedLocal!.bundles['bundle-0'], 'bundle-0 should be removed');
+                assert.ok(updatedLocal!.bundles['bundle-1'], 'bundle-1 should remain');
+                
+                // Main lockfile should not exist
+                const mainLockfile = readLockfileFromDisk();
+                assert.strictEqual(mainLockfile, null, 'Main lockfile should not exist');
+            });
+
+            test('should remove committed bundle from main lockfile', async () => {
+                // Requirements: 5.2 - Remove committed bundle from Main_Lockfile
+                const mainLockfile = createMockLockfile(2);
+                writeLockfile(mainLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                await manager.remove('bundle-0');
+                
+                // Bundle should be removed from main lockfile
+                const updatedMain = readLockfileFromDisk();
+                assert.ok(updatedMain, 'Main lockfile should still exist');
+                assert.ok(!updatedMain!.bundles['bundle-0'], 'bundle-0 should be removed');
+                assert.ok(updatedMain!.bundles['bundle-1'], 'bundle-1 should remain');
+                
+                // Local lockfile should not exist
+                const localLockfile = readLocalLockfileFromDisk();
+                assert.strictEqual(localLockfile, null, 'Local lockfile should not exist');
+            });
+
+            test('should delete local lockfile when last local-only bundle is removed', async () => {
+                // Requirements: 5.3 - Delete Local_Lockfile when last bundle removed
+                const localLockfile = createMockLockfile(1);
+                writeLocalLockfile(localLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                await manager.remove('bundle-0');
+                
+                // Local lockfile should be deleted
+                assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
+            });
+
+            test('should delete main lockfile when last committed bundle is removed', async () => {
+                // Requirements: 5.5 - Delete Main_Lockfile when last bundle removed
+                const mainLockfile = createMockLockfile(1);
+                writeLockfile(mainLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                await manager.remove('bundle-0');
+                
+                // Main lockfile should be deleted
+                assert.strictEqual(fs.existsSync(lockfilePath), false, 'Main lockfile should be deleted');
+            });
+
+            test('should remove local lockfile from git exclude when local lockfile is deleted', async () => {
+                // Requirements: 5.4 - Remove local lockfile from git exclude when deleted
+                const localLockfile = createMockLockfile(1);
+                writeLocalLockfile(localLockfile);
+                
+                // Create .git/info directory with local lockfile entry
+                const gitInfoDir = path.join(tempDir, '.git', 'info');
+                fs.mkdirSync(gitInfoDir, { recursive: true });
+                const excludePath = path.join(gitInfoDir, 'exclude');
+                fs.writeFileSync(excludePath, '# Prompt Registry (local)\nprompt-registry.local.lock.json\n');
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                await manager.remove('bundle-0');
+                
+                // Local lockfile should be deleted
+                assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
+                
+                // Git exclude should no longer have the local lockfile entry
+                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                assert.ok(
+                    !excludeContent.includes('prompt-registry.local.lock.json'),
+                    'Local lockfile should be removed from git exclude'
+                );
+            });
+
+            test('should remove from correct lockfile when both exist', async () => {
+                // Test that remove finds the bundle in the correct lockfile
+                const mainLockfile = LockfileBuilder.create()
+                    .withSource('main-source', 'github', 'https://github.com/main/repo')
+                    .withBundle('main-bundle', '1.0.0', 'main-source')
+                    .build();
+                writeLockfile(mainLockfile);
+                
+                const localLockfile = LockfileBuilder.create()
+                    .withSource('local-source', 'github', 'https://github.com/local/repo')
+                    .withBundle('local-bundle', '1.0.0', 'local-source')
+                    .build();
+                writeLocalLockfile(localLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Remove from local lockfile
+                await manager.remove('local-bundle');
+                
+                // Local lockfile should be deleted (was the only bundle)
+                assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
+                
+                // Main lockfile should still have its bundle
+                const updatedMain = readLockfileFromDisk();
+                assert.ok(updatedMain, 'Main lockfile should still exist');
+                assert.ok(updatedMain!.bundles['main-bundle'], 'main-bundle should remain');
+            });
+
+            test('should handle removing non-existent bundle from both lockfiles gracefully', async () => {
+                // Test that remove handles non-existent bundle when both lockfiles exist
+                const mainLockfile = createMockLockfile(1);
+                writeLockfile(mainLockfile);
+                
+                const localLockfile = createMockLockfile(1);
+                writeLocalLockfile(localLockfile);
+                
+                const manager = LockfileManager.getInstance(tempDir);
+                
+                // Remove non-existent bundle - should not throw
+                await manager.remove('non-existent');
+                
+                // Both lockfiles should remain unchanged
+                const updatedMain = readLockfileFromDisk();
+                const updatedLocal = readLocalLockfileFromDisk();
+                assert.ok(updatedMain!.bundles['bundle-0'], 'Main lockfile bundle should remain');
+                assert.ok(updatedLocal!.bundles['bundle-0'], 'Local lockfile bundle should remain');
+            });
+        });
     });
 
     suite('updateCommitMode()', () => {
-        test('should update commit mode from commit to local-only', async () => {
+        const localLockfilePath = () => path.join(tempDir, 'prompt-registry.local.lock.json');
+        
+        const readLocalLockfileFromDisk = (): Lockfile | null => {
+            const localPath = localLockfilePath();
+            if (!fs.existsSync(localPath)) {
+                return null;
+            }
+            return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+        };
+
+        const writeLocalLockfile = (lockfile: Lockfile): void => {
+            fs.writeFileSync(localLockfilePath(), JSON.stringify(lockfile, null, 2));
+        };
+
+        test('should move bundle from main lockfile to local lockfile when switching to local-only', async () => {
+            // Requirements: 4.1 - Move bundle from Main_Lockfile to Local_Lockfile
             const lockfile = createMockLockfile(1);
-            lockfile.bundles['bundle-0'].commitMode = 'commit';
             writeLockfile(lockfile);
             
             const manager = LockfileManager.getInstance(tempDir);
             await manager.updateCommitMode('bundle-0', 'local-only');
             
-            const updated = readLockfileFromDisk();
-            assert.strictEqual(updated!.bundles['bundle-0'].commitMode, 'local-only');
+            // Bundle should be in local lockfile
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.ok(localLockfile, 'Local lockfile should exist');
+            assert.ok(localLockfile!.bundles['bundle-0'], 'Bundle should be in local lockfile');
+            
+            // Bundle should NOT be in main lockfile (main lockfile should be deleted since it was the only bundle)
+            const mainLockfile = readLockfileFromDisk();
+            assert.strictEqual(mainLockfile, null, 'Main lockfile should be deleted when empty');
         });
 
-        test('should update commit mode from local-only to commit', async () => {
+        test('should move bundle from local lockfile to main lockfile when switching to commit', async () => {
+            // Requirements: 4.2 - Move bundle from Local_Lockfile to Main_Lockfile
             const lockfile = createMockLockfile(1);
-            lockfile.bundles['bundle-0'].commitMode = 'local-only';
-            writeLockfile(lockfile);
+            writeLocalLockfile(lockfile);
             
             const manager = LockfileManager.getInstance(tempDir);
             await manager.updateCommitMode('bundle-0', 'commit');
             
-            const updated = readLockfileFromDisk();
-            assert.strictEqual(updated!.bundles['bundle-0'].commitMode, 'commit');
+            // Bundle should be in main lockfile
+            const mainLockfile = readLockfileFromDisk();
+            assert.ok(mainLockfile, 'Main lockfile should exist');
+            assert.ok(mainLockfile!.bundles['bundle-0'], 'Bundle should be in main lockfile');
+            
+            // Bundle should NOT be in local lockfile (local lockfile should be deleted since it was the only bundle)
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.strictEqual(localLockfile, null, 'Local lockfile should be deleted when empty');
         });
 
-        test('should update generatedAt timestamp', async () => {
+        test('should update generatedAt timestamp in target lockfile', async () => {
             const lockfile = createMockLockfile(1);
             const originalTimestamp = lockfile.generatedAt;
             writeLockfile(lockfile);
@@ -500,32 +867,36 @@ suite('LockfileManager', () => {
             const manager = LockfileManager.getInstance(tempDir);
             await manager.updateCommitMode('bundle-0', 'local-only');
             
-            const updated = readLockfileFromDisk();
-            assert.notStrictEqual(updated!.generatedAt, originalTimestamp);
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.ok(localLockfile, 'Local lockfile should exist');
+            assert.notStrictEqual(localLockfile!.generatedAt, originalTimestamp);
         });
 
-        test('should throw error if lockfile does not exist', async () => {
+        test('should throw error if bundle not found in source lockfile', async () => {
+            // Requirements: 4.6 - Return error if bundle not found in source lockfile
             const manager = LockfileManager.getInstance(tempDir);
             
             await assert.rejects(
                 async () => manager.updateCommitMode('bundle-0', 'local-only'),
-                /Lockfile does not exist/
+                /Bundle bundle-0 not found in commit lockfile/
             );
         });
 
-        test('should throw error if bundle not found in lockfile', async () => {
+        test('should throw error if bundle not found when switching to commit', async () => {
+            // Requirements: 4.6 - Return error if bundle not found in source lockfile
             const lockfile = createMockLockfile(1);
             writeLockfile(lockfile);
             
             const manager = LockfileManager.getInstance(tempDir);
             
+            // Bundle is in main lockfile, but we're trying to switch to commit (which looks in local lockfile)
             await assert.rejects(
                 async () => manager.updateCommitMode('non-existent', 'local-only'),
-                /Bundle non-existent not found in lockfile/
+                /Bundle non-existent not found in commit lockfile/
             );
         });
 
-        test('should emit onLockfileUpdated event', async () => {
+        test('should emit onLockfileUpdated event with target lockfile', async () => {
             const lockfile = createMockLockfile(1);
             writeLockfile(lockfile);
             
@@ -541,21 +912,113 @@ suite('LockfileManager', () => {
             await manager.updateCommitMode('bundle-0', 'local-only');
             
             assert.ok(eventFired, 'Event should be fired');
-            assert.strictEqual(eventLockfile!.bundles['bundle-0'].commitMode, 'local-only');
+            // The event should contain the target lockfile (local lockfile) with the bundle
+            assert.ok(eventLockfile!.bundles['bundle-0'], 'Event lockfile should contain the moved bundle');
         });
 
-        test('should preserve other bundle properties', async () => {
+        test('should preserve all bundle metadata during move', async () => {
+            // Requirements: 4.3 - Preserve all bundle metadata during move
             const lockfile = createMockLockfile(1);
             const originalVersion = lockfile.bundles['bundle-0'].version;
             const originalSourceId = lockfile.bundles['bundle-0'].sourceId;
+            const originalSourceType = lockfile.bundles['bundle-0'].sourceType;
+            const originalInstalledAt = lockfile.bundles['bundle-0'].installedAt;
+            const originalFiles = lockfile.bundles['bundle-0'].files;
             writeLockfile(lockfile);
             
             const manager = LockfileManager.getInstance(tempDir);
             await manager.updateCommitMode('bundle-0', 'local-only');
             
-            const updated = readLockfileFromDisk();
-            assert.strictEqual(updated!.bundles['bundle-0'].version, originalVersion);
-            assert.strictEqual(updated!.bundles['bundle-0'].sourceId, originalSourceId);
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.ok(localLockfile, 'Local lockfile should exist');
+            assert.strictEqual(localLockfile!.bundles['bundle-0'].version, originalVersion, 'Version should be preserved');
+            assert.strictEqual(localLockfile!.bundles['bundle-0'].sourceId, originalSourceId, 'SourceId should be preserved');
+            assert.strictEqual(localLockfile!.bundles['bundle-0'].sourceType, originalSourceType, 'SourceType should be preserved');
+            assert.strictEqual(localLockfile!.bundles['bundle-0'].installedAt, originalInstalledAt, 'InstalledAt should be preserved');
+            assert.deepStrictEqual(localLockfile!.bundles['bundle-0'].files, originalFiles, 'Files should be preserved');
+        });
+
+        test('should copy source entry to target lockfile', async () => {
+            // Requirements: 4.3 - Source entry should be migrated
+            const lockfile = createMockLockfile(1);
+            const sourceId = lockfile.bundles['bundle-0'].sourceId;
+            const originalSource = lockfile.sources[sourceId];
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            await manager.updateCommitMode('bundle-0', 'local-only');
+            
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.ok(localLockfile, 'Local lockfile should exist');
+            assert.ok(localLockfile!.sources[sourceId], 'Source should be copied to local lockfile');
+            assert.strictEqual(localLockfile!.sources[sourceId].type, originalSource.type, 'Source type should be preserved');
+            assert.strictEqual(localLockfile!.sources[sourceId].url, originalSource.url, 'Source URL should be preserved');
+        });
+
+        test('should add local lockfile to git exclude when moving to local-only', async () => {
+            // Requirements: 4.4 - Add local lockfile to git exclude when moving to local-only
+            const lockfile = createMockLockfile(1);
+            writeLockfile(lockfile);
+            
+            // Create .git/info directory
+            const gitInfoDir = path.join(tempDir, '.git', 'info');
+            fs.mkdirSync(gitInfoDir, { recursive: true });
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            await manager.updateCommitMode('bundle-0', 'local-only');
+            
+            // Verify .git/info/exclude has the local lockfile entry
+            const excludePath = path.join(gitInfoDir, 'exclude');
+            assert.ok(fs.existsSync(excludePath), '.git/info/exclude should exist');
+            
+            const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+            assert.ok(
+                excludeContent.includes('prompt-registry.local.lock.json'),
+                'Local lockfile should be in git exclude'
+            );
+        });
+
+        test('should remove local lockfile from git exclude when local lockfile becomes empty', async () => {
+            // Requirements: 4.5 - Remove local lockfile from git exclude when empty
+            const lockfile = createMockLockfile(1);
+            writeLocalLockfile(lockfile);
+            
+            // Create .git/info directory with local lockfile entry
+            const gitInfoDir = path.join(tempDir, '.git', 'info');
+            fs.mkdirSync(gitInfoDir, { recursive: true });
+            const excludePath = path.join(gitInfoDir, 'exclude');
+            fs.writeFileSync(excludePath, '# Prompt Registry (local)\nprompt-registry.local.lock.json\n');
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            await manager.updateCommitMode('bundle-0', 'commit');
+            
+            // Local lockfile should be deleted (was the only bundle)
+            assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
+            
+            // Git exclude should no longer have the local lockfile entry
+            const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+            assert.ok(
+                !excludeContent.includes('prompt-registry.local.lock.json'),
+                'Local lockfile should be removed from git exclude'
+            );
+        });
+
+        test('should preserve other bundles in source lockfile when moving one', async () => {
+            const lockfile = createMockLockfile(2);
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            await manager.updateCommitMode('bundle-0', 'local-only');
+            
+            // bundle-0 should be in local lockfile
+            const localLockfile = readLocalLockfileFromDisk();
+            assert.ok(localLockfile!.bundles['bundle-0'], 'bundle-0 should be in local lockfile');
+            
+            // bundle-1 should still be in main lockfile
+            const mainLockfile = readLockfileFromDisk();
+            assert.ok(mainLockfile, 'Main lockfile should still exist');
+            assert.ok(mainLockfile!.bundles['bundle-1'], 'bundle-1 should still be in main lockfile');
+            assert.ok(!mainLockfile!.bundles['bundle-0'], 'bundle-0 should NOT be in main lockfile');
         });
     });
 
@@ -824,6 +1287,27 @@ suite('LockfileManager', () => {
         });
     });
 
+    suite('getLocalLockfilePath()', () => {
+        test('should return correct local lockfile path', () => {
+            const manager = LockfileManager.getInstance(tempDir);
+            const localLockfilePath = manager.getLocalLockfilePath();
+            assert.ok(localLockfilePath.endsWith('prompt-registry.local.lock.json'));
+        });
+
+        test('should return path in repository root', () => {
+            const manager = LockfileManager.getInstance(tempDir);
+            const localLockfilePath = manager.getLocalLockfilePath();
+            assert.ok(localLockfilePath.startsWith(tempDir));
+        });
+
+        test('should return different path than main lockfile', () => {
+            const manager = LockfileManager.getInstance(tempDir);
+            const mainPath = manager.getLockfilePath();
+            const localPath = manager.getLocalLockfilePath();
+            assert.notStrictEqual(mainPath, localPath);
+        });
+    });
+
     suite('Lockfile Deletion Error Handling', () => {
         // Requirements: 3.5 - If lockfile deletion fails, log error and continue without throwing
         
@@ -1010,6 +1494,225 @@ suite('LockfileManager', () => {
             
             // Clean up
             manager?.dispose();
+        });
+    });
+
+    suite('getInstalledBundles() - Dual Lockfile Support', () => {
+        // Requirements: 3.1, 3.2, 3.3, 3.4 - Unified bundle listing with conflict detection
+        
+        const localLockfilePath = () => path.join(tempDir, 'prompt-registry.local.lock.json');
+        
+        const writeLocalLockfile = (lockfile: Lockfile): void => {
+            fs.writeFileSync(localLockfilePath(), JSON.stringify(lockfile, null, 2));
+        };
+
+        test('should return empty array when no lockfiles exist', async () => {
+            // Requirements: 3.1 - Read from both lockfiles
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            assert.strictEqual(bundles.length, 0);
+        });
+
+        test('should return bundles from main lockfile only when local lockfile does not exist', async () => {
+            // Requirements: 3.1, 3.3 - Read from main lockfile, set commitMode: 'commit'
+            const mainLockfile = createMockLockfile(2);
+            writeLockfile(mainLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 2);
+            assert.ok(bundles.every(b => b.commitMode === 'commit'), 'All bundles from main lockfile should have commitMode: commit');
+        });
+
+        test('should return bundles from local lockfile only when main lockfile does not exist', async () => {
+            // Requirements: 3.1, 3.2 - Read from local lockfile, set commitMode: 'local-only'
+            const localLockfile = createMockLockfile(2, { commitMode: 'local-only' });
+            writeLocalLockfile(localLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 2);
+            assert.ok(bundles.every(b => b.commitMode === 'local-only'), 'All bundles from local lockfile should have commitMode: local-only');
+        });
+
+        test('should merge bundles from both lockfiles', async () => {
+            // Requirements: 3.1 - Read from both Main_Lockfile and Local_Lockfile
+            const mainLockfile = LockfileBuilder.create()
+                .withSource('main-source', 'github', 'https://github.com/main/repo')
+                .withBundle('main-bundle-1', '1.0.0', 'main-source', { commitMode: 'commit' })
+                .withBundle('main-bundle-2', '2.0.0', 'main-source', { commitMode: 'commit' })
+                .build();
+            writeLockfile(mainLockfile);
+            
+            const localLockfile = LockfileBuilder.create()
+                .withSource('local-source', 'github', 'https://github.com/local/repo')
+                .withBundle('local-bundle-1', '1.0.0', 'local-source', { commitMode: 'local-only' })
+                .build();
+            writeLocalLockfile(localLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 3, 'Should have 3 bundles total');
+            
+            const mainBundles = bundles.filter(b => b.commitMode === 'commit');
+            const localBundles = bundles.filter(b => b.commitMode === 'local-only');
+            
+            assert.strictEqual(mainBundles.length, 2, 'Should have 2 bundles from main lockfile');
+            assert.strictEqual(localBundles.length, 1, 'Should have 1 bundle from local lockfile');
+        });
+
+        test('should annotate bundles from main lockfile with commitMode: commit', async () => {
+            // Requirements: 3.3 - Set commitMode: 'commit' on bundles from Main_Lockfile
+            const mainLockfile = createMockLockfile(1);
+            // Even if the entry has a different commitMode, it should be overridden
+            mainLockfile.bundles['bundle-0'].commitMode = 'local-only';
+            writeLockfile(mainLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].commitMode, 'commit', 'Bundle from main lockfile should have commitMode: commit regardless of entry value');
+        });
+
+        test('should annotate bundles from local lockfile with commitMode: local-only', async () => {
+            // Requirements: 3.2 - Set commitMode: 'local-only' on bundles from Local_Lockfile
+            const localLockfile = createMockLockfile(1);
+            // Even if the entry has a different commitMode, it should be overridden
+            localLockfile.bundles['bundle-0'].commitMode = 'commit';
+            writeLocalLockfile(localLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].commitMode, 'local-only', 'Bundle from local lockfile should have commitMode: local-only regardless of entry value');
+        });
+
+        test('should detect conflict when bundle ID exists in both lockfiles', async () => {
+            // Requirements: 3.4 - Display error when bundle ID exists in both lockfiles
+            const conflictingBundleId = 'conflicting-bundle';
+            
+            const mainLockfile = LockfileBuilder.create()
+                .withSource('main-source', 'github', 'https://github.com/main/repo')
+                .withBundle(conflictingBundleId, '1.0.0', 'main-source', { commitMode: 'commit' })
+                .build();
+            writeLockfile(mainLockfile);
+            
+            const localLockfile = LockfileBuilder.create()
+                .withSource('local-source', 'github', 'https://github.com/local/repo')
+                .withBundle(conflictingBundleId, '2.0.0', 'local-source', { commitMode: 'local-only' })
+                .build();
+            writeLocalLockfile(localLockfile);
+            
+            // Track error message display
+            const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            // Should only return the bundle from main lockfile (first one wins)
+            assert.strictEqual(bundles.length, 1, 'Should only return 1 bundle (conflict skips local)');
+            assert.strictEqual(bundles[0].bundleId, conflictingBundleId);
+            assert.strictEqual(bundles[0].commitMode, 'commit', 'Should be from main lockfile');
+            
+            // Should display error message
+            assert.ok(showErrorMessageStub.calledOnce, 'Should display error message for conflict');
+            assert.ok(
+                showErrorMessageStub.firstCall.args[0].includes(conflictingBundleId),
+                'Error message should contain the conflicting bundle ID'
+            );
+            assert.ok(
+                showErrorMessageStub.firstCall.args[0].includes('both lockfiles'),
+                'Error message should mention both lockfiles'
+            );
+        });
+
+        test('should log error when conflict is detected', async () => {
+            // Requirements: 3.4 - Log error for conflicts
+            const conflictingBundleId = 'conflicting-bundle';
+            
+            const mainLockfile = LockfileBuilder.create()
+                .withSource('main-source', 'github', 'https://github.com/main/repo')
+                .withBundle(conflictingBundleId, '1.0.0', 'main-source')
+                .build();
+            writeLockfile(mainLockfile);
+            
+            const localLockfile = LockfileBuilder.create()
+                .withSource('local-source', 'github', 'https://github.com/local/repo')
+                .withBundle(conflictingBundleId, '2.0.0', 'local-source')
+                .build();
+            writeLocalLockfile(localLockfile);
+            
+            // Track logger error calls
+            const logger = Logger.getInstance();
+            const logErrorStub = sandbox.stub(logger, 'error');
+            sandbox.stub(vscode.window, 'showErrorMessage');
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            await manager.getInstalledBundles();
+            
+            // Should log error
+            assert.ok(logErrorStub.called, 'Should log error for conflict');
+            assert.ok(
+                logErrorStub.firstCall.args[0].includes(conflictingBundleId),
+                'Log message should contain the conflicting bundle ID'
+            );
+        });
+
+        test('should handle multiple conflicts correctly', async () => {
+            // Requirements: 3.4 - Handle multiple conflicts
+            const mainLockfile = LockfileBuilder.create()
+                .withSource('main-source', 'github', 'https://github.com/main/repo')
+                .withBundle('conflict-1', '1.0.0', 'main-source')
+                .withBundle('conflict-2', '1.0.0', 'main-source')
+                .withBundle('main-only', '1.0.0', 'main-source')
+                .build();
+            writeLockfile(mainLockfile);
+            
+            const localLockfile = LockfileBuilder.create()
+                .withSource('local-source', 'github', 'https://github.com/local/repo')
+                .withBundle('conflict-1', '2.0.0', 'local-source')
+                .withBundle('conflict-2', '2.0.0', 'local-source')
+                .withBundle('local-only', '1.0.0', 'local-source')
+                .build();
+            writeLocalLockfile(localLockfile);
+            
+            const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            // Should return 4 bundles: 3 from main + 1 unique from local
+            assert.strictEqual(bundles.length, 4, 'Should return 4 bundles (3 main + 1 unique local)');
+            
+            // Should display error for each conflict
+            assert.strictEqual(showErrorMessageStub.callCount, 2, 'Should display 2 error messages for 2 conflicts');
+        });
+
+        test('should preserve bundle metadata when merging', async () => {
+            // Verify that all bundle properties are correctly preserved
+            const mainLockfile = LockfileBuilder.create()
+                .withSource('main-source', 'github', 'https://github.com/main/repo')
+                .withBundle('main-bundle', '1.2.3', 'main-source', {
+                    sourceType: 'github',
+                    files: [createMockFileEntry('.github/prompts/test.prompt.md')]
+                })
+                .build();
+            writeLockfile(mainLockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].bundleId, 'main-bundle');
+            assert.strictEqual(bundles[0].version, '1.2.3');
+            assert.strictEqual(bundles[0].sourceId, 'main-source');
+            assert.strictEqual(bundles[0].sourceType, 'github');
+            assert.strictEqual(bundles[0].scope, 'repository');
         });
     });
 });

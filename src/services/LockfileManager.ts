@@ -32,6 +32,7 @@ import { calculateFileChecksum } from '../utils/fileIntegrityService';
 import { createInstalledBundleFromLockfile } from '../utils/bundleScopeUtils';
 
 const LOCKFILE_NAME = 'prompt-registry.lock.json';
+const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
 const LOCKFILE_SCHEMA_VERSION = '1.0.0';
 const LOCKFILE_SCHEMA_URL = 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json';
 const EXTENSION_ID = 'AmadeusITGroup.prompt-registry';
@@ -169,6 +170,31 @@ export class LockfileManager {
     }
 
     /**
+     * Get the path to the local lockfile (for local-only bundles)
+     */
+    getLocalLockfilePath(): string {
+        return path.join(this.repositoryPath, LOCAL_LOCKFILE_NAME);
+    }
+
+    /**
+     * Get the path to the appropriate lockfile based on commit mode.
+     * Routes to the main lockfile for 'commit' mode and local lockfile for 'local-only' mode.
+     * 
+     * @param commitMode - The commit mode to determine which lockfile to use
+     * @returns Path to the appropriate lockfile
+     * 
+     * Requirements covered:
+     * - 1.1: Route local-only bundles to prompt-registry.local.lock.json
+     * - 1.2: Route commit bundles to prompt-registry.lock.json
+     */
+    private getLockfilePathForMode(commitMode: RepositoryCommitMode): string {
+        const filename = commitMode === 'local-only' 
+            ? LOCAL_LOCKFILE_NAME 
+            : LOCKFILE_NAME;
+        return path.join(this.repositoryPath, filename);
+    }
+
+    /**
      * Read the lockfile from disk
      * @returns The lockfile object or null if it doesn't exist
      */
@@ -181,6 +207,30 @@ export class LockfileManager {
             return JSON.parse(content) as Lockfile;
         } catch (error) {
             this.logger.error('Failed to read lockfile:', error instanceof Error ? error : undefined);
+            return null;
+        }
+    }
+
+    /**
+     * Read a specific lockfile based on commit mode.
+     * Routes to the main lockfile for 'commit' mode and local lockfile for 'local-only' mode.
+     * 
+     * @param commitMode - The commit mode to determine which lockfile to read
+     * @returns The lockfile object or null if it doesn't exist
+     * 
+     * Requirements covered:
+     * - 3.1: Read from both Main_Lockfile and Local_Lockfile
+     */
+    private async readLockfileByMode(commitMode: RepositoryCommitMode): Promise<Lockfile | null> {
+        const lockfilePath = this.getLockfilePathForMode(commitMode);
+        try {
+            if (!fs.existsSync(lockfilePath)) {
+                return null;
+            }
+            const content = await fs.promises.readFile(lockfilePath, 'utf8');
+            return JSON.parse(content) as Lockfile;
+        } catch (error) {
+            this.logger.error(`Failed to read ${commitMode} lockfile:`, error instanceof Error ? error : undefined);
             return null;
         }
     }
@@ -256,8 +306,22 @@ export class LockfileManager {
      * Create or update a bundle entry in the lockfile
      * Uses atomic write (temp file + rename) to prevent corruption
      * 
+     * Routes to the correct lockfile based on commitMode:
+     * - 'commit' mode: writes to prompt-registry.lock.json
+     * - 'local-only' mode: writes to prompt-registry.local.lock.json
+     * 
+     * Bundle entries are written WITHOUT the commitMode field since it's implicit
+     * based on which lockfile contains the entry.
+     * 
      * @param options - Bundle creation/update options
      * @throws Error if required fields are missing or invalid
+     * 
+     * Requirements covered:
+     * - 1.1: Write local-only bundles to prompt-registry.local.lock.json
+     * - 1.2: Write commit bundles to prompt-registry.lock.json
+     * - 1.4: Do not include commitMode field in local lockfile entries
+     * - 1.5: Do not include commitMode field in main lockfile entries
+     * - 2.1: Add local lockfile to git exclude on first creation
      */
     async createOrUpdate(options: CreateOrUpdateOptions): Promise<void> {
         // Validate required fields
@@ -299,20 +363,25 @@ export class LockfileManager {
             checksum
         } = options;
 
-        // Read existing lockfile or create new one
-        let lockfile = await this.read();
+        // Determine target lockfile path based on commitMode
+        const targetLockfilePath = this.getLockfilePathForMode(commitMode);
+        const isLocalLockfile = commitMode === 'local-only';
+        const localLockfileExistedBefore = isLocalLockfile && fs.existsSync(targetLockfilePath);
+
+        // Read existing lockfile for the target mode or create new one
+        let lockfile = await this.readLockfileByMode(commitMode);
         
         if (!lockfile) {
             lockfile = this.createEmptyLockfile();
         }
 
-        // Update bundle entry
+        // Update bundle entry WITHOUT commitMode field (implicit based on file location)
+        // Requirements 1.4, 1.5: commitMode is not included in bundle entries
         const bundleEntry: LockfileBundleEntry = {
             version,
             sourceId,
             sourceType,
             installedAt: new Date().toISOString(),
-            commitMode,
             files,
             ...(checksum && { checksum })
         };
@@ -340,29 +409,68 @@ export class LockfileManager {
         // Update timestamp
         lockfile.generatedAt = new Date().toISOString();
 
-        // Write atomically
-        await this.writeAtomic(lockfile);
+        // Write atomically to the target lockfile
+        await this.writeAtomicToPath(lockfile, targetLockfilePath);
+
+        // If this is the first local-only bundle (local lockfile was just created),
+        // add it to git exclude
+        // Requirement 2.1: Add local lockfile to git exclude on creation
+        if (isLocalLockfile && !localLockfileExistedBefore) {
+            await this.ensureLocalLockfileExcluded();
+        }
+
         this._onLockfileUpdated.fire(lockfile);
     }
 
     /**
-     * Remove a bundle from the lockfile
-     * Deletes the lockfile if it becomes empty
+     * Remove a bundle from the appropriate lockfile.
+     * Searches both main and local lockfiles to find and remove the bundle.
+     * Deletes the lockfile if it becomes empty.
+     * Removes local lockfile from git exclude when local lockfile is deleted.
      * 
      * @param bundleId - ID of the bundle to remove
+     * 
+     * Requirements covered:
+     * - 5.1: Remove local-only bundles from Local_Lockfile
+     * - 5.2: Remove committed bundles from Main_Lockfile
+     * - 5.3: Delete Local_Lockfile when last local-only bundle is removed
+     * - 5.4: Remove local lockfile from git exclude when deleted
+     * - 5.5: Delete Main_Lockfile when last committed bundle is removed
      */
     async remove(bundleId: string): Promise<void> {
-        const lockfile = await this.read();
-        
-        if (!lockfile) {
-            this.logger.debug(`Lockfile does not exist, nothing to remove for bundle ${bundleId}`);
+        // First, try to find the bundle in the main lockfile
+        const mainLockfile = await this.readLockfileByMode('commit');
+        if (mainLockfile && mainLockfile.bundles[bundleId]) {
+            await this.removeFromLockfileByMode(bundleId, mainLockfile, 'commit');
             return;
         }
 
-        if (!lockfile.bundles[bundleId]) {
-            this.logger.debug(`Bundle ${bundleId} not found in lockfile`);
+        // If not in main lockfile, try the local lockfile
+        const localLockfile = await this.readLockfileByMode('local-only');
+        if (localLockfile && localLockfile.bundles[bundleId]) {
+            await this.removeFromLockfileByMode(bundleId, localLockfile, 'local-only');
             return;
         }
+
+        // Bundle not found in either lockfile
+        this.logger.debug(`Bundle ${bundleId} not found in any lockfile`);
+    }
+
+    /**
+     * Remove a bundle from a specific lockfile by commit mode.
+     * Handles cleanup of orphaned sources and deletion of empty lockfiles.
+     * 
+     * @param bundleId - ID of the bundle to remove
+     * @param lockfile - The lockfile object containing the bundle
+     * @param commitMode - The commit mode indicating which lockfile to update
+     */
+    private async removeFromLockfileByMode(
+        bundleId: string, 
+        lockfile: Lockfile, 
+        commitMode: RepositoryCommitMode
+    ): Promise<void> {
+        const lockfilePath = this.getLockfilePathForMode(commitMode);
+        const isLocalLockfile = commitMode === 'local-only';
 
         // Get the source ID before removing the bundle
         const sourceId = lockfile.bundles[bundleId].sourceId;
@@ -375,15 +483,115 @@ export class LockfileManager {
 
         // If no bundles left, delete the lockfile
         if (Object.keys(lockfile.bundles).length === 0) {
-            await this.deleteLockfile();
+            await this.deleteLockfileAtPath(lockfilePath);
+            
+            // If local lockfile was deleted, remove from git exclude
+            // Requirement 5.4: Remove local lockfile from git exclude when deleted
+            if (isLocalLockfile) {
+                await this.removeLocalLockfileFromGitExclude();
+            }
+            
             this._onLockfileUpdated.fire(null);
             return;
         }
 
         // Update timestamp and write
         lockfile.generatedAt = new Date().toISOString();
-        await this.writeAtomic(lockfile);
+        await this.writeAtomicToPath(lockfile, lockfilePath);
         this._onLockfileUpdated.fire(lockfile);
+    }
+
+    /**
+     * Delete a lockfile at a specific path.
+     * 
+     * @param lockfilePath - Path to the lockfile to delete
+     */
+    private async deleteLockfileAtPath(lockfilePath: string): Promise<void> {
+        try {
+            if (fs.existsSync(lockfilePath)) {
+                await fs.promises.unlink(lockfilePath);
+                this.logger.debug(`Lockfile deleted: ${lockfilePath}`);
+            }
+        } catch (error) {
+            // Log error but don't throw - continue operation
+            this.logger.error(`Failed to delete lockfile at ${lockfilePath}:`, error instanceof Error ? error : undefined);
+        }
+    }
+
+    /**
+     * Remove the local lockfile entry from git exclude.
+     * Called when the local lockfile is deleted (last local-only bundle removed).
+     * 
+     * Requirements covered:
+     * - 5.4: Remove prompt-registry.local.lock.json from .git/info/exclude when deleted
+     * - 2.2: Remove local lockfile from git exclude when deleted
+     */
+    private async removeLocalLockfileFromGitExclude(): Promise<void> {
+        try {
+            const gitDir = path.join(this.repositoryPath, '.git');
+            if (!fs.existsSync(gitDir)) {
+                this.logger.debug('No .git directory found, skipping git exclude removal for local lockfile');
+                return;
+            }
+
+            const excludePath = path.join(gitDir, 'info', 'exclude');
+            if (!fs.existsSync(excludePath)) {
+                this.logger.debug('.git/info/exclude does not exist, nothing to remove');
+                return;
+            }
+
+            let content = await fs.promises.readFile(excludePath, 'utf-8');
+
+            // Find the Prompt Registry section
+            const sectionHeader = '# Prompt Registry (local)';
+            const sectionIndex = content.indexOf(sectionHeader);
+            
+            if (sectionIndex === -1) {
+                this.logger.debug('Prompt Registry section not found in git exclude');
+                return;
+            }
+
+            const beforeSection = content.substring(0, sectionIndex);
+            const afterHeaderIndex = sectionIndex + sectionHeader.length;
+            const remainingContent = content.substring(afterHeaderIndex);
+
+            // Find the end of our section (next section header or end of file)
+            const nextSectionMatch = remainingContent.match(/\n#[^\n]+/);
+            let sectionContent: string;
+            let afterSection = '';
+
+            if (nextSectionMatch && nextSectionMatch.index !== undefined) {
+                sectionContent = remainingContent.substring(0, nextSectionMatch.index);
+                afterSection = remainingContent.substring(nextSectionMatch.index);
+            } else {
+                sectionContent = remainingContent;
+            }
+
+            // Parse and filter entries - remove the local lockfile entry
+            const remainingEntries = sectionContent
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0 && line !== LOCAL_LOCKFILE_NAME);
+
+            // Rebuild content
+            let newContent: string;
+            if (remainingEntries.length === 0) {
+                // Remove entire section if empty (only had the local lockfile entry)
+                newContent = beforeSection.trimEnd() + afterSection;
+            } else {
+                newContent = beforeSection.trimEnd() +
+                    (beforeSection.length > 0 ? '\n\n' : '') +
+                    sectionHeader + '\n' +
+                    remainingEntries.join('\n') + '\n' +
+                    afterSection;
+            }
+
+            await fs.promises.writeFile(excludePath, newContent.trim() + '\n', 'utf-8');
+            this.logger.debug('Removed local lockfile from git exclude');
+        } catch (error) {
+            // Log but don't throw - git exclude is optional
+            this.logger.warn('Failed to remove local lockfile from git exclude:', error instanceof Error ? error : undefined);
+        }
     }
 
     /**
@@ -489,6 +697,18 @@ export class LockfileManager {
      * @param lockfile - Lockfile to write
      */
     private async writeAtomic(lockfile: Lockfile): Promise<void> {
+        await this.writeAtomicToPath(lockfile, this.lockfilePath);
+    }
+
+    /**
+     * Write lockfile atomically to a specific path using temp file + rename pattern
+     * This prevents corruption during concurrent operations or crashes
+     * Uses a mutex to serialize concurrent writes
+     * 
+     * @param lockfile - Lockfile to write
+     * @param targetPath - Path to write the lockfile to
+     */
+    private async writeAtomicToPath(lockfile: Lockfile, targetPath: string): Promise<void> {
         // Serialize writes using a mutex pattern
         const previousLock = this.writeLock;
         let releaseLock: () => void;
@@ -500,7 +720,7 @@ export class LockfileManager {
             // Wait for any previous write to complete
             await previousLock;
             
-            const tempPath = this.lockfilePath + '.tmp';
+            const tempPath = targetPath + '.tmp';
             
             try {
                 // Write to temp file with 2-space indentation
@@ -508,9 +728,9 @@ export class LockfileManager {
                 await fs.promises.writeFile(tempPath, content, 'utf8');
                 
                 // Atomic rename
-                await fs.promises.rename(tempPath, this.lockfilePath);
+                await fs.promises.rename(tempPath, targetPath);
                 
-                this.logger.debug('Lockfile written successfully');
+                this.logger.debug(`Lockfile written successfully to ${targetPath}`);
             } catch (error) {
                 // Clean up temp file if it exists
                 try {
@@ -528,76 +748,221 @@ export class LockfileManager {
     }
 
     /**
-     * Delete the lockfile
+     * Ensure the local lockfile is added to git exclude.
+     * Called when the local lockfile is first created.
+     * 
+     * Requirements covered:
+     * - 2.1: Add prompt-registry.local.lock.json to .git/info/exclude on creation
+     */
+    private async ensureLocalLockfileExcluded(): Promise<void> {
+        try {
+            const gitDir = path.join(this.repositoryPath, '.git');
+            if (!fs.existsSync(gitDir)) {
+                this.logger.debug('No .git directory found, skipping git exclude for local lockfile');
+                return;
+            }
+
+            const excludePath = path.join(gitDir, 'info', 'exclude');
+            const excludeDir = path.dirname(excludePath);
+
+            // Ensure .git/info directory exists
+            if (!fs.existsSync(excludeDir)) {
+                await fs.promises.mkdir(excludeDir, { recursive: true });
+            }
+
+            // Read existing content
+            let content = '';
+            if (fs.existsSync(excludePath)) {
+                content = await fs.promises.readFile(excludePath, 'utf-8');
+            }
+
+            // Check if local lockfile is already excluded
+            if (content.includes(LOCAL_LOCKFILE_NAME)) {
+                this.logger.debug('Local lockfile already in git exclude');
+                return;
+            }
+
+            // Add local lockfile to git exclude under Prompt Registry section
+            const sectionHeader = '# Prompt Registry (local)';
+            const sectionIndex = content.indexOf(sectionHeader);
+
+            let newContent: string;
+            if (sectionIndex !== -1) {
+                // Add to existing section
+                const afterHeaderIndex = sectionIndex + sectionHeader.length;
+                const beforeSection = content.substring(0, afterHeaderIndex);
+                const afterSection = content.substring(afterHeaderIndex);
+                newContent = beforeSection + '\n' + LOCAL_LOCKFILE_NAME + afterSection;
+            } else {
+                // Create new section
+                const trimmedContent = content.trimEnd();
+                newContent = trimmedContent + 
+                    (trimmedContent.length > 0 ? '\n\n' : '') +
+                    sectionHeader + '\n' +
+                    LOCAL_LOCKFILE_NAME + '\n';
+            }
+
+            await fs.promises.writeFile(excludePath, newContent, 'utf-8');
+            this.logger.debug('Added local lockfile to git exclude');
+        } catch (error) {
+            // Log but don't throw - git exclude is optional
+            this.logger.warn('Failed to add local lockfile to git exclude:', error instanceof Error ? error : undefined);
+        }
+    }
+
+    /**
+     * Delete the main lockfile.
+     * Delegates to deleteLockfileAtPath for the main lockfile path.
      * 
      * Requirements covered:
      * - 3.5: If deletion fails, log an error and continue without throwing
      */
     private async deleteLockfile(): Promise<void> {
-        try {
-            if (fs.existsSync(this.lockfilePath)) {
-                await fs.promises.unlink(this.lockfilePath);
-                this.logger.debug('Lockfile deleted');
-            }
-        } catch (error) {
-            // Requirements 3.5: Log error but don't throw - continue operation
-            this.logger.error('Failed to delete lockfile:', error instanceof Error ? error : undefined);
-        }
+        await this.deleteLockfileAtPath(this.lockfilePath);
     }
 
     /**
-     * Update the commit mode for a bundle in the lockfile.
-     * Uses atomic write to prevent corruption.
+     * Update the commit mode for a bundle by moving it between lockfiles.
+     * Moves the bundle entry from the source lockfile to the target lockfile,
+     * preserving all metadata (version, sourceId, files, etc.).
      * 
      * @param bundleId - ID of the bundle to update
      * @param newMode - The new commit mode ('commit' or 'local-only')
-     * @throws Error if bundle is not found in lockfile
+     * @throws Error if bundle is not found in the source lockfile
+     * 
+     * Requirements covered:
+     * - 4.1: Move bundle from Main_Lockfile to Local_Lockfile when switching to local-only
+     * - 4.2: Move bundle from Local_Lockfile to Main_Lockfile when switching to commit
+     * - 4.3: Preserve all bundle metadata during move
+     * - 4.4: Add local lockfile to git exclude when moving to local-only
+     * - 4.5: Remove local lockfile from git exclude when local lockfile becomes empty
+     * - 4.6: Return error if bundle not found in source lockfile
      */
     async updateCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
-        const lockfile = await this.read();
+        // Determine source lockfile (opposite of newMode)
+        const currentMode: RepositoryCommitMode = newMode === 'commit' ? 'local-only' : 'commit';
         
-        if (!lockfile) {
-            throw new Error(`Lockfile does not exist`);
+        // Read source lockfile
+        const sourceLockfile = await this.readLockfileByMode(currentMode);
+        
+        if (!sourceLockfile) {
+            throw new Error(`Bundle ${bundleId} not found in ${currentMode} lockfile`);
         }
         
-        if (!lockfile.bundles[bundleId]) {
-            throw new Error(`Bundle ${bundleId} not found in lockfile`);
+        if (!sourceLockfile.bundles[bundleId]) {
+            throw new Error(`Bundle ${bundleId} not found in ${currentMode} lockfile`);
         }
 
-        lockfile.bundles[bundleId].commitMode = newMode;
-        lockfile.generatedAt = new Date().toISOString();
-        
-        await this.writeAtomic(lockfile);
-        this._onLockfileUpdated.fire(lockfile);
+        // Get bundle entry and source entry from source lockfile
+        const bundleEntry = sourceLockfile.bundles[bundleId];
+        const sourceEntry = sourceLockfile.sources[bundleEntry.sourceId];
+
+        // Remove from source lockfile first (atomic removal)
+        await this.removeFromLockfileByMode(bundleId, sourceLockfile, currentMode);
+
+        // Add to target lockfile
+        // Read or create target lockfile
+        let targetLockfile = await this.readLockfileByMode(newMode);
+        const targetLockfilePath = this.getLockfilePathForMode(newMode);
+        const isTargetLocalLockfile = newMode === 'local-only';
+        const targetLockfileExistedBefore = fs.existsSync(targetLockfilePath);
+
+        if (!targetLockfile) {
+            targetLockfile = this.createEmptyLockfile();
+        }
+
+        // Add bundle entry to target lockfile (without commitMode field - implicit based on file)
+        // Create a clean copy without commitMode to ensure it's not included
+        const cleanBundleEntry: LockfileBundleEntry = {
+            version: bundleEntry.version,
+            sourceId: bundleEntry.sourceId,
+            sourceType: bundleEntry.sourceType,
+            installedAt: bundleEntry.installedAt,
+            files: bundleEntry.files,
+            ...(bundleEntry.checksum && { checksum: bundleEntry.checksum })
+        };
+        targetLockfile.bundles[bundleId] = cleanBundleEntry;
+
+        // Copy source entry to target lockfile if not already present
+        if (sourceEntry && !targetLockfile.sources[bundleEntry.sourceId]) {
+            targetLockfile.sources[bundleEntry.sourceId] = sourceEntry;
+        }
+
+        // Update timestamp
+        targetLockfile.generatedAt = new Date().toISOString();
+
+        // Write target lockfile atomically
+        await this.writeAtomicToPath(targetLockfile, targetLockfilePath);
+
+        // Handle git exclude for local lockfile
+        // Requirement 4.4: Add to git exclude when moving to local-only
+        if (isTargetLocalLockfile && !targetLockfileExistedBefore) {
+            await this.ensureLocalLockfileExcluded();
+        }
+
+        // Emit event with the target lockfile
+        this._onLockfileUpdated.fire(targetLockfile);
     }
 
     /**
-     * Get all installed bundles from the lockfile as InstalledBundle objects.
+     * Get all installed bundles from both lockfiles as InstalledBundle objects.
      * This is the primary method for querying repository-scoped bundles.
      * 
-     * @returns Array of InstalledBundle objects, empty array if lockfile doesn't exist
+     * Reads from both main lockfile (commit mode) and local lockfile (local-only mode),
+     * annotates bundles with the appropriate commit mode based on source lockfile,
+     * and detects conflicts when the same bundle ID exists in both lockfiles.
+     * 
+     * @returns Array of InstalledBundle objects, empty array if no lockfiles exist
      * 
      * Requirements covered:
      * - 1.3: Convert LockfileBundleEntry to InstalledBundle format
      * - 1.4: Return empty array if lockfile doesn't exist
-     * - 3.1, 3.2: Set filesMissing flag based on file existence check
+     * - 3.1: Read from both Main_Lockfile and Local_Lockfile
+     * - 3.2: Set commitMode: 'local-only' on bundles from Local_Lockfile
+     * - 3.3: Set commitMode: 'commit' on bundles from Main_Lockfile
+     * - 3.4: Display error when bundle ID exists in both lockfiles
      */
     async getInstalledBundles(): Promise<InstalledBundle[]> {
-        const lockfile = await this.read();
-        
-        if (!lockfile) {
-            return [];
+        const bundles: InstalledBundle[] = [];
+        const seenIds = new Set<string>();
+
+        // Read main lockfile (commit mode)
+        const mainLockfile = await this.readLockfileByMode('commit');
+        if (mainLockfile) {
+            for (const [bundleId, entry] of Object.entries(mainLockfile.bundles)) {
+                seenIds.add(bundleId);
+                const filesMissing = await this.checkFilesMissing(entry);
+                // Create bundle with commitMode: 'commit' (from main lockfile)
+                const installedBundle = createInstalledBundleFromLockfile(bundleId, entry, {
+                    installPath: path.join(this.repositoryPath, '.github'),
+                    filesMissing,
+                    commitModeOverride: 'commit'
+                });
+                bundles.push(installedBundle);
+            }
         }
 
-        const bundles: InstalledBundle[] = [];
-        
-        for (const [bundleId, entry] of Object.entries(lockfile.bundles)) {
-            const filesMissing = await this.checkFilesMissing(entry);
-            const installedBundle = createInstalledBundleFromLockfile(bundleId, entry, {
-                installPath: path.join(this.repositoryPath, '.github'),
-                filesMissing
-            });
-            bundles.push(installedBundle);
+        // Read local lockfile (local-only mode)
+        const localLockfile = await this.readLockfileByMode('local-only');
+        if (localLockfile) {
+            for (const [bundleId, entry] of Object.entries(localLockfile.bundles)) {
+                if (seenIds.has(bundleId)) {
+                    // Conflict: bundle exists in both lockfiles
+                    this.logger.error(`Bundle ${bundleId} exists in both lockfiles - manual resolution required`);
+                    vscode.window.showErrorMessage(
+                        `Bundle "${bundleId}" exists in both lockfiles. Please manually remove it from one lockfile.`
+                    );
+                    continue;
+                }
+                const filesMissing = await this.checkFilesMissing(entry);
+                // Create bundle with commitMode: 'local-only' (from local lockfile)
+                const installedBundle = createInstalledBundleFromLockfile(bundleId, entry, {
+                    installPath: path.join(this.repositoryPath, '.github'),
+                    filesMissing,
+                    commitModeOverride: 'local-only'
+                });
+                bundles.push(installedBundle);
+            }
         }
 
         return bundles;

@@ -50,28 +50,60 @@ your-repo/
 
 ### Local-Only Mode
 
-Files are placed in the same `.github/` directories but excluded from Git via `.git/info/exclude`:
+Files are placed in the same `.github/` directories but excluded from Git via `.git/info/exclude`. Additionally, local-only bundles are tracked in a separate lockfile:
 
 ```
-# .git/info/exclude (private to your machine)
+your-repo/
+├── .github/
+│   ├── prompts/
+│   │   └── my-prompt.prompt.md       # Excluded from Git
+│   └── agents/
+│       └── my-agent.agent.md         # Excluded from Git
+├── prompt-registry.local.lock.json   # Excluded from Git (auto-managed)
+└── .git/
+    └── info/
+        └── exclude                   # Contains exclusion entries
+```
+
+The `.git/info/exclude` file will contain:
+
+```
 # Prompt Registry (local)
 .github/prompts/my-prompt.prompt.md
 .github/agents/my-agent.agent.md
+prompt-registry.local.lock.json
 ```
 
 **Benefits:**
 - Personal customizations that don't affect the team
 - Experiment with bundles before committing
 - Override team configurations locally
+- Installing local-only bundles never modifies the shared `prompt-registry.lock.json`
 
 ## The Lockfile
 
-When bundles are installed at repository scope, a `prompt-registry.lock.json` file is created at the repository root. This file:
+When bundles are installed at repository scope, lockfiles are created at the repository root to track installations:
 
-- Tracks installed bundles and their versions
-- Records source information for reproducibility
-- Stores file checksums for modification detection
-- Enables tools like Renovate to propose version updates
+| Lockfile | Purpose | Git Tracking |
+|----------|---------|--------------|
+| `prompt-registry.lock.json` | Committed bundles | Tracked in Git |
+| `prompt-registry.local.lock.json` | Local-only bundles | Excluded from Git |
+
+These files:
+
+- Track installed bundles and their versions
+- Record source information for reproducibility
+- Store file checksums for modification detection
+- Enable tools like Renovate to propose version updates (main lockfile only)
+
+### Dual-Lockfile Architecture
+
+Bundles are automatically stored in the appropriate lockfile based on their commit mode:
+
+- **Commit mode** bundles go in `prompt-registry.lock.json` (shared with team)
+- **Local-only** bundles go in `prompt-registry.local.lock.json` (personal, never committed)
+
+The local lockfile is automatically added to `.git/info/exclude` when created, ensuring your personal bundle installations never accidentally get committed.
 
 ### Lockfile Structure
 
@@ -87,7 +119,6 @@ When bundles are installed at repository scope, a `prompt-registry.lock.json` fi
       "sourceId": "my-source",
       "sourceType": "github",
       "installedAt": "2026-01-14T10:30:00.000Z",
-      "commitMode": "commit",
       "files": [
         {
           "path": ".github/prompts/my-prompt.prompt.md",
@@ -105,10 +136,12 @@ When bundles are installed at repository scope, a `prompt-registry.lock.json` fi
 }
 ```
 
-**Commit the lockfile** to version control so team members can:
+**Commit the main lockfile** (`prompt-registry.lock.json`) to version control so team members can:
 - See which bundles are installed
 - Get prompted to enable repository bundles when opening the project
 - Receive automated update PRs via Renovate
+
+The local lockfile (`prompt-registry.local.lock.json`) is automatically excluded from Git and should not be committed.
 
 ## Moving Bundles Between Scopes
 
@@ -172,6 +205,22 @@ If you've modified bundle files locally, you'll see a warning before updating wi
 | MCP Servers | `.vscode/mcp.json` |
 
 ## Troubleshooting
+
+### Migrating from Legacy Lockfiles
+
+If you have an existing `prompt-registry.lock.json` with a `commitMode` field in bundle entries, no action is required. The extension handles this automatically:
+
+- **On read**: The `commitMode` field is ignored—bundles in `prompt-registry.lock.json` are treated as committed, bundles in `prompt-registry.local.lock.json` are treated as local-only
+- **On write**: New entries are written without the `commitMode` field
+- **Gradual migration**: Existing entries retain the `commitMode` field until they are modified (updated, mode switched, etc.)
+
+If you have local-only bundles in your main lockfile (with `"commitMode": "local-only"`), you can migrate them to the new local lockfile by:
+
+1. Right-click the bundle in Registry Explorer
+2. Select **Switch to Commit** (this updates the entry)
+3. Select **Switch to Local Only** (this moves it to the local lockfile)
+
+Or simply update the bundle—the new entry will be written to the correct lockfile based on its mode.
 
 ### Repository options are disabled
 

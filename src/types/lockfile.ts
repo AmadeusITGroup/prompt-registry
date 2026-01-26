@@ -43,8 +43,14 @@ export interface LockfileBundleEntry {
     sourceType: string;
     /** ISO timestamp when bundle was installed */
     installedAt: string;
-    /** Whether files are committed to Git or excluded */
-    commitMode: RepositoryCommitMode;
+    /** 
+     * Whether files are committed to Git or excluded.
+     * DEPRECATED: This field is now implicit based on which lockfile contains the entry.
+     * - Entries in prompt-registry.lock.json are implicitly 'commit' mode
+     * - Entries in prompt-registry.local.lock.json are implicitly 'local-only' mode
+     * This field may still be present in existing lockfiles for backward compatibility.
+     */
+    commitMode?: RepositoryCommitMode;
     /** Optional checksum of the bundle archive */
     checksum?: string;
     /** List of installed files with their checksums */

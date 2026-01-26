@@ -846,10 +846,13 @@ suite('LockfileManager Property Tests', () => {
                                 lockfileEntry.sourceType,
                                 `SourceType mismatch for ${bundle.bundleId}`
                             );
+                            // Note: commitMode is now determined by which lockfile the bundle comes from,
+                            // not by the commitMode field in the entry (AD-1: Implicit Commit Mode Based on File Location)
+                            // Bundles from main lockfile (prompt-registry.lock.json) always have commitMode: 'commit'
                             assert.strictEqual(
                                 bundle.commitMode,
-                                lockfileEntry.commitMode,
-                                `CommitMode mismatch for ${bundle.bundleId}`
+                                'commit',
+                                `CommitMode for ${bundle.bundleId} should be 'commit' when read from main lockfile`
                             );
                         }
 
@@ -897,6 +900,649 @@ suite('LockfileManager Property Tests', () => {
                 {
                     ...PropertyTestConfig.FAST_CHECK_OPTIONS,
                     numRuns: PropertyTestConfig.RUNS.QUICK
+                }
+            );
+        });
+    });
+});
+
+
+/**
+ * Lockfile Separation Property Tests
+ * 
+ * Property-based tests for the dual-lockfile separation feature.
+ * These tests verify correctness properties for the local-only lockfile separation.
+ * 
+ * Properties covered:
+ * - Property 1: Lockfile Separation (Requirements 1.1, 1.2)
+ * - Property 2: No Duplicate Bundle IDs (Requirement 3.4)
+ * - Property 3: Git Exclude Consistency (Requirements 2.1, 2.2)
+ * - Property 4: Mode Switching Preserves Metadata (Requirement 4.3)
+ * - Property 5: Empty Lockfile Cleanup (Requirements 5.3, 5.4, 5.5)
+ * 
+ * **Validates: Design Properties 1-5**
+ */
+suite('Lockfile Separation Properties', () => {
+    let tempDir: string;
+    const MAIN_LOCKFILE_NAME = 'prompt-registry.lock.json';
+    const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
+
+    // ===== Test Utilities =====
+    const createTempDir = (): string => {
+        const dir = path.join(__dirname, '..', '..', 'test-temp-lockfile-sep-' + Date.now() + '-' + Math.random().toString(36).substring(7));
+        fs.mkdirSync(dir, { recursive: true });
+        return dir;
+    };
+
+    const cleanupTempDir = (dir: string): void => {
+        if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    };
+
+    const createGitDir = (repoPath: string): void => {
+        const gitInfoDir = path.join(repoPath, '.git', 'info');
+        fs.mkdirSync(gitInfoDir, { recursive: true });
+        fs.writeFileSync(path.join(gitInfoDir, 'exclude'), '# Git exclude file\n');
+    };
+
+    const readGitExclude = (repoPath: string): string => {
+        const excludePath = path.join(repoPath, '.git', 'info', 'exclude');
+        if (fs.existsSync(excludePath)) {
+            return fs.readFileSync(excludePath, 'utf-8');
+        }
+        return '';
+    };
+
+    const lockfileExists = (repoPath: string, lockfileName: string): boolean => {
+        return fs.existsSync(path.join(repoPath, lockfileName));
+    };
+
+    setup(() => {
+        tempDir = createTempDir();
+    });
+
+    teardown(async () => {
+        // Reset LockfileManager instances
+        const { LockfileManager } = await import('../../src/services/LockfileManager');
+        LockfileManager.resetInstance(tempDir);
+        cleanupTempDir(tempDir);
+    });
+
+    /**
+     * Property 1: Lockfile Separation
+     * 
+     * For any bundle creation with a specific commitMode:
+     * - commitMode = 'commit' → bundleId ∈ mainLockfile.bundles
+     * - commitMode = 'local-only' → bundleId ∈ localLockfile.bundles
+     * 
+     * **Validates: Requirements 1.1, 1.2**
+     */
+    suite('Property 1: Lockfile Separation', () => {
+        test('bundles with commit mode should be written to main lockfile only', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string) => {
+                        const uniqueDir = path.join(tempDir, `commit-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with commit mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: 'commit',
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Property: Bundle should be in main lockfile
+                        const mainLockfilePath = path.join(uniqueDir, MAIN_LOCKFILE_NAME);
+                        const localLockfilePath = path.join(uniqueDir, LOCAL_LOCKFILE_NAME);
+
+                        assert.ok(
+                            fs.existsSync(mainLockfilePath),
+                            'Main lockfile should exist after creating commit bundle'
+                        );
+
+                        const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+                        assert.ok(
+                            mainLockfile.bundles[bundleId],
+                            `Bundle ${bundleId} should be in main lockfile`
+                        );
+
+                        // Property: Bundle should NOT be in local lockfile
+                        assert.ok(
+                            !fs.existsSync(localLockfilePath),
+                            'Local lockfile should not exist for commit bundles'
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+
+        test('bundles with local-only mode should be written to local lockfile only', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string) => {
+                        const uniqueDir = path.join(tempDir, `local-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with local-only mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: 'local-only',
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Property: Bundle should be in local lockfile
+                        const mainLockfilePath = path.join(uniqueDir, MAIN_LOCKFILE_NAME);
+                        const localLockfilePath = path.join(uniqueDir, LOCAL_LOCKFILE_NAME);
+
+                        assert.ok(
+                            fs.existsSync(localLockfilePath),
+                            'Local lockfile should exist after creating local-only bundle'
+                        );
+
+                        const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+                        assert.ok(
+                            localLockfile.bundles[bundleId],
+                            `Bundle ${bundleId} should be in local lockfile`
+                        );
+
+                        // Property: Bundle should NOT be in main lockfile
+                        assert.ok(
+                            !fs.existsSync(mainLockfilePath),
+                            'Main lockfile should not exist when only local-only bundles are installed'
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+    });
+
+    /**
+     * Property 2: No Duplicate Bundle IDs
+     * 
+     * For any bundleId: ¬(bundleId ∈ mainLockfile.bundles ∧ bundleId ∈ localLockfile.bundles)
+     * 
+     * A bundle ID can only exist in one lockfile at a time.
+     * 
+     * **Validates: Requirement 3.4**
+     */
+    suite('Property 2: No Duplicate Bundle IDs', () => {
+        test('bundle ID can only exist in one lockfile at a time after mode switch', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    LockfileGenerators.commitMode(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string, initialMode) => {
+                        const uniqueDir = path.join(tempDir, `nodupe-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with initial mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: initialMode,
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Switch to opposite mode
+                        const newMode = initialMode === 'commit' ? 'local-only' : 'commit';
+                        await manager.updateCommitMode(bundleId, newMode);
+
+                        // Property: Bundle should exist in exactly one lockfile
+                        const mainLockfilePath = path.join(uniqueDir, MAIN_LOCKFILE_NAME);
+                        const localLockfilePath = path.join(uniqueDir, LOCAL_LOCKFILE_NAME);
+
+                        const mainExists = fs.existsSync(mainLockfilePath);
+                        const localExists = fs.existsSync(localLockfilePath);
+
+                        let inMain = false;
+                        let inLocal = false;
+
+                        if (mainExists) {
+                            const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+                            inMain = !!mainLockfile.bundles[bundleId];
+                        }
+
+                        if (localExists) {
+                            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+                            inLocal = !!localLockfile.bundles[bundleId];
+                        }
+
+                        // Property: Bundle should be in exactly one lockfile (XOR)
+                        assert.ok(
+                            (inMain && !inLocal) || (!inMain && inLocal),
+                            `Bundle ${bundleId} should exist in exactly one lockfile. In main: ${inMain}, In local: ${inLocal}`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+    });
+
+    /**
+     * Property 3: Bundles from main lockfile always have commitMode 'commit' when listed
+     * 
+     * When listing bundles, bundles from the main lockfile should always have
+     * commitMode: 'commit' set on them.
+     * 
+     * **Validates: Requirement 3.3**
+     */
+    suite('Property 3: Commit Mode Annotation from Main Lockfile', () => {
+        test('bundles from main lockfile always have commitMode commit when listed', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string) => {
+                        const uniqueDir = path.join(tempDir, `main-mode-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with commit mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: 'commit',
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Get installed bundles
+                        const installedBundles = await manager.getInstalledBundles();
+
+                        // Property: Bundle from main lockfile should have commitMode 'commit'
+                        const bundle = installedBundles.find(b => b.bundleId === bundleId);
+                        assert.ok(bundle, `Bundle ${bundleId} should be in installed bundles`);
+                        assert.strictEqual(
+                            bundle!.commitMode,
+                            'commit',
+                            `Bundle ${bundleId} from main lockfile should have commitMode 'commit'`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+    });
+
+    /**
+     * Property 4: Bundles from local lockfile always have commitMode 'local-only' when listed
+     * 
+     * When listing bundles, bundles from the local lockfile should always have
+     * commitMode: 'local-only' set on them.
+     * 
+     * **Validates: Requirement 3.2**
+     */
+    suite('Property 4: Commit Mode Annotation from Local Lockfile', () => {
+        test('bundles from local lockfile always have commitMode local-only when listed', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string) => {
+                        const uniqueDir = path.join(tempDir, `local-mode-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with local-only mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: 'local-only',
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Get installed bundles
+                        const installedBundles = await manager.getInstalledBundles();
+
+                        // Property: Bundle from local lockfile should have commitMode 'local-only'
+                        const bundle = installedBundles.find(b => b.bundleId === bundleId);
+                        assert.ok(bundle, `Bundle ${bundleId} should be in installed bundles`);
+                        assert.strictEqual(
+                            bundle!.commitMode,
+                            'local-only',
+                            `Bundle ${bundleId} from local lockfile should have commitMode 'local-only'`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+    });
+
+    /**
+     * Property 5: Mode Switching Preserves Metadata
+     * 
+     * For any bundle, switching commit mode should preserve all metadata:
+     * - version
+     * - sourceId
+     * - sourceType
+     * - files
+     * - checksum (if present)
+     * 
+     * **Validates: Requirement 4.3**
+     */
+    suite('Property 5: Mode Switching Preserves Metadata', () => {
+        test('mode switching preserves all bundle metadata', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    fc.array(LockfileGenerators.fileEntry(), { minLength: 0, maxLength: 3 }),
+                    LockfileGenerators.commitMode(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string, files, initialMode) => {
+                        const uniqueDir = path.join(tempDir, `preserve-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle with initial mode
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode: initialMode,
+                            files,
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Get original bundle data
+                        const originalBundles = await manager.getInstalledBundles();
+                        const originalBundle = originalBundles.find(b => b.bundleId === bundleId);
+                        assert.ok(originalBundle, 'Original bundle should exist');
+
+                        // Switch to opposite mode
+                        const newMode = initialMode === 'commit' ? 'local-only' : 'commit';
+                        await manager.updateCommitMode(bundleId, newMode);
+
+                        // Get bundle after mode switch
+                        const updatedBundles = await manager.getInstalledBundles();
+                        const updatedBundle = updatedBundles.find(b => b.bundleId === bundleId);
+                        assert.ok(updatedBundle, 'Updated bundle should exist');
+
+                        // Property: All metadata should be preserved
+                        assert.strictEqual(
+                            updatedBundle!.version,
+                            originalBundle!.version,
+                            'Version should be preserved after mode switch'
+                        );
+                        assert.strictEqual(
+                            updatedBundle!.sourceId,
+                            originalBundle!.sourceId,
+                            'SourceId should be preserved after mode switch'
+                        );
+                        assert.strictEqual(
+                            updatedBundle!.sourceType,
+                            originalBundle!.sourceType,
+                            'SourceType should be preserved after mode switch'
+                        );
+
+                        // Property: Commit mode should be updated
+                        assert.strictEqual(
+                            updatedBundle!.commitMode,
+                            newMode,
+                            `CommitMode should be updated to ${newMode}`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+    });
+
+    /**
+     * Property 6: Empty Lockfile Cleanup
+     * 
+     * For any lockfile (main or local):
+     * |lockfile.bundles| = 0 → ¬fileExists(lockfile.path)
+     * 
+     * When a lockfile becomes empty (no bundles), it should be deleted.
+     * 
+     * **Validates: Requirements 5.3, 5.5**
+     */
+    suite('Property 6: Empty Lockfile Cleanup', () => {
+        test('empty lockfile is deleted after removing last bundle', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    LockfileGenerators.commitMode(),
+                    async (bundleId: string, version: string, sourceId: string, sourceType: string, commitMode) => {
+                        const uniqueDir = path.join(tempDir, `empty-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create bundle
+                        await manager.createOrUpdate({
+                            bundleId,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode,
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Verify lockfile exists
+                        const lockfileName = commitMode === 'local-only' ? LOCAL_LOCKFILE_NAME : MAIN_LOCKFILE_NAME;
+                        const lockfilePath = path.join(uniqueDir, lockfileName);
+                        assert.ok(
+                            fs.existsSync(lockfilePath),
+                            `Lockfile ${lockfileName} should exist after creating bundle`
+                        );
+
+                        // Remove the bundle
+                        await manager.remove(bundleId);
+
+                        // Property: Empty lockfile should be deleted
+                        assert.ok(
+                            !fs.existsSync(lockfilePath),
+                            `Lockfile ${lockfileName} should be deleted after removing last bundle`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
+                }
+            );
+        });
+
+        test('lockfile with remaining bundles is not deleted', async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.bundleId(),
+                    LockfileGenerators.version(),
+                    LockfileGenerators.sourceId(),
+                    LockfileGenerators.sourceType(),
+                    LockfileGenerators.commitMode(),
+                    async (bundleId1: string, bundleId2: string, version: string, sourceId: string, sourceType: string, commitMode) => {
+                        // Ensure bundle IDs are different
+                        fc.pre(bundleId1 !== bundleId2);
+
+                        const uniqueDir = path.join(tempDir, `remain-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+                        fs.mkdirSync(uniqueDir, { recursive: true });
+                        createGitDir(uniqueDir);
+
+                        const { LockfileManager } = await import('../../src/services/LockfileManager');
+                        LockfileManager.resetInstance(uniqueDir);
+                        const manager = LockfileManager.getInstance(uniqueDir);
+
+                        // Create two bundles with same commit mode
+                        await manager.createOrUpdate({
+                            bundleId: bundleId1,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode,
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        await manager.createOrUpdate({
+                            bundleId: bundleId2,
+                            version,
+                            sourceId,
+                            sourceType,
+                            commitMode,
+                            files: [],
+                            source: { type: sourceType, url: `https://example.com/${sourceId}` }
+                        });
+
+                        // Remove one bundle
+                        await manager.remove(bundleId1);
+
+                        // Property: Lockfile should still exist with remaining bundle
+                        const lockfileName = commitMode === 'local-only' ? LOCAL_LOCKFILE_NAME : MAIN_LOCKFILE_NAME;
+                        const lockfilePath = path.join(uniqueDir, lockfileName);
+                        assert.ok(
+                            fs.existsSync(lockfilePath),
+                            `Lockfile ${lockfileName} should still exist with remaining bundle`
+                        );
+
+                        const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+                        assert.ok(
+                            lockfile.bundles[bundleId2],
+                            `Bundle ${bundleId2} should still be in lockfile`
+                        );
+                        assert.ok(
+                            !lockfile.bundles[bundleId1],
+                            `Bundle ${bundleId1} should be removed from lockfile`
+                        );
+
+                        // Cleanup
+                        LockfileManager.resetInstance(uniqueDir);
+                        cleanupTempDir(uniqueDir);
+                        return true;
+                    }
+                ),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD
                 }
             );
         });

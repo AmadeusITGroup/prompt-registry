@@ -110,7 +110,13 @@ suite('RepositoryScopeService', () => {
      * The unsyncBundle method now reads from LockfileManager instead of RegistryStorage
      */
     const createLockfile = (bundleId: string, commitMode: RepositoryCommitMode = 'commit', files: Array<{ path: string; checksum: string }> = []) => {
-        const lockfilePath = path.join(workspaceRoot, 'prompt-registry.lock.json');
+        // Write to the correct lockfile based on commitMode
+        // - 'commit' mode: write to prompt-registry.lock.json
+        // - 'local-only' mode: write to prompt-registry.local.lock.json
+        const lockfileName = commitMode === 'local-only' 
+            ? 'prompt-registry.local.lock.json' 
+            : 'prompt-registry.lock.json';
+        const lockfilePath = path.join(workspaceRoot, lockfileName);
         const lockfile = {
             $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
             version: '1.0.0',
@@ -122,7 +128,7 @@ suite('RepositoryScopeService', () => {
                     sourceId: 'test-source',
                     sourceType: 'github',
                     installedAt: new Date().toISOString(),
-                    commitMode: commitMode,
+                    // Note: commitMode is NOT included in bundle entries (implicit based on file location)
                     files: files
                 }
             },

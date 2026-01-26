@@ -82,7 +82,6 @@
         "sourceId",
         "sourceType",
         "installedAt",
-        "commitMode",
         "files"
       ],
       "properties": {
@@ -122,7 +121,7 @@
         },
         "commitMode": {
           "type": "string",
-          "description": "Whether files are committed to Git or excluded",
+          "description": "DEPRECATED: Commit mode is now implicit based on which lockfile contains the entry. Bundles in prompt-registry.lock.json are implicitly 'commit' mode, bundles in prompt-registry.local.lock.json are implicitly 'local-only' mode. This field is retained for backward compatibility but should not be included in new entries.",
           "enum": [
             "commit",
             "local-only"

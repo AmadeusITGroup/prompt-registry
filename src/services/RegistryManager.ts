@@ -1110,38 +1110,10 @@ export class RegistryManager {
             }
             
             const lockfileManager = LockfileManager.getInstance(workspaceRoot);
-            const lockfile = await lockfileManager.read();
             
-            if (lockfile && lockfile.bundles[bundleId]) {
-                const entry = lockfile.bundles[bundleId];
-                const installPath = this.installer.getInstallPath(bundleId, 'repository');
-                
-                // Try to read manifest from install path
-                let manifest: any = { id: bundleId, name: bundleId, version: entry.version };
-                try {
-                    const manifestPath = path.join(installPath, 'deployment-manifest.yml');
-                    if (fs.existsSync(manifestPath)) {
-                        const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
-                        manifest = yaml.load(manifestContent);
-                    }
-                } catch {
-                    // Use minimal manifest if we can't read the file
-                    this.logger.debug(`Could not read manifest for ${bundleId}, using minimal manifest`);
-                }
-                
-                // Construct InstalledBundle from lockfile entry
-                installed = {
-                    bundleId: bundleId,
-                    version: entry.version,
-                    installedAt: entry.installedAt,
-                    scope: 'repository',
-                    installPath: installPath,
-                    manifest: manifest,
-                    sourceId: entry.sourceId,
-                    sourceType: entry.sourceType,
-                    commitMode: entry.commitMode,
-                };
-            }
+            // Use getInstalledBundles() to search both main and local lockfiles
+            const installedBundles = await lockfileManager.getInstalledBundles();
+            installed = installedBundles.find(b => b.bundleId === bundleId);
         } else {
             installed = await this.storage.getInstalledBundle(bundleId, scope);
         }

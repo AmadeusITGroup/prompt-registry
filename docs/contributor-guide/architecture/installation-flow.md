@@ -35,7 +35,8 @@ your-repo/
 │           └── skill.md
 ├── .vscode/
 │   └── mcp.json                      # MCP server configurations
-└── prompt-registry.lock.json         # Lockfile for version tracking
+├── prompt-registry.lock.json         # Main lockfile for committed bundles
+└── prompt-registry.local.lock.json   # Local lockfile for local-only bundles (git-excluded)
 ```
 
 ## Installation Steps
@@ -140,21 +141,49 @@ For local-only mode, paths are added to `.git/info/exclude`:
 # Prompt Registry (local)
 .github/prompts/my-prompt.prompt.md
 .github/agents/my-agent.agent.md
+prompt-registry.local.lock.json
 ```
+
+The local lockfile (`prompt-registry.local.lock.json`) is automatically added to `.git/info/exclude` when created and removed when deleted.
 
 This file is local to the user's machine and not committed to Git.
 
 ## Lockfile Management
 
-The `LockfileManager` singleton manages `prompt-registry.lock.json`:
+The `LockfileManager` singleton manages repository-scoped bundles using a dual-lockfile architecture:
+
+| Lockfile | Purpose | Git Tracking |
+|----------|---------|--------------|
+| `prompt-registry.lock.json` | Committed bundles | Tracked (commit to Git) |
+| `prompt-registry.local.lock.json` | Local-only bundles | Excluded via `.git/info/exclude` |
+
+### Dual-Lockfile Architecture
+
+Bundles are stored in separate lockfiles based on their commit mode:
+
+- **Committed bundles** → `prompt-registry.lock.json` (shared with team)
+- **Local-only bundles** → `prompt-registry.local.lock.json` (personal, git-excluded)
+
+The commit mode is **implicit** based on which lockfile contains the bundle—no `commitMode` field is stored in bundle entries.
+
+```mermaid
+flowchart TD
+    A[Install Bundle] --> B{Commit Mode?}
+    B -->|commit| C[Write to prompt-registry.lock.json]
+    B -->|local-only| D[Write to prompt-registry.local.lock.json]
+    D --> E[Add local lockfile to .git/info/exclude]
+    C --> F[Done]
+    E --> F
+```
 
 ### Single Source of Truth
 
 The lockfile is the **single source of truth** for repository-scoped bundles:
 
-- `RegistryManager.listInstalledBundles('repository')` queries the lockfile, not `RegistryStorage`
-- Repository-scoped installations only update the lockfile, not `RegistryStorage`
+- `RegistryManager.listInstalledBundles('repository')` queries both lockfiles
+- Repository-scoped installations only update the appropriate lockfile, not `RegistryStorage`
 - User/workspace-scoped bundles continue to use `RegistryStorage`
+- When listing bundles, `LockfileManager` merges entries from both lockfiles and annotates each with its commit mode
 
 This prevents inconsistencies when lockfile or bundle files are manually deleted.
 
@@ -191,6 +220,8 @@ Lockfile writes use a temp file + rename pattern to prevent corruption:
 
 ### Lockfile Schema
 
+Both lockfiles use the same schema structure. The `commitMode` field is deprecated—commit mode is now implicit based on file location:
+
 ```json
 {
   "$schema": "...",
@@ -203,7 +234,6 @@ Lockfile writes use a temp file + rename pattern to prevent corruption:
       "sourceId": "source-id",
       "sourceType": "github",
       "installedAt": "...",
-      "commitMode": "commit",
       "files": [
         { "path": ".github/prompts/...", "checksum": "sha256..." }
       ]
@@ -214,6 +244,52 @@ Lockfile writes use a temp file + rename pattern to prevent corruption:
   }
 }
 ```
+
+> **Note:** Existing lockfiles with `commitMode` field continue to work for backward compatibility. The field is ignored on read (file location determines mode) and not included in new entries.
+
+### Commit Mode Switching
+
+When switching a bundle between commit and local-only modes:
+
+```mermaid
+flowchart TD
+    A[Switch Commit Mode] --> B{New Mode?}
+    B -->|local-only| C[Remove from main lockfile]
+    B -->|commit| D[Remove from local lockfile]
+    C --> E[Add to local lockfile]
+    D --> F[Add to main lockfile]
+    E --> G[Update git exclude]
+    F --> G
+    G --> H{Local lockfile empty?}
+    H -->|Yes| I[Delete local lockfile]
+    H -->|No| J[Done]
+    I --> K[Remove from git exclude]
+    K --> J
+```
+
+All bundle metadata (version, sourceId, files, etc.) is preserved during the move.
+
+### Backward Compatibility and Migration
+
+The dual-lockfile architecture maintains backward compatibility with existing lockfiles:
+
+| Scenario | Behavior |
+|----------|----------|
+| Read lockfile with `commitMode` field | Field is ignored; file location determines mode |
+| Write new bundle entry | `commitMode` field is not included |
+| Update existing entry | Entry is rewritten without `commitMode` field |
+| Local-only bundle in main lockfile | Continues to work; migrates on next modification |
+
+**Migration path for existing lockfiles:**
+
+1. Existing lockfiles with `commitMode` field continue to function normally
+2. When a bundle is modified (updated, mode switched), the entry is rewritten without `commitMode`
+3. Local-only bundles in the main lockfile remain there until explicitly switched to local-only mode
+4. No automatic migration is performed—changes happen gradually as bundles are modified
+
+**Conflict detection:**
+
+If a bundle ID exists in both lockfiles (should not happen in normal operation), `LockfileManager.getInstalledBundles()` displays an error to the user and skips the duplicate entry from the local lockfile.
 
 ## Repository Activation
 

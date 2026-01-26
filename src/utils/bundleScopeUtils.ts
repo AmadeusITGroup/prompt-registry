@@ -41,12 +41,12 @@ export async function getInstalledBundleForScope(
         
         try {
             const lockfileManager = LockfileManager.getInstance(workspaceRoot);
-            const lockfile = await lockfileManager.read();
+            // Use getInstalledBundles() to search both main and local lockfiles
+            const installedBundles = await lockfileManager.getInstalledBundles();
+            const bundle = installedBundles.find(b => b.bundleId === bundleId);
             
-            if (lockfile && lockfile.bundles[bundleId]) {
-                return createInstalledBundleFromLockfile(bundleId, lockfile.bundles[bundleId], {
-                    installPath: path.join(workspaceRoot, '.github')
-                });
+            if (bundle) {
+                return bundle;
             }
             
             // Fall back to storage if lockfile doesn't have the bundle (for testing/backward compatibility)
@@ -72,6 +72,8 @@ export interface CreateInstalledBundleOptions {
     manifest?: DeploymentManifest;
     /** Whether files are missing from the filesystem */
     filesMissing?: boolean;
+    /** Override the commit mode from the lockfile entry (used when commit mode is implicit based on file location) */
+    commitModeOverride?: RepositoryCommitMode;
 }
 
 /**
@@ -92,6 +94,10 @@ export function createInstalledBundleFromLockfile(
 ): InstalledBundle {
     const manifest = options?.manifest ?? createMinimalManifest(bundleId, bundleEntry.files);
     
+    // Use commitModeOverride if provided, otherwise fall back to entry's commitMode
+    // This supports the dual-lockfile pattern where commit mode is implicit based on file location
+    const commitMode = options?.commitModeOverride ?? bundleEntry.commitMode as RepositoryCommitMode;
+    
     return {
         bundleId,
         version: bundleEntry.version,
@@ -101,7 +107,7 @@ export function createInstalledBundleFromLockfile(
         manifest,
         sourceId: bundleEntry.sourceId,
         sourceType: bundleEntry.sourceType,
-        commitMode: bundleEntry.commitMode as RepositoryCommitMode,
+        commitMode,
         filesMissing: options?.filesMissing
     };
 }

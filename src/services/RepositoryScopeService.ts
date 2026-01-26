@@ -39,6 +39,11 @@ const rm = promisify(fs.rm);
 const GIT_EXCLUDE_SECTION_HEADER = '# Prompt Registry (local)';
 
 /**
+ * Name of the local lockfile that tracks local-only bundles
+ */
+const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
+
+/**
  * Tracks installed files during bundle installation for rollback support
  */
 interface InstallationTracker {
@@ -416,15 +421,15 @@ export class RepositoryScopeService implements IScopeService {
             this.logger.debug(`[RepositoryScopeService] Removing files for bundle: ${bundleId}`);
 
             // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+            // Use getInstalledBundles() to search both main and local lockfiles
             const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
-            const lockfile = await lockfileManager.read();
+            const installedBundles = await lockfileManager.getInstalledBundles();
+            const bundle = installedBundles.find(b => b.bundleId === bundleId);
             
-            if (!lockfile || !lockfile.bundles[bundleId]) {
-                this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} not found in lockfile`);
+            if (!bundle) {
+                this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
                 return;
             }
-
-            const bundleEntry = lockfile.bundles[bundleId];
             
             // Get install path from global storage (same as BundleInstaller.getInstallDirectory for repository scope)
             // Repository scope bundles are stored in extension global storage under bundles/{bundleId}
@@ -436,7 +441,21 @@ export class RepositoryScopeService implements IScopeService {
             if (!fs.existsSync(manifestPath)) {
                 this.logger.warn(`[RepositoryScopeService] No manifest found for bundle: ${bundleId}`);
                 // Still try to remove files based on lockfile entries
-                if (bundleEntry.files && bundleEntry.files.length > 0) {
+                // We need to read the lockfile directly to get the files array
+                const mainLockfile = await lockfileManager.read();
+                const localLockfilePath = lockfileManager.getLocalLockfilePath();
+                let localLockfile = null;
+                if (fs.existsSync(localLockfilePath)) {
+                    try {
+                        const content = await readFile(localLockfilePath, 'utf-8');
+                        localLockfile = JSON.parse(content);
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
+                
+                const bundleEntry = mainLockfile?.bundles[bundleId] || localLockfile?.bundles[bundleId];
+                if (bundleEntry?.files && bundleEntry.files.length > 0) {
                     await this.removeFilesFromLockfileEntries(bundleEntry.files);
                 }
                 return;
@@ -573,16 +592,17 @@ export class RepositoryScopeService implements IScopeService {
             this.logger.debug(`[RepositoryScopeService] Switching commit mode for ${bundleId} to ${newMode}`);
 
             // Get installed bundle info from lockfile (repository scope bundles are tracked via lockfile)
+            // Use getInstalledBundles() to search both main and local lockfiles
             const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
-            const lockfile = await lockfileManager.read();
+            const installedBundles = await lockfileManager.getInstalledBundles();
+            const bundle = installedBundles.find(b => b.bundleId === bundleId);
             
-            if (!lockfile || !lockfile.bundles[bundleId]) {
-                this.logger.warn(`[RepositoryScopeService] Bundle ${bundleId} not found in lockfile`);
+            if (!bundle) {
+                this.logger.warn(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
                 return;
             }
 
-            const bundleEntry = lockfile.bundles[bundleId];
-            const currentMode = bundleEntry.commitMode ?? 'commit';
+            const currentMode = bundle.commitMode ?? 'commit';
             if (currentMode === newMode) {
                 this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} already in ${newMode} mode`);
                 return;
@@ -633,6 +653,41 @@ export class RepositoryScopeService implements IScopeService {
         } catch (error) {
             this.logger.error(`[RepositoryScopeService] Failed to switch commit mode for ${bundleId}`, error as Error);
         }
+    }
+
+    /**
+     * Add the local lockfile to .git/info/exclude.
+     * This ensures the local lockfile is not tracked by Git.
+     * 
+     * Handles edge cases:
+     * - Missing .git directory: skips without error
+     * - Missing .git/info/exclude file: creates it
+     * - Duplicate entries: prevents adding if already present
+     * 
+     * @see Requirements 2.1, 2.3, 2.4, 2.5
+     */
+    async addLocalLockfileToGitExclude(): Promise<void> {
+        if (!this.hasGitDirectory()) {
+            this.logger.debug('[RepositoryScopeService] No .git directory, skipping git exclude');
+            return;
+        }
+        await this.addToGitExclude([LOCAL_LOCKFILE_NAME]);
+    }
+
+    /**
+     * Remove the local lockfile from .git/info/exclude.
+     * Called when the local lockfile is deleted (last local-only bundle removed).
+     * 
+     * Handles edge cases:
+     * - Missing .git directory: skips without error
+     * 
+     * @see Requirements 2.2, 2.3
+     */
+    async removeLocalLockfileFromGitExclude(): Promise<void> {
+        if (!this.hasGitDirectory()) {
+            return;
+        }
+        await this.removeFromGitExclude([LOCAL_LOCKFILE_NAME]);
     }
 
     /**

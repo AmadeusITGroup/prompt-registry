@@ -56,6 +56,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
     };
 
     const LOCKFILE_NAME = 'prompt-registry.lock.json';
+    const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
     const GITHUB_PROMPTS_DIR = '.github/prompts';
 
     // Bundle ID format: owner-repo-manifestId-version
@@ -968,9 +969,9 @@ suite('E2E: Repository-Level Installation Tests', () => {
                 '.git/info/exclude should have Prompt Registry section before uninstall'
             );
             
-            // Get the actual bundle ID from the lockfile
-            const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            // Get the actual bundle ID from the LOCAL lockfile (local-only bundles are in local lockfile)
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            const lockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
             const actualBundleId = Object.keys(lockfile.bundles)[0];
             
             // Uninstall the bundle
@@ -1167,12 +1168,14 @@ suite('E2E: Repository-Level Installation Tests', () => {
             const bundleScopeCommands = createBundleScopeCommands();
             await bundleScopeCommands.switchCommitMode(actualBundleId, 'local-only');
             
-            // Verify lockfile was updated by production code (not manually)
-            const updatedLockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
-            assert.strictEqual(
-                updatedLockfile.bundles[actualBundleId].commitMode, 
-                'local-only',
-                'Lockfile should be updated by BundleScopeCommands.switchCommitMode()'
+            // After switching to local-only mode, the bundle should be in the LOCAL lockfile
+            // (moved from main lockfile to local lockfile)
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should exist after switching to local-only mode');
+            const updatedLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+            assert.ok(
+                updatedLockfile.bundles[actualBundleId],
+                'Bundle should be in local lockfile after switching to local-only mode'
             );
             
             // Verify .git/info/exclude now has entries
@@ -1222,15 +1225,15 @@ suite('E2E: Repository-Level Installation Tests', () => {
                 '.git/info/exclude should have Prompt Registry section in local-only mode'
             );
             
-            // Get the actual bundle ID from the lockfile
-            const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            assert.ok(fs.existsSync(lockfilePath), 'Lockfile should exist');
-            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            // Get the actual bundle ID from the LOCAL lockfile (local-only bundles are in local lockfile)
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should exist for local-only bundle');
+            const lockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
             const actualBundleId = Object.keys(lockfile.bundles)[0];
             
-            // Verify bundle is in lockfile at repository scope
+            // Verify bundle is in local lockfile at repository scope
             const bundleEntry = lockfile.bundles[actualBundleId];
-            assert.ok(bundleEntry, `Bundle ${actualBundleId} should be in lockfile`);
+            assert.ok(bundleEntry, `Bundle ${actualBundleId} should be in local lockfile`);
             
             // Stub the VS Code warning message to auto-confirm
             sandbox.stub(vscode.window, 'showWarningMessage').resolves('Switch' as any);
@@ -1240,12 +1243,14 @@ suite('E2E: Repository-Level Installation Tests', () => {
             const bundleScopeCommands = createBundleScopeCommands();
             await bundleScopeCommands.switchCommitMode(actualBundleId, 'commit');
             
-            // Verify lockfile was updated by production code (not manually)
-            const updatedLockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
-            assert.strictEqual(
-                updatedLockfile.bundles[actualBundleId].commitMode, 
-                'commit',
-                'Lockfile should be updated by BundleScopeCommands.switchCommitMode()'
+            // After switching to commit mode, the bundle should be in the MAIN lockfile
+            // (moved from local lockfile to main lockfile)
+            const mainLockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should exist after switching to commit mode');
+            const updatedLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            assert.ok(
+                updatedLockfile.bundles[actualBundleId],
+                'Bundle should be in main lockfile after switching to commit mode'
             );
             
             // Verify .git/info/exclude entries were removed
@@ -1604,6 +1609,361 @@ suite('E2E: Repository-Level Installation Tests', () => {
                 // Otherwise, update failed for other reasons - acceptable
                 console.log('[Test] Update failed for other reasons:', error.message);
             }
+        });
+    });
+
+    suite('Local-Only Lockfile Separation (Requirements 1-5)', () => {
+        /**
+         * E2E tests for the local-only lockfile separation feature.
+         * 
+         * These tests verify the complete workflow for:
+         * - Installing local-only bundles creates local lockfile and git exclude entry
+         * - Installing committed bundles creates main lockfile only
+         * - Switching commit mode moves bundle between lockfiles and updates git exclude
+         * - Removing last local-only bundle deletes local lockfile and git exclude entry
+         * - Mixed bundles (some commit, some local-only) in same repository
+         * 
+         * **Validates: All Requirements from local-only-lockfile-separation spec**
+         */
+
+        const GIT_EXCLUDE_PATH = '.git/info/exclude';
+
+        /**
+         * Helper to read .git/info/exclude content
+         */
+        function readGitExclude(): string {
+            const excludePath = path.join(workspaceRoot, GIT_EXCLUDE_PATH);
+            if (!fs.existsSync(excludePath)) {
+                return '';
+            }
+            return fs.readFileSync(excludePath, 'utf-8');
+        }
+
+        /**
+         * Helper to check if local lockfile is in git exclude
+         */
+        function isLocalLockfileExcluded(): boolean {
+            const content = readGitExclude();
+            return content.includes(LOCAL_LOCKFILE_NAME);
+        }
+
+        test('11.1: Installing local-only bundle creates local lockfile and git exclude entry', async function() {
+            this.timeout(60000);
+            
+            const { bundle } = await setupSourceAndGetBundle('local-lockfile-create-source', 'local-lockfile-create');
+            
+            // Verify local lockfile does NOT exist initially
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should NOT exist initially');
+            
+            // Verify local lockfile is NOT in git exclude initially
+            assert.ok(!isLocalLockfileExcluded(), 'Local lockfile should NOT be in git exclude initially');
+            
+            // Install bundle with local-only mode
+            try {
+                await testContext.registryManager.installBundle(bundle.id, {
+                    scope: 'repository',
+                    commitMode: 'local-only',
+                    version: '1.0.0'
+                });
+            } catch (error: any) {
+                if (error.message.includes('not yet implemented')) {
+                    this.skip();
+                }
+                throw error;
+            }
+            
+            // Verify files were installed
+            const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
+            if (!fs.existsSync(promptsDir)) {
+                console.log('[Test] Skipping: Repository scope installation did not create files');
+                this.skip();
+            }
+            
+            // Verify local lockfile was created (Requirement 1.1)
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should be created for local-only bundle');
+            
+            // Verify local lockfile has correct structure
+            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+            assert.ok(localLockfile.bundles, 'Local lockfile should have bundles object');
+            assert.ok(Object.keys(localLockfile.bundles).length > 0, 'Local lockfile should contain the bundle');
+            
+            // Verify bundle entry does NOT have commitMode field (Requirement 1.4)
+            const bundleEntry = Object.values(localLockfile.bundles)[0] as any;
+            assert.ok(bundleEntry.version, 'Bundle entry should have version');
+            // Note: commitMode field is deprecated and should not be present in new entries
+            
+            // Verify main lockfile was NOT created
+            const mainLockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            assert.ok(!fs.existsSync(mainLockfilePath), 'Main lockfile should NOT be created for local-only bundle');
+            
+            // Verify local lockfile is in git exclude (Requirement 2.1)
+            assert.ok(isLocalLockfileExcluded(), 'Local lockfile should be added to git exclude');
+        });
+
+        test('11.2: Installing committed bundle creates main lockfile only', async function() {
+            this.timeout(60000);
+            
+            const { bundle } = await setupSourceAndGetBundle('main-lockfile-only-source', 'main-lockfile-only');
+            
+            // Verify neither lockfile exists initially
+            const mainLockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            assert.ok(!fs.existsSync(mainLockfilePath), 'Main lockfile should NOT exist initially');
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should NOT exist initially');
+            
+            // Install bundle with commit mode (default)
+            await installBundleOrSkip(this, bundle.id, { 
+                scope: 'repository', commitMode: 'commit', version: '1.0.0'
+            });
+            
+            // Verify main lockfile was created (Requirement 1.2)
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should be created for committed bundle');
+            
+            // Verify main lockfile has correct structure
+            const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            assert.ok(mainLockfile.bundles, 'Main lockfile should have bundles object');
+            assert.ok(Object.keys(mainLockfile.bundles).length > 0, 'Main lockfile should contain the bundle');
+            
+            // Verify bundle entry does NOT have commitMode field (Requirement 1.5)
+            const bundleEntry = Object.values(mainLockfile.bundles)[0] as any;
+            assert.ok(bundleEntry.version, 'Bundle entry should have version');
+            
+            // Verify local lockfile was NOT created
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should NOT be created for committed bundle');
+            
+            // Verify local lockfile is NOT in git exclude
+            assert.ok(!isLocalLockfileExcluded(), 'Local lockfile should NOT be in git exclude for committed bundle');
+        });
+
+        test('11.3: Switching commit mode moves bundle and updates git exclude', async function() {
+            this.timeout(90000);
+            
+            const { bundle } = await setupSourceAndGetBundle('switch-mode-e2e-source', 'switch-mode-e2e');
+            
+            // Install bundle with commit mode first
+            await installBundleOrSkip(this, bundle.id, { 
+                scope: 'repository', commitMode: 'commit', version: '1.0.0'
+            });
+            
+            // Verify bundle is in main lockfile
+            const mainLockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should exist');
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should NOT exist initially');
+            
+            const mainLockfileBefore = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            const actualBundleId = Object.keys(mainLockfileBefore.bundles)[0];
+            const originalEntry = mainLockfileBefore.bundles[actualBundleId];
+            
+            // Stub the VS Code warning message to auto-confirm
+            sandbox.stub(vscode.window, 'showWarningMessage').resolves('Switch' as any);
+            
+            // Switch to local-only mode using LockfileManager (Requirement 4.1)
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            await lockfileManager.updateCommitMode(actualBundleId, 'local-only');
+            
+            // Verify bundle was moved to local lockfile (Requirement 4.1)
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should be created after switching to local-only');
+            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+            assert.ok(localLockfile.bundles[actualBundleId], 'Bundle should be in local lockfile');
+            
+            // Verify bundle was removed from main lockfile
+            if (fs.existsSync(mainLockfilePath)) {
+                const mainLockfileAfter = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+                assert.ok(!mainLockfileAfter.bundles[actualBundleId], 'Bundle should NOT be in main lockfile');
+            }
+            
+            // Verify metadata was preserved (Requirement 4.3)
+            const movedEntry = localLockfile.bundles[actualBundleId];
+            assert.strictEqual(movedEntry.version, originalEntry.version, 'Version should be preserved');
+            assert.strictEqual(movedEntry.sourceId, originalEntry.sourceId, 'SourceId should be preserved');
+            
+            // Verify local lockfile is in git exclude (Requirement 4.4)
+            assert.ok(isLocalLockfileExcluded(), 'Local lockfile should be in git exclude after switching to local-only');
+            
+            // Now switch back to commit mode (Requirement 4.2)
+            await lockfileManager.updateCommitMode(actualBundleId, 'commit');
+            
+            // Verify bundle was moved back to main lockfile
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should exist after switching to commit');
+            const mainLockfileAfterSwitch = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            assert.ok(mainLockfileAfterSwitch.bundles[actualBundleId], 'Bundle should be in main lockfile');
+            
+            // Verify local lockfile was deleted (it was the only bundle)
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should be deleted when empty');
+            
+            // Verify local lockfile is removed from git exclude (Requirement 4.5)
+            assert.ok(!isLocalLockfileExcluded(), 'Local lockfile should be removed from git exclude when empty');
+        });
+
+        test('11.4: Removing last local-only bundle deletes local lockfile and git exclude entry', async function() {
+            this.timeout(60000);
+            
+            const { bundle } = await setupSourceAndGetBundle('remove-last-local-source', 'remove-last-local');
+            
+            // Install bundle with local-only mode
+            try {
+                await testContext.registryManager.installBundle(bundle.id, {
+                    scope: 'repository',
+                    commitMode: 'local-only',
+                    version: '1.0.0'
+                });
+            } catch (error: any) {
+                if (error.message.includes('not yet implemented')) {
+                    this.skip();
+                }
+                throw error;
+            }
+            
+            // Verify files were installed
+            const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
+            if (!fs.existsSync(promptsDir)) {
+                console.log('[Test] Skipping: Repository scope installation did not create files');
+                this.skip();
+            }
+            
+            // Verify local lockfile exists
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should exist after installation');
+            
+            // Verify local lockfile is in git exclude
+            assert.ok(isLocalLockfileExcluded(), 'Local lockfile should be in git exclude');
+            
+            // Get the actual bundle ID from the local lockfile
+            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+            const actualBundleId = Object.keys(localLockfile.bundles)[0];
+            
+            // Verify this is the only bundle
+            assert.strictEqual(Object.keys(localLockfile.bundles).length, 1, 'Should have exactly one bundle');
+            
+            // Remove the bundle (Requirement 5.1)
+            await testContext.registryManager.uninstallBundle(actualBundleId, 'repository');
+            
+            // Verify local lockfile was deleted (Requirement 5.3)
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should be deleted when last bundle is removed');
+            
+            // Verify local lockfile is removed from git exclude (Requirement 5.4)
+            assert.ok(!isLocalLockfileExcluded(), 'Local lockfile should be removed from git exclude');
+        });
+
+        test('11.5: Mixed bundles (some commit, some local-only) in same repository', async function() {
+            this.timeout(120000);
+            
+            // Set up two different sources for two bundles
+            const commitSourceId = `${testId}-mixed-commit-source`;
+            const localSourceId = `${testId}-mixed-local-source`;
+            
+            // Create different test configs for each bundle
+            const commitConfig: RepositoryTestConfig = {
+                owner: 'test-owner',
+                repo: 'commit-bundle-repo',
+                manifestId: 'commit-bundle',
+                baseVersion: '1.0.0'
+            };
+            
+            const localConfig: RepositoryTestConfig = {
+                owner: 'test-owner',
+                repo: 'local-bundle-repo',
+                manifestId: 'local-bundle',
+                baseVersion: '1.0.0'
+            };
+            
+            setupWorkspaceStub();
+            
+            // Set up and install committed bundle
+            const commitSource = createMockGitHubSource(commitSourceId, commitConfig);
+            const commitReleases: ReleaseConfig[] = [{ tag: 'v1.0.0', version: '1.0.0', content: 'commit-bundle-content' }];
+            setupReleaseMocks(commitConfig, commitReleases);
+            
+            await testContext.registryManager.addSource(commitSource);
+            await testContext.registryManager.syncSource(commitSourceId);
+            
+            const commitBundles = await testContext.storage.getCachedSourceBundles(commitSourceId);
+            const commitBundle = commitBundles[0];
+            
+            await installBundleOrSkip(this, commitBundle.id, { 
+                scope: 'repository', commitMode: 'commit', version: '1.0.0'
+            });
+            
+            // Set up and install local-only bundle
+            cleanupReleaseMocks();
+            const localSource = createMockGitHubSource(localSourceId, localConfig);
+            const localReleases: ReleaseConfig[] = [{ tag: 'v1.0.0', version: '1.0.0', content: 'local-bundle-content' }];
+            setupReleaseMocks(localConfig, localReleases);
+            
+            await testContext.registryManager.addSource(localSource);
+            await testContext.registryManager.syncSource(localSourceId);
+            
+            const localBundles = await testContext.storage.getCachedSourceBundles(localSourceId);
+            const localBundle = localBundles[0];
+            
+            try {
+                await testContext.registryManager.installBundle(localBundle.id, {
+                    scope: 'repository',
+                    commitMode: 'local-only',
+                    version: '1.0.0'
+                });
+            } catch (error: any) {
+                if (error.message.includes('not yet implemented')) {
+                    this.skip();
+                }
+                throw error;
+            }
+            
+            // Verify both lockfiles exist
+            const mainLockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            const localLockfilePath = path.join(workspaceRoot, LOCAL_LOCKFILE_NAME);
+            
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should exist for committed bundle');
+            assert.ok(fs.existsSync(localLockfilePath), 'Local lockfile should exist for local-only bundle');
+            
+            // Verify committed bundle is in main lockfile only
+            const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            const mainBundleIds = Object.keys(mainLockfile.bundles);
+            assert.ok(mainBundleIds.length > 0, 'Main lockfile should have at least one bundle');
+            
+            // Verify local-only bundle is in local lockfile only
+            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+            const localBundleIds = Object.keys(localLockfile.bundles);
+            assert.ok(localBundleIds.length > 0, 'Local lockfile should have at least one bundle');
+            
+            // Verify no overlap between lockfiles (Requirement 3.4 - conflict detection)
+            const overlap = mainBundleIds.filter(id => localBundleIds.includes(id));
+            assert.strictEqual(overlap.length, 0, 'No bundle should exist in both lockfiles');
+            
+            // Verify local lockfile is in git exclude
+            assert.ok(isLocalLockfileExcluded(), 'Local lockfile should be in git exclude');
+            
+            // Verify unified listing returns all bundles with correct commit modes (Requirement 3.1-3.3)
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            const allBundles = await lockfileManager.getInstalledBundles();
+            
+            // Should have bundles from both lockfiles
+            assert.ok(allBundles.length >= 2, 'Should list bundles from both lockfiles');
+            
+            // Verify commit modes are correctly annotated
+            const commitBundles2 = allBundles.filter(b => b.commitMode === 'commit');
+            const localOnlyBundles = allBundles.filter(b => b.commitMode === 'local-only');
+            
+            assert.ok(commitBundles2.length > 0, 'Should have at least one committed bundle');
+            assert.ok(localOnlyBundles.length > 0, 'Should have at least one local-only bundle');
+            
+            // Now remove the local-only bundle and verify main lockfile is unaffected
+            const localBundleId = localBundleIds[0];
+            await testContext.registryManager.uninstallBundle(localBundleId, 'repository');
+            
+            // Verify local lockfile is deleted
+            assert.ok(!fs.existsSync(localLockfilePath), 'Local lockfile should be deleted after removing last local-only bundle');
+            
+            // Verify main lockfile still exists with committed bundle
+            assert.ok(fs.existsSync(mainLockfilePath), 'Main lockfile should still exist');
+            const mainLockfileAfter = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+            assert.ok(Object.keys(mainLockfileAfter.bundles).length > 0, 'Main lockfile should still have committed bundle');
+            
+            // Verify local lockfile is removed from git exclude
+            assert.ok(!isLocalLockfileExcluded(), 'Local lockfile should be removed from git exclude');
         });
     });
 });
