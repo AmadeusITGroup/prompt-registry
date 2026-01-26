@@ -69,6 +69,7 @@ temp_*.txt
 
 # Documentation (keep only essential)
 docs/
+presentation/
 !docs/assets/
 !docs/assets/*.png
 !docs/assets/*.jpg

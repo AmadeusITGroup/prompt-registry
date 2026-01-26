@@ -153,6 +153,172 @@ suite('ScaffoldCommand', () => {
         });
     });
 
+    suite('InnerSource Documentation', () => {
+        test('should create InnerSource documentation files', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            // Check that InnerSource documentation files exist
+            const innerSourceFiles = [
+                'CONTRIBUTING.md',
+                'COMMUNICATION.md', 
+                'CODE_OF_CONDUCT.md',
+                'SECURITY.md',
+                'LICENSE'
+            ];
+
+            for (const file of innerSourceFiles) {
+                const filePath = path.join(testDir, file);
+                assert.ok(fs.existsSync(filePath), `InnerSource file ${file} should be created`);
+            }
+        });
+
+        test('should include project name in documentation templates', async () => {
+            // Use a fixed project name for testing
+            const fixedProjectName = 'test-project';
+            await scaffoldCommand.execute(testDir, { projectName: fixedProjectName });
+
+            // Check that project name is substituted in templates
+            const contributingPath = path.join(testDir, 'CONTRIBUTING.md');
+            const contributingContent = fs.readFileSync(contributingPath, 'utf8');
+            
+            assert.ok(contributingContent.includes(fixedProjectName), 
+                'Project name should be substituted in CONTRIBUTING.md');
+            
+            const communicationPath = path.join(testDir, 'COMMUNICATION.md');
+            const communicationContent = fs.readFileSync(communicationPath, 'utf8');
+            
+            assert.ok(communicationContent.includes(fixedProjectName), 
+                'Project name should be substituted in COMMUNICATION.md');
+        });
+
+        test('should create comprehensive documentation with proper structure', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            // Verify CONTRIBUTING.md has required sections
+            const contributingPath = path.join(testDir, 'CONTRIBUTING.md');
+            const contributingContent = fs.readFileSync(contributingPath, 'utf8');
+            
+            const requiredSections = [
+                '## 🤝 How to Contribute',
+                '## 👥 Trusted Committers',
+                '## 📋 Code Review Process',
+                '## 🧪 Testing Requirements'
+            ];
+            
+            for (const section of requiredSections) {
+                assert.ok(contributingContent.includes(section), 
+                    `CONTRIBUTING.md should contain section: ${section}`);
+            }
+        });
+
+        test('should include security best practices', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            const securityPath = path.join(testDir, 'SECURITY.md');
+            const securityContent = fs.readFileSync(securityPath, 'utf8');
+            
+            const securityTopics = [
+                '## 🛡️ Security',
+                '## 🐛 Reporting a Vulnerability',
+                '## 🔒 Security Best Practices',
+                '## 📋 Security Checklist',
+                '## 🔄 Security Updates'
+            ];
+            
+            for (const topic of securityTopics) {
+                assert.ok(securityContent.includes(topic), 
+                    `SECURITY.md should contain section: ${topic}`);
+            }
+        });
+
+        test('should include code of conduct with enforcement', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            const cocPath = path.join(testDir, 'CODE_OF_CONDUCT.md');
+            const cocContent = fs.readFileSync(cocPath, 'utf8');
+            
+            const cocTopics = [
+                '## Our Pledge',
+                '## ✅ Positive Behavior',
+                '## ❌ Unacceptable Behavior',
+                '## Scope',
+                '## Enforcement'
+            ];
+            
+            for (const topic of cocTopics) {
+                assert.ok(cocContent.includes(topic), 
+                    `CODE_OF_CONDUCT.md should contain section: ${topic}`);
+            }
+        });
+
+        test('should include internal use license', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            const licensePath = path.join(testDir, 'LICENSE');
+            const licenseContent = fs.readFileSync(licensePath, 'utf8');
+            
+            assert.ok(licenseContent.includes('Internal Use License'), 
+                'LICENSE should be Internal Use License');
+            assert.ok(licenseContent.includes('proprietary to'), 
+                'LICENSE should specify it is proprietary');
+        });
+
+        test('should substitute organization details in LICENSE when provided', async () => {
+            const orgOptions = {
+                projectName: 'test-project',
+                organizationName: 'Acme Corp',
+                internalContact: 'security@acme.com',
+                legalContact: 'legal@acme.com',
+                organizationPolicyLink: 'https://acme.com/policies'
+            };
+            
+            await scaffoldCommand.execute(testDir, orgOptions);
+
+            const licensePath = path.join(testDir, 'LICENSE');
+            const licenseContent = fs.readFileSync(licensePath, 'utf8');
+            
+            assert.ok(licenseContent.includes('Acme Corp'), 
+                'LICENSE should contain organization name');
+            assert.ok(licenseContent.includes('security@acme.com'), 
+                'LICENSE should contain internal contact');
+            assert.ok(licenseContent.includes('legal@acme.com'), 
+                'LICENSE should contain legal contact');
+            assert.ok(licenseContent.includes('https://acme.com/policies'), 
+                'LICENSE should contain organization policy link');
+        });
+
+        test('should substitute author and githubOrg in generated files', async () => {
+            const options = {
+                projectName: 'test-project',
+                author: 'Test Author',
+                githubOrg: 'test-org',
+                internalContact: 'security@test.com'
+            };
+            
+            await scaffoldCommand.execute(testDir, options);
+
+            // Check package.json for author
+            const packageJsonPath = path.join(testDir, 'package.json');
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+            assert.strictEqual(packageJson.author, 'Test Author', 
+                'package.json should contain author');
+            assert.strictEqual(packageJson.license, 'SEE LICENSE IN LICENSE', 
+                'package.json should have correct license field');
+
+            // Check COMMUNICATION.md for githubOrg
+            const communicationPath = path.join(testDir, 'COMMUNICATION.md');
+            const communicationContent = fs.readFileSync(communicationPath, 'utf8');
+            assert.ok(communicationContent.includes('github.com/test-org/test-project'), 
+                'COMMUNICATION.md should contain githubOrg in URLs');
+
+            // Check SECURITY.md for internalContact
+            const securityPath = path.join(testDir, 'SECURITY.md');
+            const securityContent = fs.readFileSync(securityPath, 'utf8');
+            assert.ok(securityContent.includes('security@test.com'), 
+                'SECURITY.md should contain internal contact');
+        });
+    });
+
     suite('Collection File Validation', () => {
         test('collection file should be valid YAML', async () => {
             await scaffoldCommand.execute(testDir);
@@ -293,6 +459,49 @@ suite('ScaffoldCommand', () => {
 
             assert.ok(content.length > 100);
             assert.ok(content.includes('You are') || content.includes('Act as') || content.includes('persona') || content.includes('role'));
+        });
+
+        test('example skill should have rich structure with scripts, references, and assets', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            // Check SKILL.md exists and has proper frontmatter
+            const skillFile = path.join(testDir, 'skills', 'example-skill', 'SKILL.md');
+            assert.ok(fs.existsSync(skillFile), 'SKILL.md should exist');
+            const skillContent = fs.readFileSync(skillFile, 'utf8');
+            assert.ok(skillContent.includes('name:'), 'SKILL.md should have name in frontmatter');
+            assert.ok(skillContent.includes('description:'), 'SKILL.md should have description in frontmatter');
+
+            // Check scripts directory
+            const scriptFile = path.join(testDir, 'skills', 'example-skill', 'scripts', 'review-helper.sh');
+            assert.ok(fs.existsSync(scriptFile), 'Helper script should exist');
+
+            // Check references directory
+            const checklistFile = path.join(testDir, 'skills', 'example-skill', 'references', 'CHECKLIST.md');
+            assert.ok(fs.existsSync(checklistFile), 'Checklist reference should exist');
+            const feedbackFile = path.join(testDir, 'skills', 'example-skill', 'references', 'FEEDBACK.md');
+            assert.ok(fs.existsSync(feedbackFile), 'Feedback reference should exist');
+
+            // Check assets directory
+            const templatesFile = path.join(testDir, 'skills', 'example-skill', 'assets', 'comment-templates.md');
+            assert.ok(fs.existsSync(templatesFile), 'Comment templates asset should exist');
+        });
+
+        test('should create GitHub Issue and PR templates', async () => {
+            await scaffoldCommand.execute(testDir);
+
+            // Check Issue templates
+            const bugReportTemplate = path.join(testDir, '.github', 'ISSUE_TEMPLATE', 'bug_report.yml');
+            assert.ok(fs.existsSync(bugReportTemplate), 'Bug report template should exist');
+
+            const featureRequestTemplate = path.join(testDir, '.github', 'ISSUE_TEMPLATE', 'feature_request.yml');
+            assert.ok(fs.existsSync(featureRequestTemplate), 'Feature request template should exist');
+
+            const issueConfigTemplate = path.join(testDir, '.github', 'ISSUE_TEMPLATE', 'config.yml');
+            assert.ok(fs.existsSync(issueConfigTemplate), 'Issue config template should exist');
+
+            // Check PR template
+            const prTemplate = path.join(testDir, '.github', 'pull_request_template.md');
+            assert.ok(fs.existsSync(prTemplate), 'PR template should exist');
         });
     });
 });

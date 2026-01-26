@@ -42,6 +42,12 @@ export interface ScaffoldOptions {
     description?: string;
     author?: string;
     tags?: string[];
+    // Organization details for InnerSource LICENSE and docs
+    githubOrg?: string;
+    organizationName?: string;
+    internalContact?: string;
+    legalContact?: string;
+    organizationPolicyLink?: string;
 }
 
 /**
@@ -94,6 +100,12 @@ export class ScaffoldCommand {
                 description: options?.description,
                 author: options?.author,
                 tags: options?.tags,
+                // Organization details for InnerSource LICENSE and docs
+                githubOrg: options?.githubOrg,
+                organizationName: options?.organizationName,
+                internalContact: options?.internalContact,
+                legalContact: options?.legalContact,
+                organizationPolicyLink: options?.organizationPolicyLink,
             };
 
             // Use template engine to scaffold the entire project
@@ -337,6 +349,8 @@ export class ScaffoldCommand {
         // Get GitHub runner choice
         const githubRunner = await ScaffoldCommand.promptForGitHubRunner();
         let details: { description?: string; author?: string; tags?: string[] } = {};
+        let orgDetails: { organizationName?: string; internalContact?: string; legalContact?: string; organizationPolicyLink?: string } = {};
+        
         // Collect additional details if needed
         
         if (type === ScaffoldType.Apm) {
@@ -353,10 +367,16 @@ export class ScaffoldCommand {
             }
         }
 
+        // For GitHub type, collect organization details for InnerSource LICENSE
+        if (type === ScaffoldType.GitHub) {
+            orgDetails = await ScaffoldCommand.promptForOrganizationDetails();
+        }
+
         return {
             projectName,
             githubRunner,
-            ...details
+            ...details,
+            ...orgDetails
         };
     }
 
@@ -463,69 +483,78 @@ export class ScaffoldCommand {
     }
 
     /**
+     * Prompt for organization details for InnerSource LICENSE and docs
+     */
+    private static async promptForOrganizationDetails(): Promise<{ 
+        author?: string;
+        githubOrg?: string;
+        organizationName?: string; 
+        internalContact?: string; 
+        legalContact?: string; 
+        organizationPolicyLink?: string 
+    }> {
+        const author = await vscode.window.showInputBox({
+            prompt: 'Enter author name (for package.json)',
+            placeHolder: 'Your Name or Team Name',
+            ignoreFocusOut: true
+        });
+
+        const githubOrg = await vscode.window.showInputBox({
+            prompt: 'Enter GitHub organization/username (for repository URLs)',
+            placeHolder: 'your-org',
+            ignoreFocusOut: true
+        });
+
+        const organizationName = await vscode.window.showInputBox({
+            prompt: 'Enter organization name (for LICENSE)',
+            placeHolder: 'Your Organization Name',
+            value: 'Your Organization',
+            ignoreFocusOut: true
+        });
+
+        const internalContact = await vscode.window.showInputBox({
+            prompt: 'Enter internal contact email (for security/support inquiries)',
+            placeHolder: 'security@yourorg.com',
+            value: 'security@yourorg.com',
+            ignoreFocusOut: true
+        });
+
+        const legalContact = await vscode.window.showInputBox({
+            prompt: 'Enter legal contact email (for licensing questions)',
+            placeHolder: 'legal@yourorg.com',
+            value: 'legal@yourorg.com',
+            ignoreFocusOut: true
+        });
+
+        const organizationPolicyLink = await vscode.window.showInputBox({
+            prompt: 'Enter organization policy URL (optional)',
+            placeHolder: 'https://yourorg.com/policies',
+            ignoreFocusOut: true
+        });
+
+        return { 
+            author,
+            githubOrg,
+            organizationName, 
+            internalContact, 
+            legalContact, 
+            organizationPolicyLink 
+        };
+    }
+
+    /**
      * Handle post-scaffold actions: npm install and folder opening
      */
     private static async handlePostScaffoldActions(typeLabel: string, targetPath: vscode.Uri): Promise<void> {
-        // For GitHub scaffold, show authentication setup instructions first
-        // The @prompt-registry/collection-scripts package requires GitHub Packages auth
+        // The @prompt-registry/collection-scripts package is now available on npmjs
         const setupChoice = await vscode.window.showInformationMessage(
-            `${typeLabel} scaffolded successfully! Before running npm install, you need to set up GitHub Packages authentication.`,
-            'View Setup Instructions',
+            `${typeLabel} scaffolded successfully! You can now run npm install to install dependencies.`,
             'Open Folder',
             'Skip'
         );
 
-        if (setupChoice === 'View Setup Instructions') {
-            // Show detailed instructions
-            const instructions = `
-## GitHub Packages Authentication Setup
-
-The scaffolded project uses \`@prompt-registry/collection-scripts\` from GitHub Packages, which requires authentication.
-
-### Option 1: Environment Variable (Recommended)
-Set the \`GITHUB_TOKEN\` environment variable with a GitHub Personal Access Token (PAT) that has \`read:packages\` scope:
-
-\`\`\`bash
-export GITHUB_TOKEN=ghp_your_token_here
-npm install
-\`\`\`
-
-### Option 2: .npmrc with Token
-Edit the \`.npmrc\` file in your project and replace \`\${GITHUB_TOKEN}\` with your actual token:
-
-\`\`\`
-@prompt-registry:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=ghp_your_token_here
-\`\`\`
-
-### Creating a GitHub PAT
-1. Go to GitHub Settings → Developer settings → Personal access tokens
-2. Generate a new token with \`read:packages\` scope
-3. Copy the token and use it as described above
-
-After setting up authentication, run \`npm install\` in the project directory.
-`;
-            // Create a virtual document to show instructions
-            const doc = await vscode.workspace.openTextDocument({
-                content: instructions,
-                language: 'markdown'
-            });
-            await vscode.window.showTextDocument(doc, { preview: true });
-            
-            // Also offer to open the folder
-            const openAfter = await vscode.window.showInformationMessage(
-                'Would you like to open the project folder?',
-                'Open Folder',
-                'No'
-            );
-            if (openAfter === 'Open Folder') {
-                await vscode.commands.executeCommand('vscode.openFolder', targetPath);
-            }
-        } else if (setupChoice === 'Open Folder') {
+        if (setupChoice === 'Open Folder') {
             await vscode.commands.executeCommand('vscode.openFolder', targetPath);
-            vscode.window.showInformationMessage(
-                'Remember to set up GitHub Packages authentication before running npm install. See the .npmrc file for details.'
-            );
         }
     }
 }

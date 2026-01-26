@@ -227,7 +227,10 @@ export class TemplateEngine {
             enhanced.description = 'A new package';
         }
         if (!enhanced.author) {
-            enhanced.author = process.env.USER || 'user';
+            enhanced.author = process.env.USER || 'Your Name';
+        }
+        if (!enhanced.githubOrg) {
+            enhanced.githubOrg = 'YOUR_ORG';
         }
         
         // Format tags
@@ -237,6 +240,20 @@ export class TemplateEngine {
             }
         } else {
             enhanced.tags = '"apm", "prompt-registry"';
+        }
+
+        // Defaults for organization details (InnerSource LICENSE)
+        if (!enhanced.organizationName) {
+            enhanced.organizationName = '[Your Organization]';
+        }
+        if (!enhanced.internalContact) {
+            enhanced.internalContact = '[internal-contact@yourorg.com]';
+        }
+        if (!enhanced.legalContact) {
+            enhanced.legalContact = '[legal@yourorg.com]';
+        }
+        if (!enhanced.organizationPolicyLink) {
+            enhanced.organizationPolicyLink = '[Link to organization policy]';
         }
         
         return enhanced;

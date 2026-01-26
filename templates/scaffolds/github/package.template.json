@@ -24,8 +24,8 @@
     "github-copilot",
     "prompt-bundle"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "{{author}}",
+  "license": "SEE LICENSE IN LICENSE",
   "files": [
     "agents",
     "collections",

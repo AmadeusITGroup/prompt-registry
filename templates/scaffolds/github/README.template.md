@@ -11,44 +11,51 @@ Welcome to your prompt collection! This repository contains prompts, instruction
 ├── skills/               # Agent skills with bundled assets (SKILL.md)
 ├── collections/          # Curated collections (.collection.yml)
 ├── mcp-server/           # Optional: MCP server configuration
-├── schemas/              # JSON schemas for validation
 ├── scripts/              # Validation and creation utilities
 ├── .vscode/              # VS Code settings and extensions
 └── package.json          # Node.js dependencies
 ```
 
+## 🔗 About Prompt Registry
+
+This repository is part of the **Prompt Registry** ecosystem - a VS Code extension and framework for managing AI prompt collections for GitHub Copilot.
+
+### What is Prompt Registry?
+
+Prompt Registry is a comprehensive platform that enables:
+- **Discovery**: Browse and install prompt collections from various sources
+- **Management**: Organize prompts, instructions, agents, and skills in one place
+- **Collaboration**: Share collections within your team or organization
+- **Version Control**: Track changes and maintain consistency across projects
+
+### Key Features
+
+- 🚀 **Marketplace UI**: Visual browsing and installation of collections
+- 📦 **Bundle Management**: Install, update, and uninstall prompt bundles
+- 👥 **Team Collaboration**: Shared profiles and favorites
+- 🔧 **Development Tools**: Scaffolding, validation, and publishing workflows
+- 🌐 **Multi-Source Support**: GitHub repositories, local files, and custom sources
+
+### Getting Started with Prompt Registry
+
+1. **Install the Extension**: Search "Prompt Registry" in the VS Code Marketplace
+2. **Browse Collections**: Use the Registry Explorer to discover available content
+3. **Install & Use**: One-click installation makes prompts available in Copilot Chat
+
+📖 **Learn More**: [Prompt Registry Documentation](https://github.com/AmadeusITGroup/prompt-registry)
+
 ## 🚀 Quick Start
 
-### 1. Setup GitHub Packages Authentication
+### 1. Install Dependencies
 
-This project uses `@prompt-registry/collection-scripts` from GitHub Packages.
-
-**Option A: Using GitHub CLI (Recommended)**
-```bash
-# One-time setup
-gh auth login --scopes read:packages
-
-# Configure npm
-npm config set @prompt-registry:registry https://npm.pkg.github.com
-npm config set //npm.pkg.github.com/:_authToken $(gh auth token)
-```
-
-**Option B: Manual Setup**
-```bash
-# Create .npmrc with your GitHub token
-echo "@prompt-registry:registry=https://npm.pkg.github.com" >> .npmrc
-echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> .npmrc
-```
-
-> **Note**: Your token needs `read:packages` scope. Create one at [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens).
-
-### 2. Install Dependencies
+This project uses `@prompt-registry/collection-scripts` from npmjs.com.
 
 ```bash
+# Install dependencies
 npm install
 ```
 
-### 3. Validate Your Collections
+### 2. Validate Your Collections
 
 ```bash
 npm run validate
@@ -86,9 +93,10 @@ The scaffold includes VS Code configuration:
 
 ### 6. Ensure that the GitHub runner label is correctly configured
 
-- open `.github/workflows/validate-collections.yml`
-- look for `runs-on:`
+- open `workflows/publish.yml`
+- look for `runs-on: {{githubRunner}}`
 - ensure you are using the runner label as per recommendations of your organisation
+- update the `githubRunner` value in your project's configuration if needed
 
 ### 7. (Optional) Enable MCP Servers
 
@@ -120,11 +128,114 @@ git push -u origin main
 **Option A: Add as Source**
 1. Open VS Code Command Palette (`Ctrl+Shift+P`)
 2. Run: "Prompt Registry: Add Source"
-3. Select "Awesome Copilot Collection"
+3. Select "Github Releases" or "Collection from GitHub repository"
 4. Enter your repo URL: `https://github.com/YOUR_USERNAME/YOUR_REPO`
 
 **Option B: Pre-configured Default**
 The Prompt Registry extension automatically includes the official [github/awesome-copilot](https://github.com/github/awesome-copilot) source. Once published, your collection will be available similarly.
+
+## 🌐 Publishing to Hub and Profiles
+
+### What are Hubs and Profiles?
+
+**Hubs** are centralized configurations that group related prompt sources. They provide:
+- **Curated Content**: Pre-selected collections for specific teams or domains
+- **Easy Access**: One-click installation of entire content sets
+- **Organization**: Logical grouping by department, technology, or purpose
+
+**Profiles** are subsets of hub content that users can activate:
+- **Shared Profiles**: Curated by hub maintainers for common use cases
+- **Favorites**: Personal selections for daily work
+- **Context Switching**: Quick activation based on current task
+
+### Publishing Your Collection to a Hub
+
+#### Step 1: Prepare Your Collection
+
+Ensure your collection is ready for sharing:
+```bash
+# Validate everything
+npm run validate
+npm run skill:validate
+
+# Test installation locally
+# (Use Prompt Registry extension to add your repo as a source)
+```
+
+#### Step 2: Contact Hub Maintainers
+
+1. **Identify the Right Hub**: Find a hub that matches your content domain
+2. **Review Hub Guidelines**: Check contribution requirements and standards
+3. **Submit Your Collection**: Share your repository URL and collection details
+
+#### Step 3: Hub Integration Process
+
+Hub maintainers will:
+- **Review Content**: Check quality, relevance, and compliance
+- **Test Integration**: Verify installation and functionality
+- **Add to Hub**: Include your collection in the hub configuration
+- **Create Profile**: Optionally add to curated profiles
+
+#### Step 4: User Access
+
+Once published, users can:
+1. **Install the Hub**: Add the hub to their Prompt Registry
+2. **Browse Collections**: Find your content in the hub catalog
+3. **Install Collections**: One-click install to their Copilot environment
+4. **Use Profiles**: Activate curated profiles containing your content
+
+### Creating Your Own Hub
+
+For teams wanting to create private hubs:
+
+1. **Hub Configuration**: Create a `hub-config.yml` file
+2. **Source Management**: Add approved repositories and collections
+3. **Profile Curation**: Create profiles for different use cases
+4. **Distribution**: Share hub URL with team members
+
+📖 **Learn More**: [Hub Configuration Guide](https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/reference/hub-config.md)
+
+## 🎯 Choosing the Right Agentic Primitive
+
+When creating content for your collection, it's important to choose the right type of agentic primitive for your use case. Each primitive serves a specific purpose and has different characteristics.
+
+### Quick Decision Guide
+
+- **🎯 Single Task?** → Use a **Prompt** for specific, reusable instructions
+- **📚 Team Standards?** → Use **Instructions** for sharing best practices  
+- **🤖 Specialized Expertise?** → Use an **Agent** for consistent AI personas
+- **🛠️ Complex Workflows?** → Use a **Skill** for multi-file functionality
+- **📦 Related Content?** → Use a **Collection** to organize primitives
+
+### Detailed Comparison
+
+| Primitive | Best For | Complexity | Example |
+|-----------|-----------|------------|---------|
+| **Prompt** | Quick, specific tasks | Low | "Generate unit tests" |
+| **Instruction** | Team standards & guidelines | Medium | "React coding standards" |
+| **Agent** | Specialized AI roles | Medium-High | "Security auditor persona" |
+| **Skill** | Complex capabilities with assets | High | "API documentation generator" |
+| **Collection** | Organizing related content | Variable | "React development kit" |
+
+### Interactive Decision Tree
+
+```mermaid
+flowchart TD
+    A[What do you want to create?] --> B{Specific task or general knowledge?}
+    B -->|Specific task| C{Reusable behavior needed?}
+    B -->|General knowledge| D{Team standards or best practices?}
+    
+    C -->|Yes| E{Multiple files/assets required?}
+    C -->|No| F[Create Prompt]
+    
+    E -->|Yes| G[Create Skill]
+    E -->|No| H[Create Agent]
+    
+    D -->|Yes| I[Create Instruction]
+    D -->|No| J[Create Collection]
+```
+
+📖 **Complete Guide**: [Agentic Primitives Documentation](https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/author-guide/agentic-primitives-guide.md)
 
 ## 📝 Creating Content
 

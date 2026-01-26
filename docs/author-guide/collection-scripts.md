@@ -4,49 +4,22 @@ The Prompt Registry provides a shared npm package `@prompt-registry/collection-s
 
 ## Installation
 
-### Quick Setup with GitHub CLI (Recommended)
+### Quick Setup
 
-If you have the [GitHub CLI](https://cli.github.com/) installed:
+The `@prompt-registry/collection-scripts` package is now available on npmjs.com:
 
 ```bash
-# Ensure you have packages scope (one-time)
-gh auth login --scopes read:packages
-
-# Configure npm to use GitHub Packages
-npm config set @prompt-registry:registry https://npm.pkg.github.com
-npm config set //npm.pkg.github.com/:_authToken $(gh auth token)
-
 # Install the package
 npm install @prompt-registry/collection-scripts
 ```
 
-### Manual Setup
+### GitHub Actions
 
-1. Create or edit `.npmrc` in your project root:
-   ```
-   @prompt-registry:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-   ```
-
-2. Set your GitHub token:
-   ```bash
-   export GITHUB_TOKEN=<your-personal-access-token-with-read:packages>
-   ```
-
-3. Install the package:
-   ```bash
-   npm install @prompt-registry/collection-scripts
-   ```
-
-### GitHub Actions (No Setup Required)
-
-In GitHub Actions, authentication is automatic via `GITHUB_TOKEN`:
+In GitHub Actions, no special configuration is needed since the package is on npmjs:
 
 ```yaml
 - name: Install dependencies
   run: npm ci
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Usage in Collection Repositories

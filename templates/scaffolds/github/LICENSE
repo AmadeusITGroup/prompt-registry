@@ -1,0 +1,39 @@
+# Internal Use License
+
+This software is proprietary to {{organizationName}} and is intended for internal use only.
+
+## License Terms
+
+**Copyright (c) {{organizationName}}. All rights reserved.**
+
+### Permitted Uses
+
+This software may be used, modified, and distributed internally within {{organizationName}} for business purposes.
+
+### Restrictions
+
+- This software may not be distributed externally
+- This software may not be used for commercial purposes outside {{organizationName}}
+- This software may not be reverse engineered, decompiled, or disassembled
+- No warranty is provided, express or implied
+
+### Ownership
+
+All intellectual property rights in this software belong to {{organizationName}}.
+
+### Contact
+
+For questions about licensing or usage, contact:
+- Internal: {{internalContact}}
+- Legal: {{legalContact}}
+
+---
+
+## Note for Contributors
+
+By contributing to this project, you agree that your contributions will be licensed under the same terms as the project itself.
+
+## Organization Policy
+
+This license follows {{organizationName}}'s internal software development policies. For more information, see:
+{{organizationPolicyLink}}

@@ -1,53 +1,113 @@
 ---
 name: example-skill
-description: 'An example skill demonstrating the Agent Skills structure with bundled resources for specialized tasks.'
+description: 'Performs thorough code reviews following best practices. Use when reviewing pull requests, checking code quality, or ensuring coding standards compliance.'
+license: SEE LICENSE IN LICENSE
+metadata:
+  author: '{{author}}'
+  version: '1.0.0'
+compatibility: 'Requires git. Works with GitHub Copilot, Claude, and other Agent Skills-compatible tools.'
 ---
 
-# Example Skill
+# Code Review Skill
 
-This skill demonstrates the structure and capabilities of Agent Skills in the awesome-copilot format.
+This skill helps you perform thorough, consistent code reviews following industry best practices and your team's coding standards.
 
 ## When to Use This Skill
 
 Use this skill when you need to:
-- Understand the Agent Skills format and structure
-- Create a template for your own skills
-- Test skill installation and validation
+- Review pull requests or merge requests
+- Check code quality and identify potential issues
+- Ensure compliance with coding standards
+- Provide constructive feedback to developers
+- Identify security vulnerabilities or performance issues
 
-## Prerequisites
+## Review Process
 
-- GitHub Copilot or compatible AI assistant
-- VS Code or compatible editor
+### 1. Initial Assessment
+Before diving into details, understand the context:
+- Read the PR description and linked issues
+- Understand the purpose and scope of changes
+- Check if tests are included
 
-## Core Capabilities
+### 2. Code Quality Checks
+Review the code using the [checklist](./references/CHECKLIST.md):
+- **Correctness**: Does the code do what it's supposed to do?
+- **Readability**: Is the code easy to understand?
+- **Maintainability**: Will this be easy to modify in the future?
+- **Performance**: Are there any obvious performance issues?
+- **Security**: Are there any security vulnerabilities?
 
-### 1. Skill Instructions
-The main `SKILL.md` file contains markdown instructions with YAML frontmatter that defines the skill's identity and metadata.
+### 3. Run Automated Checks
+Use the provided scripts to automate common checks:
 
-### 2. Bundled Assets
-Skills can include helper scripts, templates, data files, and other resources that agents can utilize when performing specialized tasks.
-
-## Usage Examples
-
-### Example 1: Basic Usage
+```bash
+# Run the review helper script
+./scripts/review-helper.sh <path-to-file>
 ```
-Ask the agent to use this skill for guidance on creating new skills.
+
+### 4. Provide Feedback
+Follow the [feedback guidelines](./references/FEEDBACK.md) for constructive comments:
+- Be specific and actionable
+- Explain the "why" behind suggestions
+- Distinguish between required changes and suggestions
+- Acknowledge good practices
+
+## Common Patterns to Watch For
+
+### Security Issues
+- Hardcoded credentials or secrets
+- SQL injection vulnerabilities
+- Cross-site scripting (XSS) risks
+- Insecure deserialization
+- Missing input validation
+
+### Performance Issues
+- N+1 query problems
+- Unnecessary loops or iterations
+- Missing caching opportunities
+- Large memory allocations
+- Blocking operations in async code
+
+### Code Smells
+- Functions that are too long (>50 lines)
+- Too many parameters (>4)
+- Deep nesting (>3 levels)
+- Duplicated code
+- Magic numbers or strings
+
+## Templates
+
+Use the [comment templates](./assets/comment-templates.md) for consistent feedback:
+- `[REQUIRED]` - Must be fixed before merge
+- `[SUGGESTION]` - Nice to have, not blocking
+- `[QUESTION]` - Seeking clarification
+- `[PRAISE]` - Acknowledging good work
+
+## Example Review Comments
+
+### Good Example
+```
+[SUGGESTION] Consider extracting this logic into a separate function 
+for better testability. The current implementation mixes data fetching 
+with business logic, making it harder to unit test.
 ```
 
-### Example 2: Referencing Bundled Assets
+### Bad Example
 ```
-The skill can reference helper files included in this folder.
+This is wrong.
 ```
 
-## Guidelines
+## Best Practices
 
-1. **Clear naming** - Use lowercase names with hyphens (e.g., `my-skill`)
-2. **Descriptive content** - Provide detailed instructions in the markdown body
-3. **Appropriate assets** - Include only necessary supporting files
-4. **Size limits** - Keep bundled assets under 5MB per file
+1. **Review in small batches** - Don't try to review 1000+ lines at once
+2. **Take breaks** - Fresh eyes catch more issues
+3. **Use checklists** - Ensure consistency across reviews
+4. **Be timely** - Don't block teammates for too long
+5. **Learn continuously** - Each review is a learning opportunity
 
-## Limitations
+## Resources
 
-- Skills are designed for specialized tasks, not general-purpose use
-- Asset files should be reasonable in size
-- Complex dependencies may need separate installation
+- [Code Review Checklist](./references/CHECKLIST.md)
+- [Feedback Guidelines](./references/FEEDBACK.md)
+- [Comment Templates](./assets/comment-templates.md)
+- [Review Helper Script](./scripts/review-helper.sh)

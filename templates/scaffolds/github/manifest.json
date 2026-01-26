@@ -6,7 +6,7 @@
             "path": "package.template.json",
             "description": "Node.js package config with collection management scripts via npm package",
             "required": true,
-            "variables": ["projectName"]
+            "variables": ["projectName", "author"]
         },
         "readme": {
             "path": "README.template.md",
@@ -17,12 +17,6 @@
         "gitignore": {
             "path": ".gitignore.template",
             "description": "Git ignore file for Node.js projects",
-            "required": true,
-            "variables": []
-        },
-        "npmrc": {
-            "path": ".npmrc.template",
-            "description": "npm configuration for GitHub Packages",
             "required": true,
             "variables": []
         },
@@ -76,7 +70,31 @@
         },
         "example-skill": {
             "path": "skills/example-skill/SKILL.md",
-            "description": "Example agent skill following Agent Skills specification",
+            "description": "Example agent skill (Code Review) following Agent Skills specification",
+            "required": true,
+            "variables": ["author"]
+        },
+        "example-skill-script": {
+            "path": "skills/example-skill/scripts/review-helper.sh",
+            "description": "Helper script for the code review skill",
+            "required": true,
+            "variables": []
+        },
+        "example-skill-checklist": {
+            "path": "skills/example-skill/references/CHECKLIST.md",
+            "description": "Code review checklist reference",
+            "required": true,
+            "variables": []
+        },
+        "example-skill-feedback": {
+            "path": "skills/example-skill/references/FEEDBACK.md",
+            "description": "Feedback guidelines reference",
+            "required": true,
+            "variables": []
+        },
+        "example-skill-templates": {
+            "path": "skills/example-skill/assets/comment-templates.md",
+            "description": "Comment templates for code reviews",
             "required": true,
             "variables": []
         },
@@ -95,6 +113,60 @@
         "pre-commit-hook": {
             "path": ".githooks/pre-commit",
             "description": "Pre-commit hook for validation",
+            "required": true,
+            "variables": []
+        },
+        "contributing": {
+            "path": "CONTRIBUTING.template.md",
+            "description": "Contribution guidelines and process",
+            "required": true,
+            "variables": ["projectName", "githubOrg"]
+        },
+        "communication": {
+            "path": "COMMUNICATION.template.md",
+            "description": "Communication channels and guidelines",
+            "required": true,
+            "variables": ["projectName", "githubOrg", "internalContact"]
+        },
+        "code-of-conduct": {
+            "path": "CODE_OF_CONDUCT.template.md",
+            "description": "Community code of conduct",
+            "required": true,
+            "variables": ["projectName"]
+        },
+        "security": {
+            "path": "SECURITY.template.md",
+            "description": "Security policy and vulnerability reporting",
+            "required": true,
+            "variables": ["projectName", "internalContact"]
+        },
+        "license": {
+            "path": "LICENSE",
+            "description": "Internal Use License for InnerSource projects",
+            "required": true,
+            "variables": ["organizationName", "internalContact", "legalContact", "organizationPolicyLink"]
+        },
+        "issue-template-bug": {
+            "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+            "description": "GitHub Issue template for bug reports",
+            "required": true,
+            "variables": []
+        },
+        "issue-template-feature": {
+            "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+            "description": "GitHub Issue template for feature requests",
+            "required": true,
+            "variables": []
+        },
+        "issue-template-config": {
+            "path": ".github/ISSUE_TEMPLATE/config.yml",
+            "description": "GitHub Issue template configuration",
+            "required": true,
+            "variables": ["githubOrg", "projectName"]
+        },
+        "pr-template": {
+            "path": ".github/pull_request_template.md",
+            "description": "GitHub Pull Request template",
             "required": true,
             "variables": []
         }
