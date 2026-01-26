@@ -8,6 +8,7 @@ import { RegistryManager } from '../services/RegistryManager';
 import { RegistrySource, SourceType } from '../types/registry';
 import { Logger } from '../utils/logger';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
 
 /**
  * Source Commands Handler
@@ -496,6 +497,8 @@ export class SourceCommands {
                     cancellable: false
                 },
                 async () => {
+                    // Clear adapter cache for manual sync to ensure fresh data
+                    this.registryManager.clearAdapterCache(finalId!);
                     await this.registryManager.syncSource(finalId!);
                 }
             );
@@ -511,7 +514,8 @@ export class SourceCommands {
     }
 
     /**
-     * Sync all sources
+     * Sync all sources in parallel with configurable concurrency
+     * Sources are synced in batches to balance speed with API rate limits
      */
     async syncAllSources(): Promise<void> {
         try {
@@ -523,6 +527,15 @@ export class SourceCommands {
                 return;
             }
 
+            // Clear adapter caches for manual sync to ensure fresh data
+            for (const source of enabledSources) {
+                this.registryManager.clearAdapterCache(source.id);
+            }
+
+            const concurrency = CONCURRENCY_CONSTANTS.SOURCE_SYNC_CONCURRENCY;
+            let completedCount = 0;
+            let failedCount = 0;
+
             await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
@@ -530,25 +543,49 @@ export class SourceCommands {
                     cancellable: false
                 },
                 async (progress) => {
-                    for (let i = 0; i < enabledSources.length; i++) {
-                        const source = enabledSources[i];
-                        progress.report({
-                            message: `Syncing "${source.name}" (${i + 1}/${enabledSources.length})`,
-                            increment: (100 / enabledSources.length)
-                        });
+                    // Process sources in parallel batches
+                    for (let i = 0; i < enabledSources.length; i += concurrency) {
+                        const batch = enabledSources.slice(i, i + concurrency);
+                        const batchNames = batch.map(s => s.name).join(', ');
                         
-                        try {
-                            await this.registryManager.syncSource(source.id);
-                        } catch (error) {
-                            this.logger.warn(`Failed to sync source "${source.name}"`, error as Error);
+                        progress.report({
+                            message: `Syncing: ${batchNames} (${Math.min(i + concurrency, enabledSources.length)}/${enabledSources.length})`,
+                        });
+
+                        // Sync batch in parallel using Promise.allSettled
+                        const results = await Promise.allSettled(
+                            batch.map(source => this.registryManager.syncSource(source.id))
+                        );
+
+                        // Track results
+                        for (let j = 0; j < results.length; j++) {
+                            const result = results[j];
+                            if (result.status === 'fulfilled') {
+                                completedCount++;
+                            } else {
+                                failedCount++;
+                                this.logger.warn(`Failed to sync source "${batch[j].name}"`, result.reason as Error);
+                            }
                         }
+
+                        // Update progress
+                        progress.report({
+                            increment: (batch.length / enabledSources.length) * 100
+                        });
                     }
                 }
             );
 
-            vscode.window.showInformationMessage(
-                `Synced ${enabledSources.length} source(s) successfully`
-            );
+            // Show result message
+            if (failedCount === 0) {
+                vscode.window.showInformationMessage(
+                    `Synced ${completedCount} source(s) successfully`
+                );
+            } else {
+                vscode.window.showWarningMessage(
+                    `Synced ${completedCount} source(s), ${failedCount} failed`
+                );
+            }
 
         } catch (error) {
             this.logger.error('Failed to sync all sources', error as Error);

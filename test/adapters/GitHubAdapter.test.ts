@@ -682,4 +682,221 @@ tags:
             }
         });
     });
+
+    suite('Manifest Caching', () => {
+        test('should make only one HTTP request when same manifest URL is fetched multiple times', async () => {
+            // This tests that the adapter minimizes GitHub API calls by caching manifests
+            // Important for: API rate limits, performance, network costs
+            const manifestContent = JSON.stringify({
+                id: 'test-bundle',
+                name: 'Test Bundle',
+                version: '1.0.0',
+                description: 'Test description'
+            });
+
+            let manifestDownloadCount = 0;
+            
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    {
+                        tag_name: 'v1.0.0',
+                        name: 'Release 1.0.0',
+                        body: 'Release notes',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            {
+                                name: 'deployment-manifest.json',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
+                                size: 1024,
+                            },
+                            {
+                                name: 'bundle.zip',
+                                url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
+                                size: 2048,
+                            },
+                        ],
+                    },
+                ]);
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(200, function() {
+                    manifestDownloadCount++;
+                    return manifestContent;
+                });
+
+            const adapter = new GitHubAdapter(mockSource);
+            await adapter.fetchBundles();
+
+            // Manifest should only be downloaded once (not multiple times)
+            assert.strictEqual(manifestDownloadCount, 1, 'Should make only one HTTP request for manifest');
+        });
+
+        test('should fetch fresh manifest after cache is cleared', async () => {
+            // This tests that clearManifestCache() allows fresh data to be fetched
+            // Important for: manual sync should get latest data from GitHub
+            const manifestContent = JSON.stringify({
+                id: 'test-bundle',
+                name: 'Test Bundle',
+                version: '1.0.0'
+            });
+
+            let manifestDownloadCount = 0;
+
+            // First fetch
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    {
+                        tag_name: 'v1.0.0',
+                        name: 'Release 1.0.0',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            { name: 'deployment-manifest.json', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123', size: 1024 },
+                            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124', size: 2048 },
+                        ],
+                    },
+                ]);
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(200, function() {
+                    manifestDownloadCount++;
+                    return manifestContent;
+                });
+
+            const adapter = new GitHubAdapter(mockSource);
+            await adapter.fetchBundles();
+            
+            assert.strictEqual(manifestDownloadCount, 1, 'First fetch should make one HTTP request');
+
+            // Clear cache (simulates manual sync)
+            adapter.clearManifestCache();
+
+            // Second fetch after cache clear - should make new HTTP request
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    {
+                        tag_name: 'v1.0.0',
+                        name: 'Release 1.0.0',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            { name: 'deployment-manifest.json', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123', size: 1024 },
+                            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124', size: 2048 },
+                        ],
+                    },
+                ]);
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/123')
+                .reply(200, function() {
+                    manifestDownloadCount++;
+                    return manifestContent;
+                });
+
+            await adapter.fetchBundles();
+
+            // After cache clear, should make another HTTP request to get fresh data
+            assert.strictEqual(manifestDownloadCount, 2, 'After cache clear, should make new HTTP request');
+        });
+    });
+
+    suite('Multiple Releases Processing', () => {
+        test('should return bundles for all valid releases', async () => {
+            // Setup: Multiple releases to verify all are processed
+            const releases = Array.from({ length: 15 }, (_, i) => ({
+                tag_name: `v1.0.${i}`,
+                name: `Release 1.0.${i}`,
+                published_at: '2025-01-01T00:00:00Z',
+                assets: [
+                    { name: 'deployment-manifest.json', url: `https://api.github.com/repos/test-owner/test-repo/releases/assets/${100 + i}`, size: 1024 },
+                    { name: 'bundle.zip', url: `https://api.github.com/repos/test-owner/test-repo/releases/assets/${200 + i}`, size: 2048 },
+                ],
+            }));
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, releases);
+
+            // Mock manifest downloads for all releases
+            for (let i = 0; i < 15; i++) {
+                nock('https://api.github.com')
+                    .get(`/repos/test-owner/test-repo/releases/assets/${100 + i}`)
+                    .reply(200, JSON.stringify({
+                        id: `test-bundle-${i}`,
+                        name: `Test Bundle ${i}`,
+                        version: `1.0.${i}`
+                    }));
+            }
+
+            const adapter = new GitHubAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            // All 15 releases should be returned as bundles
+            assert.strictEqual(bundles.length, 15, 'Should return all 15 bundles');
+            
+            // Verify each bundle has correct metadata from manifest
+            for (let i = 0; i < 15; i++) {
+                const bundle = bundles.find(b => b.version === `1.0.${i}`);
+                assert.ok(bundle, `Should have bundle for version 1.0.${i}`);
+                assert.strictEqual(bundle!.name, `Test Bundle ${i}`);
+            }
+        });
+
+        test('should skip releases without manifest and continue processing others', async () => {
+            // Setup: Mix of valid and invalid releases
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases')
+                .reply(200, [
+                    // Valid release with manifest
+                    {
+                        tag_name: 'v1.0.0',
+                        name: 'Release 1.0.0',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            { name: 'deployment-manifest.json', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/100', size: 1024 },
+                            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/200', size: 2048 },
+                        ],
+                    },
+                    // Invalid release - no manifest
+                    {
+                        tag_name: 'v0.9.0',
+                        name: 'Release 0.9.0',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/201', size: 2048 },
+                        ],
+                    },
+                    // Another valid release
+                    {
+                        tag_name: 'v0.8.0',
+                        name: 'Release 0.8.0',
+                        published_at: '2025-01-01T00:00:00Z',
+                        assets: [
+                            { name: 'deployment-manifest.yml', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/102', size: 1024 },
+                            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/202', size: 2048 },
+                        ],
+                    },
+                ]);
+
+            // Mock manifest downloads for valid releases
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/100')
+                .reply(200, JSON.stringify({ id: 'bundle-1', name: 'Bundle 1', version: '1.0.0' }));
+            
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-repo/releases/assets/102')
+                .reply(200, 'id: bundle-2\nname: Bundle 2\nversion: 0.8.0');
+
+            const adapter = new GitHubAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            // Should return only the 2 valid releases
+            assert.strictEqual(bundles.length, 2, 'Should return only valid bundles');
+            assert.ok(bundles.some(b => b.version === '1.0.0'), 'Should include v1.0.0');
+            assert.ok(bundles.some(b => b.version === '0.8.0'), 'Should include v0.8.0');
+        });
+    });
 });

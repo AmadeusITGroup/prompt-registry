@@ -43,6 +43,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private readonly logger: Logger;
     private sourceSyncDebounceTimer?: NodeJS.Timeout;
+    private isLoadingBundles = false;
     private disposables: vscode.Disposable[] = [];
 
     constructor(
@@ -96,8 +97,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             await this.handleMessage(message);
         });
 
-        // Load and send bundles data
-        this.loadBundles();
+        // Load bundles with a small delay to ensure webview JavaScript is ready
+        // The webview also sends a refresh request when ready as a backup
+        setTimeout(() => {
+            this.loadBundles();
+        }, UI_CONSTANTS.WEBVIEW_READY_DELAY_MS);
     }
 
     /**
@@ -123,20 +127,28 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Handle source synced event with debouncing
-     * Debounces loadBundles calls to prevent excessive updates when multiple sources sync
+     * Handle source synced event with leading-edge debouncing
+     * Fires immediately on first event, then debounces subsequent events
+     * This ensures progressive loading - UI updates as soon as first source syncs
      */
     private handleSourceSynced(event: { sourceId: string; bundleCount: number }): void {
         this.logger.debug(`Source synced: ${event.sourceId} (${event.bundleCount} bundles)`);
 
-        // Clear existing timer
+        const isFirstEvent = !this.sourceSyncDebounceTimer;
+
+        // Clear existing timer if any
         if (this.sourceSyncDebounceTimer) {
             clearTimeout(this.sourceSyncDebounceTimer);
         }
 
-        // Set new timer with shared debounce delay
+        // Fire immediately on first event (leading edge)
+        if (isFirstEvent) {
+            this.loadBundles();
+        }
+
+        // Set trailing edge timer
         this.sourceSyncDebounceTimer = setTimeout(() => {
-            this.logger.debug('Refreshing marketplace after source sync');
+            this.sourceSyncDebounceTimer = undefined;
             this.loadBundles();
         }, UI_CONSTANTS.SOURCE_SYNC_DEBOUNCE_MS);
     }
@@ -170,7 +182,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         const [installedBundles, sources, bundles] = await Promise.all([
             this.registryManager.listInstalledBundles(),
             this.registryManager.listSources(),
-            this.registryManager.searchBundles({})
+            this.registryManager.searchBundles({ cacheOnly: true })
         ]);
         
         const bundle = bundles.find(b => b.id === bundleId);
@@ -238,13 +250,20 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Load bundles from registries and send to webview
+     * Uses cacheOnly mode for fast initial load, then updates progressively via onSourceSynced events
      */
     private async loadBundles(): Promise<void> {
+        // Prevent concurrent loads to avoid UI flicker
+        if (this.isLoadingBundles) {
+            this.logger.debug('Skipping loadBundles - already loading');
+            return;
+        }
+        
+        this.isLoadingBundles = true;
         try {
-            this.logger.debug('Loading bundles for marketplace');
-
-            // Search for all bundles (empty query)
-            const bundles = await this.registryManager.searchBundles({});
+            // Search for all bundles using cache only (non-blocking)
+            // This ensures fast initial load - network fetches happen via syncSource which fires onSourceSynced
+            const bundles = await this.registryManager.searchBundles({ cacheOnly: true });
             const installedBundles = await this.registryManager.listInstalledBundles();
             const sources = await this.registryManager.listSources();
             const autoUpdateService = this.registryManager.autoUpdateService;
@@ -301,21 +320,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const availableTags = extractAllTags(bundles);
             const availableSources = extractBundleSources(bundles, sources);
 
-            // Send to webview
-            this._view?.webview.postMessage({
-                type: 'bundlesLoaded',
-                bundles: enhancedBundles,
-                filterOptions: {
-                    tags: availableTags,
-                    sources: availableSources
-                }
-            });
+            // Send to webview (only if view is available)
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'bundlesLoaded',
+                    bundles: enhancedBundles,
+                    filterOptions: {
+                        tags: availableTags,
+                        sources: availableSources
+                    }
+                });
+            }
 
             this.logger.debug(`Loaded ${enhancedBundles.length} bundles for marketplace`);
-            this.logger.debug(`Available tags: ${availableTags.length}, sources: ${availableSources.length}`);
 
         } catch (error) {
             this.logger.error('Failed to load marketplace bundles', error as Error);
+        } finally {
+            this.isLoadingBundles = false;
         }
     }
 
@@ -2036,6 +2058,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             }
         });
 
+        // Request initial data when webview is ready
+        // This ensures we get data even if the extension sent it before we were listening
+        vscode.postMessage({ type: 'refresh' });
+
         // Update filter dropdowns with dynamic data
         function updateFilterUI() {
             const sourceList = document.getElementById('sourceList');
@@ -2336,13 +2362,36 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             }
 
             if (filteredBundles.length === 0) {
-                marketplace.innerHTML = \`
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📦</div>
-                        <div class="empty-state-title">No bundles found</div>
-                        <p>Try adjusting your search or filters</p>
-                    </div>
-                \`;
+                // Check if we have any bundles at all (before filtering)
+                const hasFiltersApplied = searchTerm || selectedSource !== 'all' || selectedTags.length > 0 || showInstalledOnly;
+                
+                if (allBundles.length === 0) {
+                    // No bundles at all - likely still syncing
+                    marketplace.innerHTML = \`
+                        <div class="empty-state">
+                            <div class="spinner"></div>
+                            <div class="empty-state-title">Syncing sources...</div>
+                            <p>Bundles will appear as sources are synced</p>
+                        </div>
+                    \`;
+                } else if (hasFiltersApplied) {
+                    // Has bundles but filters hide them all
+                    marketplace.innerHTML = \`
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <div class="empty-state-title">No bundles match your filters</div>
+                            <p>Try adjusting your search or filters</p>
+                        </div>
+                    \`;
+                } else {
+                    marketplace.innerHTML = \`
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <div class="empty-state-title">No bundles found</div>
+                            <p>Try adjusting your search or filters</p>
+                        </div>
+                    \`;
+                }
                 return;
             }
 

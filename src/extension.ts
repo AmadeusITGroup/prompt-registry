@@ -1257,13 +1257,16 @@ export class PromptRegistryExtension {
             // Sync hub configuration
             await hubManager.syncHub(activeHubId);
             
-            // Sync all sources from the active hub
-            await sourceCommands.syncAllSources();
-            
-            // Refresh tree view
-            await vscode.commands.executeCommand('promptRegistry.refresh');
-            
-            this.logger.info('Active hub synchronized successfully on activation');
+            // Sync all sources from the active hub in the background (non-blocking)
+            // This allows the extension to finish activation quickly so the webview can resolve
+            // and show cached bundles while sync happens progressively
+            sourceCommands.syncAllSources().then(() => {
+                this.logger.info('Active hub synchronized successfully on activation');
+                // Refresh tree view after sync completes
+                vscode.commands.executeCommand('promptRegistry.refresh');
+            }).catch((error) => {
+                this.logger.warn('Background sync failed', error as Error);
+            });
 
         } catch (error) {
             this.logger.warn('Failed to auto-sync active hub on activation', error as Error);
@@ -1390,19 +1393,19 @@ export class PromptRegistryExtension {
                 await hubManager.setActiveHub(hubId);
                 this.logger.info(`First-run hub ${hubId} imported and activated, syncing sources...`);
                 
-                // Sync all sources from the newly imported hub
-                try {
-                    await this.sourceCommands!.syncAllSources();
+                // Sync all sources from the newly imported hub in the background (non-blocking)
+                // This allows the UI to be responsive while sync happens progressively
+                this.sourceCommands!.syncAllSources().then(() => {
                     this.logger.info('Sources synchronized successfully');
-                } catch (syncError) {
+                    vscode.commands.executeCommand('promptRegistry.refresh');
+                }).catch((syncError) => {
                     this.logger.warn('Failed to sync sources after hub import', syncError as Error);
-                }
+                });
                 
                 // Note: We intentionally do NOT auto-activate any profile here.
                 // Users should explicitly choose which profile to activate.
                 this.logger.info('Hub imported successfully. User can manually activate a profile if desired.');
                 
-                await vscode.commands.executeCommand('promptRegistry.refresh');
                 vscode.window.showInformationMessage(`Successfully activated ${selected.hubConfig.name}`);
             } catch (error) {
                 this.logger.error(`Failed to import hub: ${selected.hubConfig.name}`, error as Error);

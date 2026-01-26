@@ -11,6 +11,7 @@ import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 import { Logger } from '../utils/logger';
 import { generateGitHubBundleId, formatByteSize } from '../utils/bundleNameUtils';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
 
 const execAsync = promisify(exec);
 
@@ -57,6 +58,12 @@ export class GitHubAdapter extends RepositoryAdapter {
      * Multiple parallel requests will wait for the same authentication promise.
      */
     private authPromise?: Promise<string | undefined>;
+    
+    /**
+     * Cache for downloaded manifest content to avoid duplicate downloads.
+     * Key is the asset URL, value is the parsed manifest object.
+     */
+    private manifestCache: Map<string, any> = new Map();
 
     constructor(source: RegistrySource) {
         super(source);
@@ -468,6 +475,8 @@ export class GitHubAdapter extends RepositoryAdapter {
      * Scans all releases in the repository and creates Bundle objects for those
      * that contain both a deployment manifest and a bundle archive.
      * 
+     * Uses parallel manifest downloads with caching for improved performance.
+     * 
      * @returns Promise resolving to array of Bundle objects
      * @throws Error if GitHub API request fails or authentication issues occur
      */
@@ -477,90 +486,159 @@ export class GitHubAdapter extends RepositoryAdapter {
 
         try {
             const releases: GitHubRelease[] = await this.makeRequest(url);
-            const bundles: Bundle[] = [];
-
-            for (const release of releases) {
-                // Look for deployment manifest in release assets
-                const manifestAsset = release.assets.find(a => 
+            
+            // Filter releases that have both manifest and bundle assets
+            const validReleases = releases.filter(release => {
+                const hasManifest = release.assets.some(a => 
                     a.name === 'deployment-manifest.yml' || 
                     a.name === 'deployment-manifest.yaml' ||
                     a.name === 'deployment-manifest.json'
                 );
-
-                if (!manifestAsset) {
-                    continue; // Skip releases without manifest
-                }
-
-                // Find bundle archive (zip file)
-                const bundleAsset = release.assets.find(a => 
+                const hasBundle = release.assets.some(a => 
                     a.name.endsWith('.zip') || 
                     a.name.endsWith('.tar.gz')
                 );
+                return hasManifest && hasBundle;
+            });
 
-                if (!bundleAsset) {
-                    continue; // Skip releases without bundle archive
-                }
-
-                // Fetch deployment manifest to get accurate bundle metadata
-                let manifest: any = null;
-                try {
-                    const manifestContent = await this.downloadFile(manifestAsset.url);
-                    const manifestText = manifestContent.toString('utf-8');
-                    
-                    // Parse YAML or JSON based on file extension
-                    if (manifestAsset.name.endsWith('.json')) {
-                        manifest = JSON.parse(manifestText);
-                    } else {
-                        // Assume YAML for .yml or .yaml
-                        const yaml = require('js-yaml');
-                        manifest = yaml.load(manifestText);
-                    }
-                } catch (manifestError) {
-                    this.logger.warn(`Failed to fetch manifest for ${release.tag_name}: ${manifestError}`);
-                    // Continue without manifest data - use fallback values
-                }
-
-                // Create bundle metadata
-                // Use manifest data if available, otherwise fall back to release data
-                // Use API URL instead of browser_download_url for proper authentication
-                // Bundle ID uses canonical generation function for consistency
-                const bundleId = generateGitHubBundleId(
-                    owner,
-                    repo,
-                    release.tag_name,
-                    manifest?.id,
-                    manifest?.version
+            // Download manifests in parallel with concurrency limit
+            const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
+            const bundles: Bundle[] = [];
+            
+            for (let i = 0; i < validReleases.length; i += concurrency) {
+                const batch = validReleases.slice(i, i + concurrency);
+                const batchResults = await Promise.allSettled(
+                    batch.map(release => this.processSingleRelease(release, owner, repo))
                 );
-                const bundle: Bundle = {
-                    id: bundleId,
-                    name: manifest?.name || release.name || `${repo} ${release.tag_name}`,
-                    version: manifest?.version || release.tag_name.replace(/^v/, ''),
-                    description: manifest?.description || this.extractDescription(release.body),
-                    author: manifest?.author || owner,
-                    sourceId: this.source.id,
-                    environments: manifest?.environments || this.extractEnvironments(release.body),
-                    tags: manifest?.tags || this.extractTags(release.body),
-                    lastUpdated: release.published_at,
-                    size: formatByteSize(bundleAsset.size),
-                    dependencies: manifest?.dependencies || [],
-                    license: manifest?.license || 'Unknown',
-                    manifestUrl: manifestAsset.url,
-                    downloadUrl: bundleAsset.url,
-                    repository: this.source.url,
-                };
-
-                // Attach prompts array from manifest for content breakdown display
-                if (manifest?.prompts && Array.isArray(manifest.prompts)) {
-                    (bundle as any).prompts = manifest.prompts;
+                
+                for (const result of batchResults) {
+                    if (result.status === 'fulfilled' && result.value) {
+                        bundles.push(result.value);
+                    }
                 }
-
-                bundles.push(bundle);
             }
 
             return bundles;
         } catch (error) {
             throw new Error(`Failed to fetch bundles from GitHub: ${error}`);
         }
+    }
+
+    /**
+     * Process a single release to create a Bundle object.
+     * Downloads and parses the manifest, using cache to avoid duplicate downloads.
+     * 
+     * @param release - GitHub release object
+     * @param owner - Repository owner
+     * @param repo - Repository name
+     * @returns Bundle object or null if processing fails
+     */
+    private async processSingleRelease(
+        release: GitHubRelease,
+        owner: string,
+        repo: string
+    ): Promise<Bundle | null> {
+        const manifestAsset = release.assets.find(a => 
+            a.name === 'deployment-manifest.yml' || 
+            a.name === 'deployment-manifest.yaml' ||
+            a.name === 'deployment-manifest.json'
+        );
+
+        const bundleAsset = release.assets.find(a => 
+            a.name.endsWith('.zip') || 
+            a.name.endsWith('.tar.gz')
+        );
+
+        if (!manifestAsset || !bundleAsset) {
+            return null;
+        }
+
+        // Fetch deployment manifest with caching
+        let manifest: any = null;
+        try {
+            manifest = await this.fetchManifestWithCache(manifestAsset.url, manifestAsset.name);
+        } catch (manifestError) {
+            this.logger.warn(`Failed to fetch manifest for ${release.tag_name}: ${manifestError}`);
+            // Continue without manifest data - use fallback values
+        }
+
+        // Create bundle metadata
+        const bundleId = generateGitHubBundleId(
+            owner,
+            repo,
+            release.tag_name,
+            manifest?.id,
+            manifest?.version
+        );
+        
+        const bundle: Bundle = {
+            id: bundleId,
+            name: manifest?.name || release.name || `${repo} ${release.tag_name}`,
+            version: manifest?.version || release.tag_name.replace(/^v/, ''),
+            description: manifest?.description || this.extractDescription(release.body),
+            author: manifest?.author || owner,
+            sourceId: this.source.id,
+            environments: manifest?.environments || this.extractEnvironments(release.body),
+            tags: manifest?.tags || this.extractTags(release.body),
+            lastUpdated: release.published_at,
+            size: formatByteSize(bundleAsset.size),
+            dependencies: manifest?.dependencies || [],
+            license: manifest?.license || 'Unknown',
+            manifestUrl: manifestAsset.url,
+            downloadUrl: bundleAsset.url,
+            repository: this.source.url,
+        };
+
+        // Attach prompts array from manifest for content breakdown display
+        if (manifest?.prompts && Array.isArray(manifest.prompts)) {
+            (bundle as any).prompts = manifest.prompts;
+        }
+
+        return bundle;
+    }
+
+    /**
+     * Fetch and parse a manifest file with caching.
+     * Avoids duplicate downloads of the same manifest URL.
+     * 
+     * @param url - Manifest asset URL
+     * @param filename - Manifest filename (for determining parse format)
+     * @returns Parsed manifest object
+     */
+    private async fetchManifestWithCache(url: string, filename: string): Promise<any> {
+        // Check cache first
+        if (this.manifestCache.has(url)) {
+            this.logger.debug(`[GitHubAdapter] Using cached manifest for ${url}`);
+            return this.manifestCache.get(url);
+        }
+
+        // Download and parse manifest
+        const manifestContent = await this.downloadFile(url);
+        const manifestText = manifestContent.toString('utf-8');
+        
+        let manifest: any;
+        if (filename.endsWith('.json')) {
+            manifest = JSON.parse(manifestText);
+        } else {
+            // Assume YAML for .yml or .yaml
+            const yaml = require('js-yaml');
+            manifest = yaml.load(manifestText);
+        }
+
+        // Cache the parsed manifest
+        this.manifestCache.set(url, manifest);
+        this.logger.debug(`[GitHubAdapter] Cached manifest for ${url}`);
+        
+        return manifest;
+    }
+
+    /**
+     * Clear the manifest cache.
+     * Should be called when sources are re-synced to ensure fresh data.
+     */
+    clearManifestCache(): void {
+        this.manifestCache.clear();
+        this.logger.debug('[GitHubAdapter] Manifest cache cleared');
     }
 
     /**

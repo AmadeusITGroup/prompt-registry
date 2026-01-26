@@ -820,3 +820,139 @@ suite('RegistryManager - Bundle Resolution', () => {
         assert.ok(result.id.includes('exact-match-bundle'));
     });
 });
+
+suite('RegistryManager - Cache-Only Search Behavior', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let registryManager: RegistryManager;
+    let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        registryManager = RegistryManager.getInstance(mockContext);
+        
+        mockStorage = sandbox.createStubInstance(RegistryStorage);
+        (registryManager as any).storage = mockStorage;
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('should return bundles from cache when cacheOnly is true', async () => {
+        // Arrange: Set up cached bundles
+        const cachedBundle = BundleBuilder.github('cached-owner', 'cached-repo')
+            .withVersion('1.0.0')
+            .build();
+        cachedBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
+
+        const mockSource: RegistrySource = {
+            id: TEST_SOURCE_IDS.GITHUB,
+            type: 'github',
+            name: 'Test Source',
+            url: 'https://github.com/test/repo',
+            enabled: true,
+            priority: 1
+        };
+
+        mockStorage.getSources.resolves([mockSource]);
+        mockStorage.getCachedSourceBundles.resolves([cachedBundle]);
+
+        // Act
+        const result = await registryManager.searchBundles({ cacheOnly: true });
+
+        // Assert: Should return the cached bundle
+        assert.strictEqual(result.length, 1);
+        assert.strictEqual(result[0].id, cachedBundle.id);
+        assert.strictEqual(result[0].version, '1.0.0');
+    });
+
+    test('should return empty array when cache is empty and cacheOnly is true', async () => {
+        // Arrange: Empty cache
+        const mockSource: RegistrySource = {
+            id: TEST_SOURCE_IDS.GITHUB,
+            type: 'github',
+            name: 'Test Source',
+            url: 'https://github.com/test/repo',
+            enabled: true,
+            priority: 1
+        };
+
+        mockStorage.getSources.resolves([mockSource]);
+        mockStorage.getCachedSourceBundles.resolves([]);
+
+        // Act
+        const result = await registryManager.searchBundles({ cacheOnly: true });
+
+        // Assert: Should return empty array (not throw, not hang)
+        assert.strictEqual(result.length, 0);
+    });
+});
+
+suite('RegistryManager - Adapter Cache Clearing', () => {
+    let sandbox: sinon.SinonSandbox;
+    let mockContext: vscode.ExtensionContext;
+    let registryManager: RegistryManager;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        
+        mockContext = {
+            globalState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            workspaceState: {
+                get: sandbox.stub(),
+                update: sandbox.stub().resolves(),
+                keys: sandbox.stub().returns([]),
+                setKeysForSync: sandbox.stub()
+            } as any,
+            subscriptions: [],
+            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file('/mock/path'),
+            storageUri: vscode.Uri.file('/mock/storage'),
+            globalStorageUri: vscode.Uri.file('/mock/global'),
+            asAbsolutePath: (p: string) => `/mock/path/${p}`,
+        } as any;
+
+        registryManager = RegistryManager.getInstance(mockContext);
+    });
+
+    teardown(() => {
+        sandbox.restore();
+    });
+
+    test('clearAdapterCache should not throw for any source ID', () => {
+        // This tests the public API contract - method should be safe to call
+        assert.doesNotThrow(() => {
+            registryManager.clearAdapterCache('non-existent-source');
+            registryManager.clearAdapterCache('source-1');
+            registryManager.clearAdapterCache('');
+        });
+    });
+});

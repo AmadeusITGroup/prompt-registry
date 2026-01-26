@@ -287,6 +287,19 @@ export class RegistryManager {
         return adapter;
     }
 
+    /**
+     * Clear adapter cache for a source.
+     * Should be called on manual user-initiated syncs to ensure fresh data.
+     * Not called during automatic background syncs to preserve cache benefits.
+     */
+    clearAdapterCache(sourceId: string): void {
+        const adapter = this.adapters.get(sourceId);
+        if (adapter && adapter instanceof GitHubAdapter) {
+            adapter.clearManifestCache();
+            this.logger.debug(`Cleared manifest cache for source: ${sourceId}`);
+        }
+    }
+
     // ===== Source Management =====
 
     /**
@@ -584,7 +597,13 @@ export class RegistryManager {
     // ===== Bundle Management =====
 
     /**
-     * Search for bundles
+     * Search for bundles across all enabled sources
+     * 
+     * @param query - Search query options
+     * @param query.sourceId - Optional source ID to limit search to a specific source
+     * @param query.cacheOnly - If true, only return cached bundles without fetching from network.
+     *                         Useful for fast initial UI loads where network fetches happen separately via syncSource.
+     * @returns Promise resolving to array of matching bundles
      */
     async searchBundles(query: SearchQuery): Promise<Bundle[]> {
         this.logger.info('Searching bundles', query);
@@ -604,8 +623,8 @@ export class RegistryManager {
                 // Try cache first
                 let bundles = await this.storage.getCachedSourceBundles(source.id);
                 
-                // If cache empty, fetch from source
-                if (bundles.length === 0) {
+                // If cache empty and not in cacheOnly mode, fetch from source
+                if (bundles.length === 0 && !query.cacheOnly) {
                     const adapter = this.getAdapter(source);
                     bundles = await adapter.fetchBundles();
                     await this.storage.cacheSourceBundles(source.id, bundles);
@@ -680,8 +699,8 @@ export class RegistryManager {
             return cached;
         }
 
-        // Search all sources
-        const bundles = await this.searchBundles({});
+        // Search all sources (cache only to avoid blocking)
+        const bundles = await this.searchBundles({ cacheOnly: true });
         
         // Try exact match first
         let bundle = bundles.find(b => b.id === bundleId);
