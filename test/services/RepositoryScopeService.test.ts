@@ -11,11 +11,20 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as sinon from 'sinon';
+import * as crypto from 'crypto';
 import { RepositoryScopeService } from '../../src/services/RepositoryScopeService';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { LockfileManager } from '../../src/services/LockfileManager';
 import { CopilotFileType } from '../../src/utils/copilotFileTypeUtils';
 import { InstalledBundle, RepositoryCommitMode } from '../../src/types/registry';
+
+/**
+ * Calculate checksum for a file (sync version for tests)
+ */
+function calculateChecksumSync(filePath: string): string {
+    const content = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(content).digest('hex');
+}
 
 suite('RepositoryScopeService', () => {
     let service: RepositoryScopeService;
@@ -511,15 +520,21 @@ suite('RepositoryScopeService', () => {
             // Setup: create synced files
             const promptsDir = path.join(workspaceRoot, '.github', 'prompts');
             fs.mkdirSync(promptsDir, { recursive: true });
-            fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
+            const promptFile = path.join(promptsDir, 'test.prompt.md');
+            fs.writeFileSync(promptFile, '# Test');
+            
+            // Calculate checksum of the file we just created
+            const checksum = calculateChecksumSync(promptFile);
             
             const bundleId = 'test-bundle';
             const bundlePath = createMockBundle(bundleId, [
                 { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
             ]);
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'commit');
+            // Create lockfile with file entries including checksums
+            createLockfile(bundleId, 'commit', [
+                { path: '.github/prompts/test.prompt.md', checksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'commit'));
             
@@ -542,10 +557,16 @@ suite('RepositoryScopeService', () => {
             // Also create the synced file in .github
             const promptsDir = path.join(workspaceRoot, '.github', 'prompts');
             fs.mkdirSync(promptsDir, { recursive: true });
-            fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
+            const promptFile = path.join(promptsDir, 'test.prompt.md');
+            fs.writeFileSync(promptFile, '# Test');
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'local-only');
+            // Calculate checksum of the file we just created
+            const checksum = calculateChecksumSync(promptFile);
+            
+            // Create lockfile with file entries including checksums
+            createLockfile(bundleId, 'local-only', [
+                { path: '.github/prompts/test.prompt.md', checksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'local-only'));
             
@@ -701,10 +722,16 @@ suite('RepositoryScopeService', () => {
             // Also create the synced file in .github so unsyncBundle can find it
             const promptsDir = path.join(workspaceRoot, '.github', 'prompts');
             fs.mkdirSync(promptsDir, { recursive: true });
-            fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
+            const promptFile = path.join(promptsDir, 'test.prompt.md');
+            fs.writeFileSync(promptFile, '# Test');
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'local-only');
+            // Calculate checksum of the file we just created
+            const checksum = calculateChecksumSync(promptFile);
+            
+            // Create lockfile with file entries including checksums
+            createLockfile(bundleId, 'local-only', [
+                { path: '.github/prompts/test.prompt.md', checksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'local-only'));
             
@@ -1014,11 +1041,20 @@ prompts:
             // Create the installed skill directory in .github
             const targetSkillDir = path.join(workspaceRoot, '.github', 'skills', skillName);
             fs.mkdirSync(targetSkillDir, { recursive: true });
-            fs.writeFileSync(path.join(targetSkillDir, 'SKILL.md'), '# Removable Skill');
-            fs.writeFileSync(path.join(targetSkillDir, 'index.js'), 'module.exports = {};');
+            const skillMdFile = path.join(targetSkillDir, 'SKILL.md');
+            const indexJsFile = path.join(targetSkillDir, 'index.js');
+            fs.writeFileSync(skillMdFile, '# Removable Skill');
+            fs.writeFileSync(indexJsFile, 'module.exports = {};');
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'commit');
+            // Calculate checksums of the files we just created
+            const skillMdChecksum = calculateChecksumSync(skillMdFile);
+            const indexJsChecksum = calculateChecksumSync(indexJsFile);
+            
+            // Create lockfile with file entries including checksums
+            createLockfile(bundleId, 'commit', [
+                { path: `.github/skills/${skillName}/SKILL.md`, checksum: skillMdChecksum },
+                { path: `.github/skills/${skillName}/index.js`, checksum: indexJsChecksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'commit'));
             
@@ -1043,10 +1079,16 @@ prompts:
             // Create the installed skill directory
             const targetSkillDir = path.join(workspaceRoot, '.github', 'skills', skillName);
             fs.mkdirSync(targetSkillDir, { recursive: true });
-            fs.writeFileSync(path.join(targetSkillDir, 'SKILL.md'), '# My Skill');
+            const skillMdFile = path.join(targetSkillDir, 'SKILL.md');
+            fs.writeFileSync(skillMdFile, '# My Skill');
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'local-only');
+            // Calculate checksum of the file we just created
+            const checksum = calculateChecksumSync(skillMdFile);
+            
+            // Create lockfile with file entries including checksums
+            createLockfile(bundleId, 'local-only', [
+                { path: `.github/skills/${skillName}/SKILL.md`, checksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'local-only'));
             
@@ -1072,11 +1114,17 @@ prompts:
             // Create only partial skill directory (missing some files)
             const targetSkillDir = path.join(workspaceRoot, '.github', 'skills', skillName);
             fs.mkdirSync(targetSkillDir, { recursive: true });
-            fs.writeFileSync(path.join(targetSkillDir, 'SKILL.md'), '# Partial Skill');
+            const skillMdFile = path.join(targetSkillDir, 'SKILL.md');
+            fs.writeFileSync(skillMdFile, '# Partial Skill');
             // Note: sub/file.js is NOT created - simulating partial state
             
-            // Create lockfile for unsyncBundle to read (it uses LockfileManager, not RegistryStorage)
-            createLockfile(bundleId, 'commit');
+            // Calculate checksum of the file we just created
+            const checksum = calculateChecksumSync(skillMdFile);
+            
+            // Create lockfile with file entries including checksums (only for existing file)
+            createLockfile(bundleId, 'commit', [
+                { path: `.github/skills/${skillName}/SKILL.md`, checksum }
+            ]);
             
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'commit'));
             

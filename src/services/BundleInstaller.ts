@@ -351,10 +351,26 @@ export class BundleInstaller {
                 await this.updateLockfileOnUninstall(installed.bundleId);
             }
 
-            // Remove installation directory
+            // Remove installation directory (bundle cache)
+            // For repository scope, the installPath may point to .github which is NOT the bundle cache.
+            // The actual bundle cache is in extension global storage under bundles/{bundleId}.
+            // We should only remove the bundle cache directory, not the .github directory.
             if (installed.installPath && fs.existsSync(installed.installPath)) {
-                await this.removeDirectory(installed.installPath);
-                this.logger.debug(`Removed directory: ${installed.installPath}`);
+                if (installed.scope === 'repository' && this.isGitHubDirectory(installed.installPath)) {
+                    // Skip removal of .github directory - unsyncBundle already handled removing synced files
+                    // and we don't want to remove unrelated files (workflows, CODEOWNERS, etc.)
+                    this.logger.debug(`Skipping removal of .github directory: ${installed.installPath}`);
+                    
+                    // Remove the actual bundle cache from global storage instead
+                    const bundleCachePath = this.getInstallDirectory(installed.bundleId, 'repository');
+                    if (bundleCachePath && fs.existsSync(bundleCachePath) && bundleCachePath !== installed.installPath) {
+                        await this.removeDirectory(bundleCachePath);
+                        this.logger.debug(`Removed bundle cache directory: ${bundleCachePath}`);
+                    }
+                } else {
+                    await this.removeDirectory(installed.installPath);
+                    this.logger.debug(`Removed directory: ${installed.installPath}`);
+                }
             }
 
             this.logger.info('Bundle uninstalled successfully');
@@ -751,6 +767,23 @@ export class BundleInstaller {
                 this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
             }
         }
+    }
+
+    /**
+     * Check if a path is the .github directory or a subdirectory of it.
+     * Used to prevent accidental removal of the .github folder which may contain
+     * unrelated files like workflows, CODEOWNERS, etc.
+     * 
+     * @param dirPath - The directory path to check
+     * @returns true if the path is .github or ends with /.github
+     */
+    private isGitHubDirectory(dirPath: string): boolean {
+        const normalizedPath = path.normalize(dirPath);
+        const baseName = path.basename(normalizedPath);
+        
+        // Check if the directory itself is named .github
+        // This handles both "/path/to/.github" and ".github"
+        return baseName === '.github';
     }
 
     /**

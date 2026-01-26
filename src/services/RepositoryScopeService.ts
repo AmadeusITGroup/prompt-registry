@@ -23,7 +23,7 @@ import {
     getRepositoryTargetDirectory,
     normalizePromptId
 } from '../utils/copilotFileTypeUtils';
-import { ensureDirectory } from '../utils/fileIntegrityService';
+import { ensureDirectory, calculateFileChecksum } from '../utils/fileIntegrityService';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -42,6 +42,19 @@ const GIT_EXCLUDE_SECTION_HEADER = '# Prompt Registry (local)';
  * Name of the local lockfile that tracks local-only bundles
  */
 const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
+
+/**
+ * Directories in .github/ that are managed by Prompt Registry.
+ * Only these directories should be cleaned up during uninstallation.
+ * Other directories (workflows, ISSUE_TEMPLATE, etc.) are not managed by Prompt Registry.
+ */
+const PROMPT_REGISTRY_MANAGED_DIRS = ['prompts', 'agents', 'instructions', 'skills'] as const;
+
+/**
+ * Regex pattern to extract skill directory path from a file path.
+ * Matches paths like ".github/skills/my-skill/SKILL.md" and captures ".github/skills/my-skill"
+ */
+const SKILL_DIR_PATTERN = /^(\.github\/skills\/[^/]+)/;
 
 /**
  * Tracks installed files during bundle installation for rollback support
@@ -281,20 +294,7 @@ export class RepositoryScopeService implements IScopeService {
      * Update git exclude for local-only mode, consolidating skill directories
      */
     private async updateGitExcludeForLocalOnly(relativePaths: string[]): Promise<void> {
-        const pathsForExclude: string[] = [];
-        
-        for (const p of relativePaths) {
-            if (p.includes('.github/skills/')) {
-                // Extract skill directory path instead of individual files
-                const match = p.match(/^(\.github\/skills\/[^/]+)/);
-                if (match && !pathsForExclude.includes(match[1])) {
-                    pathsForExclude.push(match[1]);
-                }
-            } else {
-                pathsForExclude.push(p);
-            }
-        }
-        
+        const pathsForExclude = this.consolidateSkillPathsForGitExclude(relativePaths);
         await this.addToGitExclude(pathsForExclude);
     }
 
@@ -414,129 +414,285 @@ export class RepositoryScopeService implements IScopeService {
      * Remove synced files for a bundle.
      * Implements IScopeService.unsyncBundle
      * 
+     * Only removes files that:
+     * 1. Are tracked in the lockfile for this bundle
+     * 2. Have matching checksums (not modified by user)
+     * 3. Are not used by other bundles in the lockfile
+     * 
+     * User-created files and modified files are preserved.
+     * 
      * @param bundleId - The unique identifier of the bundle to unsync
      */
     async unsyncBundle(bundleId: string): Promise<void> {
         try {
             this.logger.debug(`[RepositoryScopeService] Removing files for bundle: ${bundleId}`);
 
-            // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
-            // Use getInstalledBundles() to search both main and local lockfiles
             const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
-            const installedBundles = await lockfileManager.getInstalledBundles();
-            const bundle = installedBundles.find(b => b.bundleId === bundleId);
             
-            if (!bundle) {
+            // Read both lockfiles to get complete picture
+            const mainLockfile = await lockfileManager.read();
+            const localLockfilePath = lockfileManager.getLocalLockfilePath();
+            let localLockfile = null;
+            if (fs.existsSync(localLockfilePath)) {
+                try {
+                    const content = await readFile(localLockfilePath, 'utf-8');
+                    localLockfile = JSON.parse(content);
+                } catch {
+                    // Ignore parse errors
+                }
+            }
+            
+            // Find the bundle entry in either lockfile
+            const bundleEntry = mainLockfile?.bundles[bundleId] || localLockfile?.bundles[bundleId];
+            
+            if (!bundleEntry) {
                 this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
                 return;
             }
             
-            // Get install path from global storage (same as BundleInstaller.getInstallDirectory for repository scope)
-            // Repository scope bundles are stored in extension global storage under bundles/{bundleId}
-            const storagePaths = this.storage.getPaths();
-            const installPath = path.join(storagePaths.root, 'bundles', bundleId);
-
-            // Read manifest to find files
-            const manifestPath = path.join(installPath, 'deployment-manifest.yml');
-            if (!fs.existsSync(manifestPath)) {
-                this.logger.warn(`[RepositoryScopeService] No manifest found for bundle: ${bundleId}`);
-                // Still try to remove files based on lockfile entries
-                // We need to read the lockfile directly to get the files array
-                const mainLockfile = await lockfileManager.read();
-                const localLockfilePath = lockfileManager.getLocalLockfilePath();
-                let localLockfile = null;
-                if (fs.existsSync(localLockfilePath)) {
-                    try {
-                        const content = await readFile(localLockfilePath, 'utf-8');
-                        localLockfile = JSON.parse(content);
-                    } catch {
-                        // Ignore parse errors
-                    }
-                }
-                
-                const bundleEntry = mainLockfile?.bundles[bundleId] || localLockfile?.bundles[bundleId];
-                if (bundleEntry?.files && bundleEntry.files.length > 0) {
-                    await this.removeFilesFromLockfileEntries(bundleEntry.files);
-                }
+            // Get files tracked by this bundle
+            const bundleFiles = bundleEntry.files || [];
+            
+            if (bundleFiles.length === 0) {
+                this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} has no tracked files in lockfile`);
                 return;
             }
-
-            const manifestContent = await readFile(manifestPath, 'utf-8');
-            const manifest = yaml.load(manifestContent) as DeploymentManifest;
-
-            if (!manifest.prompts || manifest.prompts.length === 0) {
-                return;
-            }
-
+            
+            // Collect files used by OTHER bundles (to avoid removing shared files)
+            const filesUsedByOtherBundles = this.collectFilesUsedByOtherBundles(
+                bundleId, 
+                mainLockfile, 
+                localLockfile
+            );
+            
             const removedPaths: string[] = [];
+            const skippedPaths: { path: string; reason: string }[] = [];
 
-            // Remove each file or skill directory
-            for (const promptDef of manifest.prompts) {
-                const promptId = normalizePromptId(promptDef.id);
+            // Remove each file tracked in the lockfile
+            for (const fileEntry of bundleFiles) {
+                const targetPath = path.join(this.workspaceRoot, fileEntry.path);
                 
-                if (promptDef.type === 'skill') {
-                    // Remove entire skill directory
-                    const skillDir = path.join(
-                        this.workspaceRoot,
-                        getRepositoryTargetDirectory('skill'),
-                        promptId
-                    );
-                    
-                    if (fs.existsSync(skillDir)) {
-                        try {
-                            await rm(skillDir, { recursive: true, force: true });
-                            removedPaths.push(this.getRelativePath(skillDir));
-                            this.logger.debug(`[RepositoryScopeService] Removed skill directory: ${this.getRelativePath(skillDir)}`);
-                        } catch (error) {
-                            this.logger.warn(`[RepositoryScopeService] Failed to remove skill directory: ${skillDir}`);
-                        }
-                    }
+                // Skip if file doesn't exist
+                if (!fs.existsSync(targetPath)) {
+                    this.logger.debug(`[RepositoryScopeService] File already removed: ${fileEntry.path}`);
                     continue;
                 }
-
-                const fileType = promptDef.type as CopilotFileType || determineFileType(promptDef.file, promptDef.tags);
-                const targetPath = this.getTargetPath(fileType, promptId);
-
-                if (fs.existsSync(targetPath)) {
+                
+                // Skip if file is used by another bundle
+                if (filesUsedByOtherBundles.has(fileEntry.path)) {
+                    skippedPaths.push({ path: fileEntry.path, reason: 'used by another bundle' });
+                    this.logger.debug(`[RepositoryScopeService] Skipping file used by another bundle: ${fileEntry.path}`);
+                    continue;
+                }
+                
+                // Check if file has been modified by user (checksum mismatch)
+                try {
+                    const currentChecksum = await calculateFileChecksum(targetPath);
+                    if (currentChecksum !== fileEntry.checksum) {
+                        skippedPaths.push({ path: fileEntry.path, reason: 'modified by user' });
+                        this.logger.info(`[RepositoryScopeService] Preserving user-modified file: ${fileEntry.path}`);
+                        continue;
+                    }
+                } catch (error) {
+                    this.logger.warn(`[RepositoryScopeService] Failed to calculate checksum for: ${fileEntry.path}`);
+                    continue;
+                }
+                
+                // Safe to remove - file is tracked, unmodified, and not shared
+                try {
                     await unlink(targetPath);
-                    removedPaths.push(this.getRelativePath(targetPath));
-                    this.logger.debug(`[RepositoryScopeService] Removed: ${this.getRelativePath(targetPath)}`);
+                    removedPaths.push(fileEntry.path);
+                    this.logger.debug(`[RepositoryScopeService] Removed: ${fileEntry.path}`);
+                } catch (error) {
+                    this.logger.warn(`[RepositoryScopeService] Failed to remove file: ${fileEntry.path}`);
                 }
             }
 
             // Remove from git exclude if needed
             if (removedPaths.length > 0) {
-                await this.removeFromGitExclude(removedPaths);
+                // Consolidate skill file paths to skill directory paths for git exclude
+                // (mirrors the logic in updateGitExcludeForLocalOnly)
+                const pathsForExclude = this.consolidateSkillPathsForGitExclude(removedPaths);
+                await this.removeFromGitExclude(pathsForExclude);
+                
+                // Clean up empty prompt registry subdirectories
+                // Only removes directories that are completely empty
+                await this.cleanupEmptyPromptRegistryDirectories();
             }
 
-            this.logger.info(`[RepositoryScopeService] ✅ Removed ${removedPaths.length} files/directories for bundle: ${bundleId}`);
+            if (skippedPaths.length > 0) {
+                this.logger.info(`[RepositoryScopeService] Preserved ${skippedPaths.length} files: ${skippedPaths.map(s => `${s.path} (${s.reason})`).join(', ')}`);
+            }
+            
+            this.logger.info(`[RepositoryScopeService] ✅ Removed ${removedPaths.length} files for bundle: ${bundleId}`);
 
         } catch (error) {
             this.logger.error(`[RepositoryScopeService] Failed to unsync bundle ${bundleId}`, error as Error);
         }
     }
-
+    
     /**
-     * Remove files based on lockfile file entries (fallback when manifest is not available)
+     * Consolidate skill file paths to skill directory paths for git exclude.
+     * Skill files like .github/skills/my-skill/SKILL.md are consolidated to .github/skills/my-skill
      */
-    private async removeFilesFromLockfileEntries(files: Array<{ path: string; checksum: string }>): Promise<void> {
-        const removedPaths: string[] = [];
+    private consolidateSkillPathsForGitExclude(paths: string[]): string[] {
+        const result: string[] = [];
+        const skillDirs = new Set<string>();
         
-        for (const fileEntry of files) {
-            const targetPath = path.join(this.workspaceRoot, fileEntry.path);
-            if (fs.existsSync(targetPath)) {
-                try {
-                    await unlink(targetPath);
-                    removedPaths.push(fileEntry.path);
-                    this.logger.debug(`[RepositoryScopeService] Removed from lockfile entry: ${fileEntry.path}`);
-                } catch (error) {
-                    this.logger.warn(`[RepositoryScopeService] Failed to remove file: ${fileEntry.path}`);
+        for (const p of paths) {
+            if (p.includes('.github/skills/')) {
+                // Extract skill directory path instead of individual files
+                const match = p.match(SKILL_DIR_PATTERN);
+                if (match && !skillDirs.has(match[1])) {
+                    skillDirs.add(match[1]);
+                    result.push(match[1]);
+                }
+            } else {
+                result.push(p);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Collect all file paths used by bundles OTHER than the specified bundle.
+     * Used to prevent removing files that are shared between bundles.
+     */
+    private collectFilesUsedByOtherBundles(
+        excludeBundleId: string,
+        mainLockfile: { bundles?: Record<string, { files?: Array<{ path: string }> }> } | null,
+        localLockfile: { bundles?: Record<string, { files?: Array<{ path: string }> }> } | null
+    ): Set<string> {
+        const usedFiles = new Set<string>();
+        
+        // Check main lockfile
+        if (mainLockfile?.bundles) {
+            for (const [bundleId, entry] of Object.entries(mainLockfile.bundles)) {
+                if (bundleId !== excludeBundleId && entry.files) {
+                    for (const file of entry.files) {
+                        usedFiles.add(file.path);
+                    }
                 }
             }
         }
         
-        if (removedPaths.length > 0) {
-            await this.removeFromGitExclude(removedPaths);
+        // Check local lockfile
+        if (localLockfile?.bundles) {
+            for (const [bundleId, entry] of Object.entries(localLockfile.bundles)) {
+                if (bundleId !== excludeBundleId && entry.files) {
+                    for (const file of entry.files) {
+                        usedFiles.add(file.path);
+                    }
+                }
+            }
+        }
+        
+        return usedFiles;
+    }
+
+    /**
+     * Clean up empty prompt registry subdirectories in .github/
+     * 
+     * Only removes directories that prompt registry manages:
+     * - .github/prompts
+     * - .github/agents
+     * - .github/instructions
+     * - .github/skills
+     * 
+     * Does NOT remove:
+     * - .github folder itself (may contain unrelated files like workflows, CODEOWNERS)
+     * - Any other directories in .github (workflows, ISSUE_TEMPLATE, etc.)
+     */
+    private async cleanupEmptyPromptRegistryDirectories(): Promise<void> {
+        const githubDir = this.getGitHubDirectory();
+        
+        if (!fs.existsSync(githubDir)) {
+            return;
+        }
+        
+        for (const subdir of PROMPT_REGISTRY_MANAGED_DIRS) {
+            const subdirPath = path.join(githubDir, subdir);
+            
+            if (!fs.existsSync(subdirPath)) {
+                continue;
+            }
+            
+            try {
+                // For skills directory, also clean up empty skill subdirectories
+                if (subdir === 'skills') {
+                    await this.cleanupEmptySkillDirectories(subdirPath);
+                }
+                
+                const files = await readdir(subdirPath);
+                
+                // Only remove if directory is empty
+                if (files.length === 0) {
+                    await rm(subdirPath, { recursive: true, force: true });
+                    this.logger.debug(`[RepositoryScopeService] Removed empty directory: ${this.getRelativePath(subdirPath)}`);
+                }
+            } catch (error) {
+                this.logger.warn(`[RepositoryScopeService] Failed to check/remove directory: ${subdirPath}`);
+            }
+        }
+    }
+    
+    /**
+     * Clean up empty skill directories within .github/skills/
+     * Skills are directories, so we need to recursively check and remove empty ones.
+     */
+    private async cleanupEmptySkillDirectories(skillsDir: string): Promise<void> {
+        if (!fs.existsSync(skillsDir)) {
+            return;
+        }
+        
+        try {
+            const entries = await readdir(skillsDir, { withFileTypes: true });
+            
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const skillDir = path.join(skillsDir, entry.name);
+                    await this.cleanupEmptyDirectoryRecursive(skillDir);
+                }
+            }
+        } catch (error) {
+            this.logger.warn(`[RepositoryScopeService] Failed to clean up skill directories: ${skillsDir}`);
+        }
+    }
+    
+    /**
+     * Recursively clean up empty directories from bottom up.
+     * Removes a directory only if it's empty (after cleaning up its subdirectories).
+     */
+    private async cleanupEmptyDirectoryRecursive(dir: string): Promise<boolean> {
+        if (!fs.existsSync(dir)) {
+            return true; // Already removed
+        }
+        
+        try {
+            const entries = await readdir(dir, { withFileTypes: true });
+            
+            // First, recursively clean up subdirectories
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    await this.cleanupEmptyDirectoryRecursive(path.join(dir, entry.name));
+                }
+            }
+            
+            // Re-read directory after cleaning subdirectories
+            const remainingEntries = await readdir(dir);
+            
+            // Remove if empty
+            if (remainingEntries.length === 0) {
+                await rm(dir, { recursive: true, force: true });
+                this.logger.debug(`[RepositoryScopeService] Removed empty directory: ${this.getRelativePath(dir)}`);
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            this.logger.warn(`[RepositoryScopeService] Failed to clean up directory: ${dir}`);
+            return false;
         }
     }
 
@@ -558,8 +714,7 @@ export class RepositoryScopeService implements IScopeService {
         }
 
         // Scan all .github subdirectories for files
-        const subdirs = ['prompts', 'agents', 'instructions', 'skills'];
-        for (const subdir of subdirs) {
+        for (const subdir of PROMPT_REGISTRY_MANAGED_DIRS) {
             const subdirPath = path.join(githubDir, subdir);
             if (fs.existsSync(subdirPath)) {
                 try {

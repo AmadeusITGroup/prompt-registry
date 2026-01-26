@@ -933,6 +933,9 @@ export class LockfileManager {
                 seenIds.add(bundleId);
                 const filesMissing = await this.checkFilesMissing(entry);
                 // Create bundle with commitMode: 'commit' (from main lockfile)
+                // TODO: installPath should point to the bundle cache in global storage, not .github
+                // The .github directory is where files are synced, not where the bundle is installed.
+                // This is a workaround - BundleInstaller.uninstall() handles this case specially.
                 const installedBundle = createInstalledBundleFromLockfile(bundleId, entry, {
                     installPath: path.join(this.repositoryPath, '.github'),
                     filesMissing,
