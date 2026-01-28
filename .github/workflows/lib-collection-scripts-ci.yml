@@ -92,7 +92,7 @@ jobs:
 
       - name: Publish package
         if: steps.version-check.outputs.exists == 'false'
-        run: npm publish
+        run: npm publish --provenance --access public
       - name: Create version tag
         if: steps.version-check.outputs.exists == 'false'
         run: |
