@@ -1,5 +1,6 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import * as jsonc from 'jsonc-parser';
 import { Logger } from '../utils/logger';
 import { McpConfigLocator } from '../utils/mcpConfigLocator';
 import {
@@ -8,8 +9,22 @@ import {
     McpServerDefinition,
     McpTrackingMetadata,
     McpVariableContext,
-    McpInstallOptions
+    McpInstallOptions,
+    McpStdioServerConfig,
+    McpRemoteServerConfig,
+    isStdioServerConfig,
+    isRemoteServerConfig
 } from '../types/mcp';
+
+/**
+ * Information about a duplicate server that was disabled
+ */
+export interface DuplicateInfo {
+    serverName: string;
+    duplicateOf: string;
+    bundleId: string;
+    originalBundleId: string;
+}
 
 export class McpConfigService {
     private readonly logger: Logger;
@@ -32,8 +47,14 @@ export class McpConfigService {
 
         try {
             const content = await fs.readFile(location.configPath, 'utf-8');
-            const config = JSON.parse(content) as McpConfiguration;
-            return config;
+            // Use JSONC parser to handle trailing commas and comments (VS Code mcp.json format)
+            const errors: jsonc.ParseError[] = [];
+            const config = jsonc.parse(content, errors) as McpConfiguration;
+            if (errors.length > 0) {
+                const errorMessages = errors.map(e => `${jsonc.printParseErrorCode(e.error)} at offset ${e.offset}`).join(', ');
+                this.logger.warn(`JSONC parse warnings in ${location.configPath}: ${errorMessages}`);
+            }
+            return config || { servers: {} };
         } catch (error) {
             this.logger.error(`Failed to read mcp.json from ${location.configPath}`, error as Error);
             throw new Error(`Failed to read MCP configuration: ${(error as Error).message}`);
@@ -152,7 +173,23 @@ export class McpConfigService {
             env: process.env as Record<string, string>
         };
 
+        // Use type guards to properly handle stdio vs remote servers
+        if (isRemoteServerConfig(definition)) {
+            return this.processRemoteServerDefinition(definition, context);
+        } else {
+            return this.processStdioServerDefinition(definition as McpStdioServerConfig, context);
+        }
+    }
+
+    /**
+     * Process a stdio (local process) server definition with variable substitution
+     */
+    private processStdioServerDefinition(
+        definition: McpStdioServerConfig,
+        context: McpVariableContext
+    ): McpStdioServerConfig {
         return {
+            type: definition.type,
             command: this.substituteVariables(definition.command, context)!,
             args: definition.args?.map(arg => this.substituteVariables(arg, context)!),
             env: definition.env ? Object.fromEntries(
@@ -161,9 +198,98 @@ export class McpConfigService {
                     this.substituteVariables(v, context)!
                 ])
             ) : undefined,
+            envFile: this.substituteVariables(definition.envFile, context),
             disabled: definition.disabled,
             description: definition.description
         };
+    }
+
+    /**
+     * Process a remote (HTTP/SSE) server definition with variable substitution
+     */
+    private processRemoteServerDefinition(
+        definition: McpRemoteServerConfig,
+        context: McpVariableContext
+    ): McpRemoteServerConfig {
+        return {
+            type: definition.type,
+            url: this.substituteVariables(definition.url, context)!,
+            headers: definition.headers ? Object.fromEntries(
+                Object.entries(definition.headers).map(([k, v]) => [
+                    k,
+                    this.substituteVariables(v, context)!
+                ])
+            ) : undefined,
+            disabled: definition.disabled,
+            description: definition.description
+        };
+    }
+
+    /**
+     * Compute a unique identity string for a server configuration.
+     * Used for duplicate detection - servers with the same identity are considered duplicates.
+     * 
+     * For stdio servers: identity is based on command + args
+     * For remote servers: identity is based on URL
+     */
+    computeServerIdentity(config: McpServerConfig): string {
+        if (isRemoteServerConfig(config)) {
+            return `remote:${config.url}`;
+        } else {
+            const stdioConfig = config as McpStdioServerConfig;
+            const argsStr = stdioConfig.args?.join('|') || '';
+            return `stdio:${stdioConfig.command}:${argsStr}`;
+        }
+    }
+
+    /**
+     * Detect and disable duplicate MCP servers across all managed bundles.
+     * 
+     * Two servers are considered duplicates if they have the same identity:
+     * - Stdio servers: same command + args
+     * - Remote servers: same URL
+     * 
+     * The first enabled server encountered is kept enabled, subsequent duplicates are disabled.
+     */
+    async detectAndDisableDuplicates(
+        scope: 'user' | 'workspace'
+    ): Promise<{ duplicatesDisabled: DuplicateInfo[]; config: McpConfiguration }> {
+        const config = await this.readMcpConfig(scope);
+        const tracking = await this.readTrackingMetadata(scope);
+
+        const serverIdentities = new Map<string, { serverName: string; bundleId: string }>();
+        const duplicatesDisabled: DuplicateInfo[] = [];
+
+        for (const [serverName, serverConfig] of Object.entries(config.servers)) {
+            const identity = this.computeServerIdentity(serverConfig);
+            const existing = serverIdentities.get(identity);
+
+            if (existing && !serverConfig.disabled) {
+                // This is a duplicate - disable it
+                config.servers[serverName] = {
+                    ...serverConfig,
+                    disabled: true,
+                    description: `Duplicate of ${existing.serverName} (from bundle ${existing.bundleId})`
+                };
+
+                const metadata = tracking.managedServers[serverName];
+                duplicatesDisabled.push({
+                    serverName,
+                    duplicateOf: existing.serverName,
+                    bundleId: metadata?.bundleId || 'unknown',
+                    originalBundleId: existing.bundleId
+                });
+            } else if (!serverConfig.disabled) {
+                // First enabled server with this identity - record it
+                const metadata = tracking.managedServers[serverName];
+                serverIdentities.set(identity, {
+                    serverName,
+                    bundleId: metadata?.bundleId || 'unknown'
+                });
+            }
+        }
+
+        return { duplicatesDisabled, config };
     }
 
     async mergeServers(

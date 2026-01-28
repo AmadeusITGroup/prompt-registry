@@ -12,6 +12,7 @@ import { UI_CONSTANTS } from '../utils/constants';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
+import { McpServerConfig, McpStdioServerConfig, McpRemoteServerConfig, isStdioServerConfig, isRemoteServerConfig } from '../types/mcp';
 
 /**
  * Message types sent from webview to extension
@@ -35,6 +36,7 @@ interface ContentBreakdown {
     chatmodes: number;
     agents: number;
     skills: number;
+    mcpServers: number;
 }
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
@@ -45,6 +47,18 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     private sourceSyncDebounceTimer?: NodeJS.Timeout;
     private isLoadingBundles = false;
     private disposables: vscode.Disposable[] = [];
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     */
+    private escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -344,13 +358,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Count prompts by type from an array of prompt objects
      */
-    private countPromptsByType(prompts: any[]): ContentBreakdown {
+    private countPromptsByType(prompts: any[], mcpServersCount: number = 0): ContentBreakdown {
         const breakdown: ContentBreakdown = {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
+            mcpServers: mcpServersCount
         };
 
         for (const prompt of prompts) {
@@ -381,15 +396,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      * Calculate content breakdown from bundle metadata
      */
     private getContentBreakdown(bundle: Bundle, manifest?: any): ContentBreakdown {
+        const bundleData = bundle as any;
+        const mcpCount = manifest?.mcpServers ? Object.keys(manifest.mcpServers).length : this.countMcpServers(bundleData);
+
         // First: Use manifest if provided (from installed bundle)
         if (manifest?.prompts && Array.isArray(manifest.prompts)) {
-            return this.countPromptsByType(manifest.prompts);
+            return this.countPromptsByType(manifest.prompts, mcpCount);
         }
 
         // Second: Try to parse from bundle data (some sources embed this)
-        const bundleData = bundle as any;
         if (bundleData.prompts && Array.isArray(bundleData.prompts)) {
-            return this.countPromptsByType(bundleData.prompts);
+            return this.countPromptsByType(bundleData.prompts, mcpCount);
         }
 
         // Third: Use pre-calculated breakdown from adapters (AwesomeCopilot, LocalAwesomeCopilot)
@@ -399,7 +416,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: bundleData.breakdown.instructions || 0,
                 chatmodes: bundleData.breakdown.chatmodes || 0,
                 agents: bundleData.breakdown.agents || 0,
-                skills: bundleData.breakdown.skills || 0
+                skills: bundleData.breakdown.skills || 0,
+                mcpServers: bundleData.breakdown.mcpServers || this.countMcpServers(bundleData)
             };
         }
 
@@ -410,7 +428,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: 0,
                 chatmodes: 0,
                 agents: 0,
-                skills: bundleData.skills.length
+                skills: bundleData.skills.length,
+                mcpServers: this.countMcpServers(bundleData)
             };
         }
 
@@ -422,8 +441,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
+            mcpServers: this.countMcpServers(bundleData)
         };
+    }
+
+    /**
+     * Count MCP servers from bundle data
+     */
+    private countMcpServers(bundleData: any): number {
+        // Check manifest.mcpServers
+        if (bundleData.mcpServers && typeof bundleData.mcpServers === 'object') {
+            return Object.keys(bundleData.mcpServers).length;
+        }
+        // Check mcp.items (collection format)
+        if (bundleData.mcp?.items && typeof bundleData.mcp.items === 'object') {
+            return Object.keys(bundleData.mcp.items).length;
+        }
+        return 0;
     }
 
     /**
@@ -1167,6 +1202,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-count">${breakdown.skills}</div>
                 <div class="breakdown-label">Skills</div>
             </div>
+            <div class="breakdown-item">
+                <div class="breakdown-icon">🔌</div>
+                <div class="breakdown-count">${breakdown.mcpServers}</div>
+                <div class="breakdown-label">MCP Servers</div>
+            </div>
         </div>
         ` : `
         <div class="info-message">
@@ -1223,27 +1263,54 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <p style="color: var(--vscode-descriptionForeground); margin-bottom: 16px; font-size: 13px;">
             This bundle includes ${Object.keys(installed.manifest.mcpServers).length} Model Context Protocol server${Object.keys(installed.manifest.mcpServers).length > 1 ? 's' : ''} that will be automatically integrated with VS Code.
         </p>
-        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => `
+        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => {
+            const isRemote = isRemoteServerConfig(config);
+            const isStdio = isStdioServerConfig(config);
+            return `
             <div class="mcp-server-card">
                 <div class="mcp-server-header">
-                    <span>⚡ ${serverName}</span>
+                    <span>${isRemote ? '🌐' : '⚡'} ${this.escapeHtml(serverName)}</span>
                     ${config.disabled ? '<span class="mcp-status-badge mcp-status-disabled">Disabled</span>' : '<span class="mcp-status-badge mcp-status-enabled">Enabled</span>'}
                 </div>
-                ${config.description ? `<div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 8px;">${config.description}</div>` : ''}
-                <div class="mcp-server-command">
-                    <strong>Command:</strong> ${config.command}
-                    ${config.args && config.args.length > 0 ? ` ${config.args.join(' ')}` : ''}
-                </div>
-                ${config.env && Object.keys(config.env).length > 0 ? `
-                <div class="mcp-env-vars">
-                    <strong style="font-size: 12px;">Environment Variables:</strong>
-                    ${Object.entries(config.env).map(([key, value]) => `
-                        <div class="mcp-env-var">• <code>${key}</code> = <code>${value}</code></div>
-                    `).join('')}
-                </div>
-                ` : ''}
+                ${config.description ? `<div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 8px;">${this.escapeHtml(config.description)}</div>` : ''}
+                ${isStdio ? (() => {
+                    const stdioConfig = config as McpStdioServerConfig;
+                    return `
+                    <div class="mcp-server-command">
+                        <strong>Command:</strong> ${this.escapeHtml(stdioConfig.command)}
+                        ${stdioConfig.args && stdioConfig.args.length > 0 ? ` ${stdioConfig.args.map(a => this.escapeHtml(a)).join(' ')}` : ''}
+                    </div>
+                    ${stdioConfig.env && Object.keys(stdioConfig.env).length > 0 ? `
+                    <div class="mcp-env-vars">
+                        <strong style="font-size: 12px;">Environment Variables:</strong>
+                        ${Object.entries(stdioConfig.env).map(([key, value]) => `
+                            <div class="mcp-env-var">• <code>${this.escapeHtml(key)}</code> = <code>${this.escapeHtml(String(value))}</code></div>
+                        `).join('')}
+                    </div>
+                    ` : ''}
+                    `;
+                })() : ''}
+                ${isRemote ? (() => {
+                    const remoteConfig = config as McpRemoteServerConfig;
+                    return `
+                    <div class="mcp-server-command">
+                        <strong>Type:</strong> ${this.escapeHtml((remoteConfig.type || 'http').toUpperCase())}
+                    </div>
+                    <div class="mcp-server-command">
+                        <strong>URL:</strong> <code>${this.escapeHtml(remoteConfig.url)}</code>
+                    </div>
+                    ${remoteConfig.headers && Object.keys(remoteConfig.headers).length > 0 ? `
+                    <div class="mcp-env-vars">
+                        <strong style="font-size: 12px;">Headers:</strong>
+                        ${Object.entries(remoteConfig.headers).map(([key, value]) => `
+                            <div class="mcp-env-var">• <code>${this.escapeHtml(key)}</code>: <code>${this.escapeHtml(String(value).substring(0, 20))}${String(value).length > 20 ? '...' : ''}</code></div>
+                        `).join('')}
+                    </div>
+                    ` : ''}
+                    `;
+                })() : ''}
             </div>
-        `).join('')}
+        `;}).join('')}
     </div>
     ` : ''}
 
@@ -2414,6 +2481,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         \${renderContentItem('📋', 'Instructions', bundle.contentBreakdown?.instructions || 0)}
                         \${renderContentItem('🤖', 'Agents', bundle.contentBreakdown?.agents || 0)}
                         \${renderContentItem('🛠️', 'Skills', bundle.contentBreakdown?.skills || 0)}
+                        \${renderContentItem('🔌', 'MCP Servers', bundle.contentBreakdown?.mcpServers || 0)}
                     </div>
 
                     <div class="bundle-tags">

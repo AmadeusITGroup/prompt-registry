@@ -172,7 +172,7 @@ export class GitLabAdapter extends RepositoryAdapter {
                     try {
                         const manifest = await this.makeRequest(manifestUrl);
                         
-                        bundles.push({
+                        const bundle: Bundle = {
                             id: manifest.id || release.tag_name,
                             name: manifest.name || release.name,
                             version: manifest.version || release.tag_name,
@@ -187,7 +187,19 @@ export class GitLabAdapter extends RepositoryAdapter {
                             license: manifest.license || 'Unknown',
                             downloadUrl: bundleAsset.url,
                             manifestUrl: manifestUrl,
-                        });
+                        };
+
+                        // Attach prompts array from manifest for content breakdown display
+                        if (manifest?.prompts && Array.isArray(manifest.prompts)) {
+                            (bundle as any).prompts = manifest.prompts;
+                        }
+
+                        // Attach MCP servers from manifest for content breakdown display
+                        if (manifest?.mcpServers && typeof manifest.mcpServers === 'object') {
+                            (bundle as any).mcpServers = manifest.mcpServers;
+                        }
+
+                        bundles.push(bundle);
                     } catch (manifestError) {
                         // Skip this release if manifest is not found
                         console.warn(`No manifest found for release ${release.tag_name}`);

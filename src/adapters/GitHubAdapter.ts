@@ -614,6 +614,11 @@ export class GitHubAdapter extends RepositoryAdapter {
             (bundle as any).prompts = manifest.prompts;
         }
 
+        // Attach MCP servers from manifest for content breakdown display
+        if (manifest?.mcpServers && typeof manifest.mcpServers === 'object') {
+            (bundle as any).mcpServers = manifest.mcpServers;
+        }
+
         return bundle;
     }
 

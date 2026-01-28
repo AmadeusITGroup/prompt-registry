@@ -48,7 +48,33 @@ display:
 #         - "@modelcontextprotocol/server-memory"
 #
 # ============================================================================
-# OPTION 2: Custom MCP server (advanced users)
+# OPTION 2: Remote HTTP/SSE MCP servers
+# ============================================================================
+# Connect to remote MCP servers via HTTP or Server-Sent Events (SSE):
+#
+# mcp:
+#   items:
+#     # HTTP endpoint (request/response)
+#     api-server:
+#       type: http
+#       url: https://api.example.com/mcp
+#       headers:
+#         Authorization: "Bearer ${env:API_TOKEN}"
+#
+#     # SSE endpoint (streaming)
+#     streaming-server:
+#       type: sse
+#       url: https://stream.example.com/mcp/events
+#
+#     # GitHub Copilot's MCP endpoint (requires authentication)
+#     github-copilot:
+#       type: http
+#       url: https://api.githubcopilot.com/mcp/
+#       headers:
+#         Authorization: "Bearer ${env:GITHUB_TOKEN}"
+#
+# ============================================================================
+# OPTION 3: Custom local MCP server (advanced users)
 # ============================================================================
 # Create your own server in mcp-server/server.js, then uncomment:
 #

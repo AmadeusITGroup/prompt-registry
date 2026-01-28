@@ -334,8 +334,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             const yamlContent = await this.fetchUrl(collectionUrl);
             const collection = yaml.load(yamlContent) as CollectionManifest;
 
-            // Count items by kind
-            const breakdown = this.calculateBreakdown(collection.items);
+            // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
+            const mcpServers = collection.mcpServers || collection.mcp?.items;
+
+            // Count items by kind (including MCP servers)
+            const breakdown = this.calculateBreakdown(collection.items, mcpServers);
 
             const bundle: Bundle = {
                 id: collection.id,
@@ -358,6 +361,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             // Store collection file name for download
             (bundle as any).collectionFile = collectionFile;
             (bundle as any).breakdown = breakdown;
+            
+            // Attach MCP servers for pre-installation display
+            if (mcpServers && Object.keys(mcpServers).length > 0) {
+                (bundle as any).mcpServers = mcpServers;
+            }
 
             return bundle;
 
@@ -522,13 +530,14 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Calculate content breakdown from items
      */
-    private calculateBreakdown(items: CollectionItem[]): Record<string, number> {
+    private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
         const breakdown = {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
+            mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
         };
 
         for (const item of items) {
