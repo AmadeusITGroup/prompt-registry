@@ -1202,6 +1202,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-count">${breakdown.skills}</div>
                 <div class="breakdown-label">Skills</div>
             </div>
+            <div class="breakdown-item">
+                <div class="breakdown-icon">🔌</div>
+                <div class="breakdown-count">${breakdown.mcpServers}</div>
+                <div class="breakdown-label">MCP Servers</div>
+            </div>
         </div>
         ` : `
         <div class="info-message">
