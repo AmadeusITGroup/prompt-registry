@@ -98,6 +98,7 @@ export class SkillsAdapter extends RepositoryAdapter {
 
     /**
      * Scan skills/ directory for skill folders with SKILL.md files
+     * Uses parallel fetching with concurrency limit for better performance
      */
     private async scanSkillsDirectory(): Promise<SkillItem[]> {
         const { owner, repo } = this.parseGitHubUrl();
@@ -113,14 +114,26 @@ export class SkillsAdapter extends RepositoryAdapter {
             const directories = contents.filter(item => item.type === 'dir');
             this.logger.debug(`[SkillsAdapter] Found ${directories.length} directories in skills/`);
             
-            for (const dir of directories) {
-                try {
-                    const skill = await this.processSkillDirectory(dir, owner, repo);
+            // Process directories in parallel with concurrency limit
+            const CONCURRENCY_LIMIT = 5;
+            
+            for (let i = 0; i < directories.length; i += CONCURRENCY_LIMIT) {
+                const chunk = directories.slice(i, i + CONCURRENCY_LIMIT);
+                this.logger.debug(`[SkillsAdapter] Processing chunk ${Math.floor(i / CONCURRENCY_LIMIT) + 1}/${Math.ceil(directories.length / CONCURRENCY_LIMIT)}`);
+                
+                const chunkResults = await Promise.all(chunk.map(async (dir) => {
+                    try {
+                        return await this.processSkillDirectory(dir, owner, repo);
+                    } catch (error) {
+                        this.logger.warn(`[SkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`);
+                        return null;
+                    }
+                }));
+                
+                for (const skill of chunkResults) {
                     if (skill) {
                         skills.push(skill);
                     }
-                } catch (error) {
-                    this.logger.warn(`[SkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`);
                 }
             }
             
