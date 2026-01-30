@@ -197,6 +197,29 @@ Instructions for ${skill.name}
             assert.ok(testingBundle);
         });
 
+        test('should handle many skills efficiently', async () => {
+            // Create 10 skills to verify the adapter handles multiple skills correctly
+            const manySkills = Array.from({ length: 10 }, (_, i) => ({
+                id: `skill-${i}`,
+                name: `Skill ${i}`,
+                description: `Description for skill ${i}`,
+            }));
+
+            setupSkillsStructureMocks({ skills: manySkills });
+
+            const adapter = new SkillsAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 10);
+            
+            // Verify all skills were discovered
+            for (let i = 0; i < 10; i++) {
+                const bundle = bundles.find(b => b.name === `Skill ${i}`);
+                assert.ok(bundle, `Should find skill-${i}`);
+                assert.strictEqual(bundle.description, `Description for skill ${i}`);
+            }
+        });
+
         test('should skip directories without SKILL.md', async () => {
             // Mock skills/ directory with one valid skill and one without SKILL.md
             nock('https://api.github.com')
