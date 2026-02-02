@@ -160,6 +160,46 @@ export function createMockInstalledBundle(
 }
 
 /**
+ * Create a mock Bundle (metadata) for testing
+ * 
+ * Simple factory function for creating Bundle objects.
+ * Use this for mocking getBundleDetails() responses.
+ * For more control, use BundleBuilder instead.
+ * 
+ * @param bundleId - Bundle identifier
+ * @param overrides - Optional partial overrides for any field
+ * @returns Complete Bundle object
+ * 
+ * @example
+ * ```typescript
+ * const bundle = createMockBundleDetails('test-bundle');
+ * registryManager.getBundleDetails.resolves(bundle);
+ * ```
+ */
+export function createMockBundleDetails(
+    bundleId: string,
+    overrides?: Partial<Bundle>
+): Bundle {
+    return {
+        id: bundleId,
+        name: `Bundle ${bundleId}`,
+        version: '1.0.0',
+        description: `Test bundle ${bundleId}`,
+        author: TEST_DEFAULTS.AUTHOR,
+        sourceId: 'test-source',
+        environments: [TEST_DEFAULTS.ENVIRONMENT],
+        tags: [TEST_DEFAULTS.TAG],
+        lastUpdated: new Date().toISOString(),
+        size: TEST_DEFAULTS.SIZE,
+        dependencies: [],
+        license: TEST_DEFAULTS.LICENSE,
+        manifestUrl: `https://example.com/${bundleId}/manifest.yml`,
+        downloadUrl: `https://example.com/${bundleId}/bundle.zip`,
+        ...overrides
+    };
+}
+
+/**
  * Create a mock UpdateCheckResult for testing
  * 
  * Provides consistent UpdateCheckResult creation for update-related tests.
@@ -355,4 +395,129 @@ export function testBundleBuilder() {
             });
         });
     });
+}
+
+
+// ===== Filesystem Bundle Helpers =====
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * Options for creating a mock bundle directory on the filesystem
+ */
+export interface MockBundleDirectoryOptions {
+    /** Base path where the bundle directory will be created */
+    basePath: string;
+    /** Bundle identifier */
+    bundleId: string;
+    /** Bundle version (default: '1.0.0') */
+    version?: string;
+    /** Files to include in the bundle */
+    files?: Array<{
+        /** Filename (e.g., 'test.prompt.md') */
+        name: string;
+        /** File content */
+        content: string;
+        /** File type for manifest (default: 'prompt') */
+        type?: string;
+    }>;
+}
+
+/**
+ * Create a mock bundle directory on the filesystem for testing
+ * 
+ * This helper creates a complete bundle directory structure with:
+ * - deployment-manifest.yml with proper prompts array
+ * - All specified files
+ * 
+ * Supports two usage patterns:
+ * 1. Simple: Just bundleId and version (creates single test-prompt.md)
+ * 2. Advanced: Custom files array with types
+ * 
+ * @example Simple usage (for symlink tests):
+ * ```typescript
+ * const bundlePath = createMockBundleDirectory({
+ *     basePath: tempDir,
+ *     bundleId: 'test-bundle',
+ *     version: '1.0.0'
+ * });
+ * ```
+ * 
+ * @example Advanced usage (for file type tests):
+ * ```typescript
+ * const bundlePath = createMockBundleDirectory({
+ *     basePath: tempDir,
+ *     bundleId: 'mixed-bundle',
+ *     files: [
+ *         { name: 'prompt1.prompt.md', content: '# Prompt', type: 'prompt' },
+ *         { name: 'coding.instructions.md', content: '# Instructions', type: 'instructions' }
+ *     ]
+ * });
+ * ```
+ */
+export function createMockBundleDirectory(options: MockBundleDirectoryOptions): string {
+    const { basePath, bundleId, version = '1.0.0', files } = options;
+    
+    // Create bundle path - include version in directory name for uniqueness
+    const bundlePath = path.join(basePath, `${bundleId}-v${version}`);
+    fs.mkdirSync(bundlePath, { recursive: true });
+    
+    // Default to single test prompt if no files specified
+    const bundleFiles = files ?? [
+        { name: 'test-prompt.md', content: `# Test Prompt v${version}`, type: 'prompt' }
+    ];
+    
+    // Create prompts array for manifest
+    const prompts = bundleFiles.map(f => {
+        // Extract id by removing type extensions
+        const id = f.name
+            .replace(/\.(prompt|instructions|agent|chatmode|skill)\.md$/, '')
+            .replace(/\.md$/, '');
+        return {
+            id,
+            name: f.name,
+            file: f.name,
+            type: f.type || 'prompt'
+        };
+    });
+    
+    // Create deployment manifest
+    const manifestContent = `id: ${bundleId}
+version: "${version}"
+prompts:
+${prompts.map(p => `  - id: ${p.id}
+    name: ${p.name}
+    file: ${p.file}
+    type: ${p.type}`).join('\n')}`;
+    
+    fs.writeFileSync(path.join(bundlePath, 'deployment-manifest.yml'), manifestContent);
+    
+    // Create files
+    for (const file of bundleFiles) {
+        fs.writeFileSync(path.join(bundlePath, file.name), file.content);
+    }
+    
+    return bundlePath;
+}
+
+/**
+ * Simplified helper for creating a basic mock bundle
+ * 
+ * Convenience wrapper around createMockBundleDirectory for simple test cases
+ * that just need a bundle with a single prompt file.
+ * 
+ * @param basePath - Directory where bundle will be created
+ * @param bundleId - Bundle identifier
+ * @param version - Bundle version
+ * @returns Path to created bundle directory
+ * 
+ * @example
+ * ```typescript
+ * const bundlePath = createSimpleMockBundle(tempDir, 'test-bundle', '1.0.0');
+ * await service.syncBundle('test-bundle', bundlePath);
+ * ```
+ */
+export function createSimpleMockBundle(basePath: string, bundleId: string, version: string): string {
+    return createMockBundleDirectory({ basePath, bundleId, version });
 }

@@ -10,6 +10,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import { UserScopeService } from '../../src/services/UserScopeService';
+import { createSimpleMockBundle } from '../helpers/bundleTestHelpers';
 
 suite('UserScopeService', () => {
     let service: UserScopeService;
@@ -488,6 +489,7 @@ prompts:
                 assert.ok(error.message.length > 0, 'Error message should not be empty');
             }
         });
+    });
 
     suite('Custom Data Directory Support', () => {
         test('should handle profile path with User directory', async () => {
@@ -644,6 +646,7 @@ prompts:
                 `Should prefer storage.json over filesystem heuristic, got: ${status.copilotDir}`
             );
         });
+    });
 
     suite('WSL Support', () => {
         test('should detect WSL remote and return Windows mount path when globalStorage is on /mnt/c', async () => {
@@ -858,6 +861,142 @@ prompts:
         });
     });
 
+    suite('Broken Symlink Handling', () => {
+        test('should detect and remove broken symlinks when creating new symlinks', async () => {
+            // This test verifies the fix for the issue where fs.existsSync() returns false
+            // for broken symlinks, causing reinstallation to fail
+            
+            const bundleId = 'broken-symlink-test-bundle';
+            const bundlePath = createSimpleMockBundle(tempDir, bundleId, '1.0.0');
+            
+            try {
+                // First sync should succeed
+                await service.syncBundle(bundleId, bundlePath);
+                
+                const status = await service.getStatus();
+                const initialSyncedFiles = status.syncedFiles;
+                
+                // Create a new bundle version
+                const newBundlePath = createSimpleMockBundle(tempDir, bundleId, '2.0.0');
+                
+                // Remove the old bundle directory (this makes the symlink broken)
+                fs.rmSync(bundlePath, { recursive: true, force: true });
+                
+                // Sync the new bundle - this should handle the broken symlink
+                await service.syncBundle(bundleId, newBundlePath);
+                
+                // Verify the sync succeeded
+                const newStatus = await service.getStatus();
+                assert.ok(newStatus.syncedFiles >= initialSyncedFiles, 
+                    'Should have synced files after handling broken symlink');
+                
+            } catch (error: any) {
+                // If we get EEXIST error, the broken symlink handling failed
+                if (error.code === 'EEXIST') {
+                    assert.fail('Should handle broken symlinks without EEXIST error');
+                }
+                // Only accept platform-specific symlink errors
+                if (error.code === 'EPERM' || error.code === 'ENOTSUP') {
+                    assert.ok(true, 'Symlinks not supported on this platform');
+                } else {
+                    throw error;
+                }
+            }
+        });
+
+        test('should correctly identify broken vs valid symlinks', async () => {
+            const validTarget = path.join(tempDir, 'valid-target.txt');
+            const validSymlink = path.join(tempDir, 'valid-symlink.txt');
+            
+            fs.writeFileSync(validTarget, 'valid content');
+            
+            try {
+                fs.symlinkSync(validTarget, validSymlink);
+                
+                // Create a broken symlink by creating symlink then removing target
+                const brokenTarget = path.join(tempDir, 'broken-target.txt');
+                const brokenSymlink = path.join(tempDir, 'broken-symlink.txt');
+                
+                fs.writeFileSync(brokenTarget, 'will be deleted');
+                fs.symlinkSync(brokenTarget, brokenSymlink);
+                fs.unlinkSync(brokenTarget);
+                
+                // Verify fs.existsSync behavior (the root cause of the bug)
+                assert.strictEqual(fs.existsSync(validSymlink), true, 
+                    'fs.existsSync should return true for valid symlink');
+                assert.strictEqual(fs.existsSync(brokenSymlink), false, 
+                    'fs.existsSync returns false for broken symlink (this is the bug)');
+                
+                // Verify lstat can still detect broken symlinks
+                const brokenStats = fs.lstatSync(brokenSymlink);
+                assert.strictEqual(brokenStats.isSymbolicLink(), true, 
+                    'lstat should detect broken symlink');
+                
+            } catch (error: any) {
+                if (error.code === 'EPERM' || error.code === 'ENOTSUP') {
+                    assert.ok(true, 'Symlinks not supported on this platform');
+                } else {
+                    throw error;
+                }
+            }
+        });
+
+        test('should update symlink when pointing to wrong target (old version)', async () => {
+            const bundleId = 'version-update-test-bundle';
+            const v1BundlePath = createSimpleMockBundle(tempDir, bundleId, '1.0.0');
+            const v2BundlePath = createSimpleMockBundle(tempDir, bundleId, '2.0.0');
+            
+            try {
+                await service.syncBundle(bundleId, v1BundlePath);
+                await service.syncBundle(bundleId, v2BundlePath);
+                
+                const status = await service.getStatus();
+                
+                // Verify the symlink points to v2
+                if (status.files.length > 0) {
+                    const promptsDir = status.copilotDir;
+                    for (const file of status.files) {
+                        const symlinkPath = path.join(promptsDir, file);
+                        if (fs.existsSync(symlinkPath)) {
+                            const target = fs.readlinkSync(symlinkPath);
+                            assert.ok(
+                                target.includes('-v2.0.0'),
+                                `Symlink should point to v2, but points to: ${target}`
+                            );
+                        }
+                    }
+                }
+                
+            } catch (error: any) {
+                if (error.code === 'EPERM' || error.code === 'ENOTSUP') {
+                    assert.ok(true, 'Symlinks not supported on this platform');
+                } else {
+                    throw error;
+                }
+            }
+        });
+
+        test('should handle repeated syncs gracefully', async () => {
+            const bundleId = 'repeated-sync-test-bundle';
+            const bundlePath = createSimpleMockBundle(tempDir, bundleId, '1.0.0');
+            
+            try {
+                await service.syncBundle(bundleId, bundlePath);
+                const status1 = await service.getStatus();
+                
+                await service.syncBundle(bundleId, bundlePath);
+                const status2 = await service.getStatus();
+                
+                assert.strictEqual(status1.syncedFiles, status2.syncedFiles, 
+                    'Synced file count should remain the same');
+                
+            } catch (error: any) {
+                if (error.code === 'EPERM' || error.code === 'ENOTSUP') {
+                    assert.ok(true, 'Symlinks not supported on this platform');
+                } else {
+                    throw error;
+                }
+            }
+        });
     });
-});
 });

@@ -15,6 +15,7 @@ import { BundleDefinition, BundleDefinitionInfo, LocalOlafSkillManifest, SkillIn
 import { Logger } from '../utils/logger';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
 import { OlafRuntimeManager } from '../services/OlafRuntimeManager';
+import { checkPathExists } from '../utils/symlinkUtils';
 
 // Promisified fs functions
 const readdir = promisify(fs.readdir);
@@ -1530,12 +1531,18 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 const skillLinkPath = path.join(sourceSkillsPath, skill.folderName);
                 
                 try {
-                    // Remove existing link if it exists
-                    if (fs.existsSync(skillLinkPath)) {
-                        const stats = fs.lstatSync(skillLinkPath);
-                        if (stats.isSymbolicLink()) {
+                    // Check for existing link using checkPathExists to detect broken symlinks
+                    // fs.existsSync() returns false for broken symlinks, causing EEXIST errors
+                    const existingEntry = await checkPathExists(skillLinkPath);
+                    
+                    if (existingEntry.exists) {
+                        if (existingEntry.isSymbolicLink) {
                             fs.unlinkSync(skillLinkPath);
-                            this.logger.info(`[LocalOlafAdapter] Removed existing symbolic link: ${skillLinkPath}`);
+                            if (existingEntry.isBroken) {
+                                this.logger.debug(`[LocalOlafAdapter] Removed broken symbolic link: ${skillLinkPath}`);
+                            } else {
+                                this.logger.info(`[LocalOlafAdapter] Removed existing symbolic link: ${skillLinkPath}`);
+                            }
                         } else {
                             this.logger.warn(`[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`);
                             continue;
@@ -1593,17 +1600,24 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 const skillLinkPath = path.join(sourceSkillsPath, skill.folderName);
                 
                 try {
-                    if (fs.existsSync(skillLinkPath)) {
-                        const stats = fs.lstatSync(skillLinkPath);
-                        if (stats.isSymbolicLink()) {
-                            fs.unlinkSync(skillLinkPath);
-                            removedCount++;
-                            this.logger.info(`[LocalOlafAdapter] Removed symbolic link: ${skillLinkPath}`);
+                    // Use checkPathExists to detect broken symlinks (fs.existsSync returns false for broken symlinks)
+                    const existingEntry = await checkPathExists(skillLinkPath);
+                    
+                    if (!existingEntry.exists) {
+                        this.logger.debug(`[LocalOlafAdapter] Symbolic link does not exist: ${skillLinkPath}`);
+                        continue;
+                    }
+                    
+                    if (existingEntry.isSymbolicLink) {
+                        fs.unlinkSync(skillLinkPath);
+                        removedCount++;
+                        if (existingEntry.isBroken) {
+                            this.logger.info(`[LocalOlafAdapter] Removed broken symbolic link: ${skillLinkPath}`);
                         } else {
-                            this.logger.warn(`[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`);
+                            this.logger.info(`[LocalOlafAdapter] Removed symbolic link: ${skillLinkPath}`);
                         }
                     } else {
-                        this.logger.debug(`[LocalOlafAdapter] Symbolic link does not exist: ${skillLinkPath}`);
+                        this.logger.warn(`[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`);
                     }
                 } catch (error) {
                     this.logger.error(`[LocalOlafAdapter] Failed to remove symbolic link for skill ${skill.folderName}: ${error}`);

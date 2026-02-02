@@ -25,6 +25,7 @@ import { RegistryManager } from '../../src/services/RegistryManager';
 import { HubManager } from '../../src/services/HubManager';
 import { setupTreeProviderMocks, isValidContextValue, VALID_CONTEXT_PATTERNS_FOR_MENUS, validateContextPatterns } from '../helpers/uiTestHelpers';
 import { InstalledBundle } from '../../src/types/registry';
+import { createMockBundleDetails } from '../helpers/bundleTestHelpers';
 
 /**
  * All base context values that should be recognized by package.json.
@@ -75,28 +76,6 @@ suite('E2E: Context Menu Regression Prevention', () => {
         }
         
         return bundle;
-    }
-
-    /**
-     * Creates mock bundle details for the given bundle ID.
-     */
-    function createMockBundleDetails(bundleId: string) {
-        return {
-            id: bundleId,
-            name: `Bundle ${bundleId}`,
-            version: '1.0.0',
-            description: `Test bundle ${bundleId}`,
-            author: 'Test Author',
-            sourceId: 'test-source',
-            environments: [],
-            tags: [],
-            lastUpdated: new Date().toISOString(),
-            size: '1MB',
-            dependencies: [],
-            license: 'MIT',
-            manifestUrl: 'https://example.com/manifest',
-            downloadUrl: 'https://example.com/download'
-        };
     }
 
     /**

@@ -30,6 +30,7 @@ import { LockfileFileEntry, LockfileSourceEntry } from '../types/lockfile';
 import { calculateFileChecksum, ensureDirectory } from '../utils/fileIntegrityService';
 import { getWorkspaceRoot } from '../utils/scopeSelectionUI';
 import { determineFileType, getRepositoryTargetDirectory, getTargetFileName, normalizePromptId } from '../utils/copilotFileTypeUtils';
+import { checkPathExists } from '../utils/symlinkUtils';
 
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
@@ -248,15 +249,22 @@ export class BundleInstaller {
                 // Copy skill files directly to ~/.copilot/skills/{skill-name}
                 const skillSourceDir = path.join(extractDir, 'skills', skillName);
                 if (fs.existsSync(skillSourceDir)) {
-                    // Check for existing skill and warn user
-                    if (fs.existsSync(installDir)) {
-                        const existingIsSymlink = await this.isSymlink(installDir);
-                        const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
-                        if (!shouldOverwrite) {
-                            await this.cleanupTempDir(tempDir);
-                            throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                    // Check for existing skill using checkPathExists to detect broken symlinks
+                    const existingEntry = await checkPathExists(installDir);
+                    if (existingEntry.exists) {
+                        // For broken symlinks, we can safely remove without prompting
+                        if (existingEntry.isBroken) {
+                            await fs.promises.unlink(installDir);
+                            this.logger.debug(`Removed broken symlink: ${installDir}`);
+                        } else {
+                            const existingIsSymlink = existingEntry.isSymbolicLink;
+                            const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                            if (!shouldOverwrite) {
+                                await this.cleanupTempDir(tempDir);
+                                throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                            }
+                            await this.removeDirectory(installDir);
                         }
-                        await this.removeDirectory(installDir);
                     }
                     await this.copyDirectory(skillSourceDir, installDir);
                 } else {
@@ -995,26 +1003,14 @@ export class BundleInstaller {
     }
 
     /**
-     * Check if a path is a symbolic link
-     */
-    private async isSymlink(targetPath: string): Promise<boolean> {
-        try {
-            const stats = await lstat(targetPath);
-            return stats.isSymbolicLink();
-        } catch {
-            return false;
-        }
-    }
-
-    /**
      * Prompt user to confirm overwriting an existing skill
      * @param skillName Name of the skill
      * @param existingPath Path to the existing skill
-     * @param isSymlink Whether the existing skill is a symlink
+     * @param existingIsSymlink Whether the existing skill is a symlink
      * @returns True if user confirms overwrite, false otherwise
      */
-    private async promptOverwriteSkill(skillName: string, existingPath: string, isSymlink: boolean): Promise<boolean> {
-        const symlinkInfo = isSymlink ? ' (symlink)' : '';
+    private async promptOverwriteSkill(skillName: string, existingPath: string, existingIsSymlink: boolean): Promise<boolean> {
+        const symlinkInfo = existingIsSymlink ? ' (symlink)' : '';
         const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;
         
         const result = await vscode.window.showWarningMessage(
@@ -1050,21 +1046,30 @@ export class BundleInstaller {
             
             const installDir = path.join(skillsDir, skillName);
             
-            // Check for existing skill and warn user
-            if (fs.existsSync(installDir)) {
-                const existingIsSymlink = await this.isSymlink(installDir);
-                const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
-                if (!shouldOverwrite) {
-                    throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
-                }
+            // Check for existing skill using checkPathExists to detect broken symlinks
+            // fs.existsSync() returns false for broken symlinks, which would cause EEXIST errors
+            const existingEntry = await checkPathExists(installDir);
+            if (existingEntry.exists) {
+                const existingIsSymlink = existingEntry.isSymbolicLink;
                 
-                // Remove existing (symlink or directory)
-                if (existingIsSymlink) {
+                // For broken symlinks, we can safely remove without prompting
+                if (existingEntry.isBroken) {
                     await unlink(installDir);
-                    this.logger.debug(`Removed existing symlink: ${installDir}`);
+                    this.logger.debug(`Removed broken symlink: ${installDir}`);
                 } else {
-                    await this.removeDirectory(installDir);
-                    this.logger.debug(`Removed existing directory: ${installDir}`);
+                    const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                    if (!shouldOverwrite) {
+                        throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                    }
+                    
+                    // Remove existing (symlink or directory)
+                    if (existingIsSymlink) {
+                        await unlink(installDir);
+                        this.logger.debug(`Removed existing symlink: ${installDir}`);
+                    } else {
+                        await this.removeDirectory(installDir);
+                        this.logger.debug(`Removed existing directory: ${installDir}`);
+                    }
                 }
             }
             
@@ -1134,17 +1139,28 @@ export class BundleInstaller {
         this.logger.info(`Uninstalling skill symlink: ${installed.bundleId}`);
 
         try {
-            if (!installed.installPath || !fs.existsSync(installed.installPath)) {
+            if (!installed.installPath) {
+                this.logger.debug(`Skill path not specified: ${installed.bundleId}`);
+                return;
+            }
+
+            // Use checkPathExists to detect broken symlinks
+            // fs.existsSync() returns false for broken symlinks, leaving orphaned broken symlinks
+            const existingEntry = await checkPathExists(installed.installPath);
+            
+            if (!existingEntry.exists) {
                 this.logger.debug(`Skill path does not exist: ${installed.installPath}`);
                 return;
             }
 
-            const isLink = await this.isSymlink(installed.installPath);
-            
-            if (isLink) {
-                // Remove only the symlink, not the target
+            if (existingEntry.isSymbolicLink) {
+                // Remove the symlink (works for both valid and broken symlinks)
                 await unlink(installed.installPath);
-                this.logger.info(`Removed symlink: ${installed.installPath}`);
+                if (existingEntry.isBroken) {
+                    this.logger.info(`Removed broken symlink: ${installed.installPath}`);
+                } else {
+                    this.logger.info(`Removed symlink: ${installed.installPath}`);
+                }
             } else {
                 // It's a regular directory (fallback from failed symlink), remove it
                 await this.removeDirectory(installed.installPath);
