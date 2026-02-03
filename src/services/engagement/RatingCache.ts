@@ -169,14 +169,17 @@ export class RatingCache {
     /**
      * Refresh cache from RatingService for a specific hub
      * This is async but updates the cache for synchronous access
+     * @param hubId Hub identifier
+     * @param ratingsUrl URL to ratings.json
+     * @param sourceIdMap Map from ratings.json source_id to actual extension source ID
      */
-    async refreshFromHub(hubId: string, ratingsUrl: string): Promise<void> {
+    async refreshFromHub(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
         // Prevent concurrent refreshes
         if (this.refreshPromise) {
             return this.refreshPromise;
         }
 
-        this.refreshPromise = this.doRefresh(hubId, ratingsUrl);
+        this.refreshPromise = this.doRefresh(hubId, ratingsUrl, sourceIdMap);
         try {
             await this.refreshPromise;
         } finally {
@@ -187,7 +190,7 @@ export class RatingCache {
     /**
      * Internal refresh implementation
      */
-    private async doRefresh(hubId: string, ratingsUrl: string): Promise<void> {
+    private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
         try {
             const ratingService = RatingService.getInstance();
             const ratingsData = await ratingService.fetchRatings(ratingsUrl);
@@ -201,9 +204,11 @@ export class RatingCache {
             const now = Date.now();
             const bundles = ratingsData.bundles;
             for (const [bundleId, rating] of Object.entries(bundles)) {
-                const key = this.makeKey(rating.sourceId, bundleId);
+                // Map the sourceId from ratings.json to the actual extension source ID
+                const actualSourceId = sourceIdMap?.get(rating.sourceId) || rating.sourceId;
+                const key = this.makeKey(actualSourceId, bundleId);
                 this.cache.set(key, {
-                    sourceId: rating.sourceId,
+                    sourceId: actualSourceId,
                     bundleId,
                     starRating: rating.starRating,
                     wilsonScore: rating.wilsonScore,

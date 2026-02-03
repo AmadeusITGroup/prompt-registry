@@ -811,11 +811,25 @@ export class PromptRegistryExtension {
                     try {
                         const hubResult = await this.hubManager.loadHub(hub.id);
                         
+                        // Build source ID mapping for this hub
+                        // Map from ratings.json source_id to actual extension source ID
+                        const sourceIdMap = new Map<string, string>();
+                        const allSources = await this.registryManager.listSources();
+                        const hubPrefix = `hub-${hub.id}-`;
+                        for (const source of allSources) {
+                            if (source.id.startsWith(hubPrefix)) {
+                                // Extract the short source ID from the full hub-prefixed source ID
+                                // e.g., "hub-awesome-copilot-hub-099578-awesome-copilot-official" -> "awesome-copilot-official"
+                                const shortSourceId = source.id.substring(hubPrefix.length);
+                                sourceIdMap.set(shortSourceId, source.id);
+                            }
+                        }
+                        
                         // Load ratings
                         const ratingsUrl = hubResult.config?.engagement?.ratings?.ratingsUrl;
                         if (ratingsUrl) {
                             this.logger.debug(`Loading ratings from hub ${hub.id}: ${ratingsUrl}`);
-                            await ratingCache.refreshFromHub(hub.id, ratingsUrl);
+                            await ratingCache.refreshFromHub(hub.id, ratingsUrl, sourceIdMap);
                         }
                         
                         // Load feedbacks
