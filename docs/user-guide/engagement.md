@@ -1,6 +1,6 @@
-# Engagement System: Ratings, Voting, and Feedback
+# Engagement System: Ratings and Feedback
 
-The Prompt Registry includes an engagement system that allows users to rate bundles, provide feedback, and (for hub maintainers) collect community votes via GitHub Discussions.
+The Prompt Registry includes an engagement system that allows users to rate bundles and provide feedback.
 
 ## Quick Start: Providing Feedback
 
@@ -31,47 +31,13 @@ If a hub provides ratings data, you'll see ratings displayed:
 - **Tree View**: Ratings appear next to bundle versions (e.g., `v1.0.0  ★ 4.2`)
 - **Marketplace**: Ratings appear on bundle cards
 
-Ratings are computed from community votes and refreshed automatically.
+Ratings are computed from user feedback and refreshed automatically.
 
 ---
 
-## For Hub Maintainers: Setting Up Community Voting
+## For Hub Maintainers: Setting Up Rating Computation
 
-Hub maintainers can enable community voting using GitHub Discussions. This allows users to vote on bundles using GitHub's reaction system (👍/👎).
-
-### Step 1: Enable GitHub Discussions
-
-1. Go to your hub's GitHub repository
-2. Navigate to **Settings** → **Features**
-3. Enable **Discussions**
-
-### Step 2: Create Discussions for Collections
-
-For each bundle/collection you want to enable voting on:
-
-1. Create a new Discussion in your repository
-2. Note the **discussion number** (visible in the URL, e.g., `/discussions/42`)
-3. Optionally, add comments for individual resources within the bundle
-
-### Step 3: Create `collections.yaml`
-
-Create a `collections.yaml` file in your repository that maps bundles to discussions:
-
-```yaml
-repository: "your-org/your-hub-repo"
-collections:
-  - id: "travel-prompts"
-    discussion_number: 42
-    resources:
-      - id: "booking-agent"
-        comment_id: 101
-      - id: "search-helper"
-        comment_id: 102
-  - id: "dev-tools"
-    discussion_number: 43
-```
-
-### Step 4: Set Up the GitHub Action
+### Step 1: Set Up the GitHub Action
 
 Download the [compute-ratings.yml](../assets/compute-ratings.yml) workflow file and add it to your hub repository at `.github/workflows/compute-ratings.yml`.
 
@@ -84,7 +50,7 @@ The workflow:
 
 > **Note**: This workflow should be added to your **hub repository**, not to the prompt-registry extension repository.
 
-### Step 5: Configure Hub Engagement
+### Step 2: Configure Hub Engagement
 
 Add engagement configuration to your `hub.yaml`:
 
@@ -98,9 +64,6 @@ metadata:
 
 engagement:
   enabled: true
-  backend:
-    type: "github-discussions"
-    repository: "your-org/your-hub-repo"
   ratings:
     enabled: true
     ratingsUrl: "https://raw.githubusercontent.com/your-org/your-hub-repo/main/ratings.json"
@@ -112,7 +75,7 @@ profiles:
   # ... your profiles
 ```
 
-### Step 6: Verify Setup
+### Step 3: Verify Setup
 
 1. Run the GitHub Action manually (Actions → Compute Ratings → Run workflow)
 2. Check that `ratings.json` is generated and committed
@@ -139,7 +102,7 @@ Ratings use the **Wilson Score** algorithm, which provides statistically robust 
 ## Privacy
 
 - **Local feedback**: Stored only on your machine in the extension's storage
-- **GitHub voting**: Requires GitHub authentication; votes are public reactions
+- **GitHub feedback**: When configured, feedback can be posted to GitHub Discussions
 - **Telemetry**: Disabled by default; can be enabled per-hub
 
 ---
@@ -151,15 +114,6 @@ Ratings use the **Wilson Score** algorithm, which provides statistically robust 
 1. Verify the hub has `engagement.ratings.ratingsUrl` configured
 2. Check that the `ratings.json` URL is accessible
 3. Try reloading VS Code to refresh the rating cache
-
-### Voting commands failing
-
-The voting commands require:
-1. GitHub authentication (you'll be prompted to sign in)
-2. A valid discussion number
-3. The hub must have GitHub Discussions enabled
-
-If you see "Discussion not found" errors, the discussion may not exist or you may not have access.
 
 ### Feedback not persisting
 

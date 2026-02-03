@@ -170,41 +170,24 @@ This is useful when bundle files have been manually deleted but the lockfile sti
 | `promptregistry.validateAccess` | Validate Repository Access | Validate access to a repository |
 | `promptregistry.forceGitHubAuth` | Force GitHub Authentication | Force re-authentication with GitHub |
 
-## Engagement (Feedback & Voting)
+## Engagement (Feedback)
 
 | Command | Title | Description |
 |---------|-------|-------------|
 | `promptRegistry.feedback` | Rate & Feedback | Submit feedback with star rating, optional comment, and issue redirect |
-| `promptRegistry.submitFeedback` | Submit Feedback | Alias for `promptRegistry.feedback` |
-| `promptRegistry.voteUpCollection` | Vote Up Collection | Upvote a collection via GitHub Discussions |
-| `promptRegistry.voteDownCollection` | Vote Down Collection | Downvote a collection via GitHub Discussions |
-| `promptRegistry.voteUpResource` | Vote Up Resource | Upvote a resource via GitHub Discussions |
-| `promptRegistry.voteDownResource` | Vote Down Resource | Downvote a resource via GitHub Discussions |
-| `promptRegistry.toggleVote` | Toggle Vote | Toggle your vote on a collection |
-| `promptRegistry.removeVote` | Remove Vote | Remove your vote from a collection |
 
-### Feedback Commands
+### Feedback Command
 
 The unified feedback command (`promptRegistry.feedback`) provides a streamlined flow:
 1. **Star Rating (1-5)** — Rate the bundle quality
-2. **Binary Feedback** — Choose from:
-   - 👍 Works great! (+1)
-   - 👎 Couldn't make it work (-1)
-   - � Report issue/suggestion — Opens GitHub Issues with pre-filled template
-   - ⏭️ Skip — Submit rating only
+2. **Optional Comment** — Add a short message about your experience
+3. **Action** — Choose what to do next:
+   - 📝 Report issue/suggestion — Opens GitHub Issues for detailed feedback
+   - ⏭️ Skip — Submit rating and comment only
 
 For awesome-copilot sources, terminology uses "Skill" instead of "Bundle" and version is omitted (pulled from main branch).
 
 Feedback is stored via the EngagementService and synced to GitHub Discussions when configured.
-
-### Voting Commands
-
-Voting requires:
-1. GitHub authentication
-2. A hub with GitHub Discussions enabled
-3. The bundle must have a `discussionNumber` configured
-
-See [Engagement Guide](../user-guide/engagement.md) for setup instructions.
 
 ## Utilities
 
