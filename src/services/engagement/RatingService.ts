@@ -48,6 +48,7 @@ export interface CollectionRating {
     bayesian_score: number;
     aggregated_score: number;
     star_rating: number;
+    rating_count: number;
     confidence: string;
     resources: Record<string, {
         up: number;
@@ -167,7 +168,7 @@ export class RatingService {
                 downvotes: collection.down,
                 wilsonScore: collection.wilson_score,
                 starRating: collection.star_rating,
-                totalVotes: collection.up + collection.down,
+                totalVotes: collection.rating_count || 0,
                 lastUpdated: collectionsData.generated_at,
                 discussionNumber: collection.discussion_number,
                 confidence: collection.confidence,

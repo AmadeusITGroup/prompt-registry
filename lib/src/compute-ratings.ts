@@ -77,6 +77,7 @@ export interface CollectionRating {
     bayesian_score: number;
     aggregated_score: number;
     star_rating: number;
+    rating_count: number;
     confidence: string;
     resources: Record<string, ResourceRating>;
 }
@@ -665,6 +666,7 @@ async function computeCollectionRating(
     
     // Compute rating based on star ratings only (5-star system)
     let starRating: number;
+    let ratingCount: number;
     let confidence: string;
     let wilsonScore: number;
     let bayesianScore: number;
@@ -673,6 +675,7 @@ async function computeCollectionRating(
         // Use star ratings from comments (5-star system)
         const avgResult = computeAverageStarRating(starRatings);
         starRating = avgResult.average;
+        ratingCount = avgResult.count;
         confidence = avgResult.confidence;
         // Convert star rating to normalized score (0-1 scale)
         wilsonScore = (starRating - 1) / 4; // Maps 1-5 to 0-1
@@ -681,6 +684,7 @@ async function computeCollectionRating(
     } else {
         // No ratings yet - use neutral defaults
         starRating = 0;
+        ratingCount = 0;
         confidence = 'low';
         wilsonScore = 0;
         bayesianScore = 0;
@@ -724,6 +728,7 @@ async function computeCollectionRating(
         bayesian_score: Math.round(bayesianScore * 1000) / 1000,
         aggregated_score: Math.round(aggregatedScore * 1000) / 1000,
         star_rating: starRating,
+        rating_count: ratingCount,
         confidence,
         resources
     };
