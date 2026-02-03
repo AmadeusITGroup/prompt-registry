@@ -10,6 +10,7 @@ import { RegistrySource, Profile, Bundle, InstalledBundle } from '../types/regis
 import { Logger } from '../utils/logger';
 import { UpdateCheckResult } from '../services/UpdateCache';
 import { UI_CONSTANTS } from '../utils/constants';
+import { RatingCache, RatingDisplay } from '../services/engagement/RatingCache';
 
 /**
  * Tree item types
@@ -62,7 +63,8 @@ export class RegistryTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly type: TreeItemType,
         public readonly data?: any,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None,
+        public readonly ratingDisplay?: RatingDisplay
     ) {
         super(label, collapsibleState);
         
@@ -170,7 +172,12 @@ export class RegistryTreeItem extends vscode.TreeItem {
             
             case TreeItemType.BUNDLE: {
                 const bundle = this.data as Bundle;
-                return bundle.version;
+                const version = bundle.version;
+                // Append rating if available
+                if (this.ratingDisplay) {
+                    return `${version} ${this.ratingDisplay.text}`;
+                }
+                return version;
             }
             
             default:
@@ -247,12 +254,14 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     private disposables: vscode.Disposable[] = [];
 
     private viewMode: 'all' | 'favorites' = 'all';
+    private readonly ratingCache: RatingCache;
 
     constructor(
         private readonly registryManager: RegistryManager,
         private readonly hubManager: HubManager
     ) {
         this.logger = Logger.getInstance();
+        this.ratingCache = RatingCache.getInstance();
         
         // Listen to registry events and refresh tree
         this.disposables.push(
@@ -285,7 +294,10 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
             hubManager.onHubImported(() => this.refresh()),
             hubManager.onHubDeleted(() => this.refresh()),
             hubManager.onHubSynced(() => this.refresh()),
-            hubManager.onFavoritesChanged(() => this.refresh())
+            hubManager.onFavoritesChanged(() => this.refresh()),
+
+            // Rating cache updates
+            this.ratingCache.onCacheUpdated(() => this.refresh())
         );
     }
 
@@ -409,19 +421,29 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     }
 
     /**
-     * Set version display for tree item with update information
+     * Set version display for tree items
      * Shows both installed and available versions when update exists
+     * Also includes rating if available
      */
-    private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string): void {
+    private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string, sourceId?: string): void {
         const updateInfo = this.getUpdateInfo(bundleId);
+        const ratingDisplay = sourceId ? this.ratingCache.getRatingDisplay(sourceId, bundleId) : undefined;
 
+        let description: string;
         if (updateInfo) {
             // Show both versions when update is available
-            treeItem.description = `v${currentVersion} → v${updateInfo.latestVersion}`;
+            description = `v${currentVersion} → v${updateInfo.latestVersion}`;
         } else {
             // Show only current version
-            treeItem.description = `v${currentVersion}`;
+            description = `v${currentVersion}`;
         }
+
+        // Append rating if available
+        if (ratingDisplay) {
+            description = `${description}  ${ratingDisplay.text}`;
+        }
+
+        treeItem.description = description;
     }
 
     /**
@@ -949,7 +971,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     );
 
                     // Set version display with update information
-                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
+                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version, bundle.sourceId);
 
                     // Set context value to enable/disable update menu option and auto-update toggle
                     treeItem.contextValue = this.getContextValue(contextValue, bundle);
@@ -983,7 +1005,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     );
 
                     // Set version display with update information
-                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
+                    this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version, bundle.sourceId);
 
                     // Set context value for menu actions
                     treeItem.contextValue = this.getContextValue(contextValue, bundle);
