@@ -229,12 +229,12 @@ export class FeedbackCommands {
                 
                 // Match pattern: https://github.com/org/repo/skills/skill-name
                 // or: https://github.com/org/repo/tree/branch/skills/skill-name
-                const githubMatch = issueUrl.match(/^(https?:\/\/github\.com\/[^\/]+\/[^\/]+)/);
+                const githubMatch = issueUrl.match(/^(https?:\/\/github\.com\/[^/]+\/[^/]+)/);
                 if (githubMatch) {
                     const baseRepoUrl = githubMatch[1];
                     
                     // Check if there's a skills path after the base repo URL
-                    const skillsMatch = issueUrl.match(/\/skills\/([^\/]+)/);
+                    const skillsMatch = issueUrl.match(/\/skills\/([^/]+)/);
                     if (skillsMatch) {
                         skillPath = `skills/${skillsMatch[1]}`;
                         this.logger.info(`[openIssueTracker] Extracted skill path: ${skillPath}`);

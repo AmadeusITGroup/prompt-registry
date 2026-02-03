@@ -11,6 +11,7 @@ Marketplace and registry for Copilot prompt bundles in VS Code.
 - **[Repository Installation](user-guide/repository-installation.md)** — Team-shared configurations via Git
 - **[Sources](user-guide/sources.md)** — Managing bundle sources
 - **[Profiles and Hubs](user-guide/profiles-and-hubs.md)** — Profile and Hub management
+- **[Engagement](user-guide/engagement.md)** — Ratings, voting, and feedback
 - **[Configuration](user-guide/configuration.md)** — Extension settings
 - **[Troubleshooting](user-guide/troubleshooting.md)** — Common issues
 
