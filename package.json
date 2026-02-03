@@ -421,6 +421,66 @@
         "title": "Clean Up Stale Repository Bundles",
         "category": "Prompt Registry",
         "icon": "$(trash)"
+      },
+      {
+        "command": "promptRegistry.voteUpCollection",
+        "title": "Vote Up Collection",
+        "category": "Prompt Registry",
+        "icon": "$(thumbsup)"
+      },
+      {
+        "command": "promptRegistry.voteDownCollection",
+        "title": "Vote Down Collection",
+        "category": "Prompt Registry",
+        "icon": "$(thumbsdown)"
+      },
+      {
+        "command": "promptRegistry.voteUpResource",
+        "title": "Vote Up Resource",
+        "category": "Prompt Registry",
+        "icon": "$(thumbsup)"
+      },
+      {
+        "command": "promptRegistry.voteDownResource",
+        "title": "Vote Down Resource",
+        "category": "Prompt Registry",
+        "icon": "$(thumbsdown)"
+      },
+      {
+        "command": "promptRegistry.toggleVote",
+        "title": "Toggle Vote",
+        "category": "Prompt Registry",
+        "icon": "$(reactions)"
+      },
+      {
+        "command": "promptRegistry.removeVote",
+        "title": "Remove Vote",
+        "category": "Prompt Registry",
+        "icon": "$(close)"
+      },
+      {
+        "command": "promptRegistry.submitFeedback",
+        "title": "Submit Feedback",
+        "category": "Prompt Registry",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "promptRegistry.submitFeedbackWithRating",
+        "title": "Submit Feedback with Rating",
+        "category": "Prompt Registry",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "promptRegistry.quickFeedback",
+        "title": "Quick Feedback",
+        "category": "Prompt Registry",
+        "icon": "$(feedback)"
+      },
+      {
+        "command": "promptRegistry.feedback",
+        "title": "Rate & Feedback",
+        "category": "Prompt Registry",
+        "icon": "$(star-full)"
       }
     ],
     "viewsContainers": {
@@ -632,6 +692,11 @@
           "group": "bundleActions@5"
         },
         {
+          "command": "promptRegistry.feedback",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
+          "group": "engagement@1"
+        },
+        {
           "command": "promptRegistry.moveToRepositoryCommit",
           "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle.*_user$/",
           "group": "scopeActions@1"
@@ -812,6 +877,7 @@
     "@vscode/vsce": "^2.15.0",
     "adm-zip": "^0.5.16",
     "c8": "^10.1.3",
+    "copy-webpack-plugin": "^13.0.1",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^3.23.2",
