@@ -663,29 +663,28 @@ async function computeCollectionRating(
     const collectionUp = discussionReactions['+1'];
     const collectionDown = discussionReactions['-1'];
     
-    // Compute rating based on star ratings if available, otherwise use reactions
+    // Compute rating based on star ratings only (5-star system)
     let starRating: number;
     let confidence: string;
     let wilsonScore: number;
     let bayesianScore: number;
     
     if (starRatings.length > 0) {
-        // Use star ratings from comments (new system)
+        // Use star ratings from comments (5-star system)
         const avgResult = computeAverageStarRating(starRatings);
         starRating = avgResult.average;
         confidence = avgResult.confidence;
-        // Convert star rating to wilson-like score (0-1 scale)
+        // Convert star rating to normalized score (0-1 scale)
         wilsonScore = (starRating - 1) / 4; // Maps 1-5 to 0-1
         bayesianScore = starRating;
         console.log(`    Found ${starRatings.length} star ratings, average: ${starRating}`);
     } else {
-        // Fallback to reaction-based rating (legacy system)
-        const collectionMetrics = calculateRatingMetrics(collectionUp, collectionDown);
-        starRating = collectionMetrics.starRating;
-        confidence = collectionMetrics.confidence;
-        wilsonScore = collectionMetrics.wilsonScore;
-        bayesianScore = collectionMetrics.bayesianScore;
-        console.log(`    No star ratings found, using reactions: ${collectionUp} up, ${collectionDown} down`);
+        // No ratings yet - use neutral defaults
+        starRating = 0;
+        confidence = 'low';
+        wilsonScore = 0;
+        bayesianScore = 0;
+        console.log(`    No star ratings found`);
     }
     
     // Process resources (still using reactions for now)
