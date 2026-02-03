@@ -284,6 +284,97 @@
           "description": "Enable strict validation and security checks"
         }
       }
+    },
+    "engagement": {
+      "type": "object",
+      "description": "Engagement features configuration (telemetry, ratings, feedback)",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable engagement features for this hub"
+        },
+        "backend": {
+          "type": "object",
+          "description": "Backend configuration for engagement data storage",
+          "required": ["type"],
+          "additionalProperties": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Backend type for engagement data",
+              "enum": ["file", "github-issues", "github-discussions", "api"]
+            },
+            "repository": {
+              "type": "string",
+              "description": "GitHub repository in owner/repo format (for github-issues or github-discussions backends)",
+              "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+            },
+            "apiUrl": {
+              "type": "string",
+              "description": "API endpoint URL (for api backend)",
+              "format": "uri"
+            }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "description": "Telemetry configuration",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable telemetry collection"
+            },
+            "anonymize": {
+              "type": "boolean",
+              "description": "Anonymize telemetry data"
+            }
+          }
+        },
+        "ratings": {
+          "type": "object",
+          "description": "Rating configuration",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable rating features"
+            },
+            "ratingsUrl": {
+              "type": "string",
+              "description": "URL to pre-computed ratings.json file (static hosting)",
+              "format": "uri"
+            }
+          }
+        },
+        "feedback": {
+          "type": "object",
+          "description": "Feedback configuration",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable feedback features"
+            },
+            "requireRating": {
+              "type": "boolean",
+              "description": "Require rating when submitting feedback"
+            },
+            "maxLength": {
+              "type": "number",
+              "description": "Maximum feedback comment length",
+              "minimum": 100,
+              "maximum": 10000
+            },
+            "feedbackUrl": {
+              "type": "string",
+              "description": "URL to pre-computed feedbacks.json file (static hosting)",
+              "format": "uri"
+            }
+          }
+        }
+      }
     }
   }
 }
