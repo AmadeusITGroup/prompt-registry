@@ -13,11 +13,10 @@ The easiest way to engage with bundles is through the **feedback system**.
 
 The unified feedback dialog guides you through:
 1. **Star Rating (1-5)** — Rate the bundle quality
-2. **Quick Feedback** — Choose from:
-   - 👍 Works great! (+1)
-   - � Couldn't make it work (-1)
-   - 📝 Report issue/suggestion — Opens GitHub Issues
-   - ⏭️ Skip — Submit rating only
+2. **Optional Comment** — Add a short message about your experience (e.g., "Works great!" or "Needs better documentation")
+3. **Action** — Choose what to do next:
+   - 📝 Report issue/suggestion — Opens GitHub Issues for detailed feedback
+   - ⏭️ Skip — Submit rating and comment only
 
 ### Where Does Feedback Go?
 
