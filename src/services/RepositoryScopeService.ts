@@ -148,6 +148,8 @@ export class RepositoryScopeService implements IScopeService {
     async syncBundle(bundleId: string, bundlePath: string, options?: SyncBundleOptions): Promise<void> {
         try {
             this.logger.debug(`[RepositoryScopeService] Syncing bundle: ${bundleId}`);
+            this.logger.debug(`[RepositoryScopeService] Bundle path: ${bundlePath}`);
+            this.logger.debug(`[RepositoryScopeService] Workspace root: ${this.workspaceRoot}`);
 
             // Get commit mode from options first, then fall back to storage lookup
             let commitMode: RepositoryCommitMode;
@@ -162,20 +164,28 @@ export class RepositoryScopeService implements IScopeService {
 
             // Read deployment manifest
             const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
+            this.logger.debug(`[RepositoryScopeService] Looking for manifest at: ${manifestPath}`);
             if (!fs.existsSync(manifestPath)) {
                 this.logger.warn(`[RepositoryScopeService] No manifest found for bundle: ${bundleId}`);
                 return;
             }
+            this.logger.debug(`[RepositoryScopeService] Manifest found, reading content...`);
 
             const manifestContent = await readFile(manifestPath, 'utf-8');
             const manifest = yaml.load(manifestContent) as DeploymentManifest;
+            this.logger.debug(`[RepositoryScopeService] Manifest parsed. Keys: ${Object.keys(manifest).join(', ')}`);
+            this.logger.debug(`[RepositoryScopeService] manifest.prompts exists: ${!!manifest.prompts}, length: ${manifest.prompts?.length ?? 'N/A'}`);
 
             if (!manifest.prompts || manifest.prompts.length === 0) {
-                this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} has no prompts to sync`);
-                return;
+                this.logger.info(`[RepositoryScopeService] Bundle ${bundleId} has no prompts to sync`);
+            } else {
+                this.logger.info(`[RepositoryScopeService] Found ${manifest.prompts.length} prompts to sync`);
+                for (const p of manifest.prompts) {
+                    this.logger.info(`[RepositoryScopeService]   - Prompt: id=${p.id}, file=${p.file}, type=${p.type}`);
+                }
             }
 
-            // Install files
+            // Install files (handles empty prompts array gracefully)
             const installedPaths = await this.installFiles(bundlePath, manifest, commitMode);
 
             this.logger.info(`[RepositoryScopeService] ✅ Synced ${installedPaths.length} files for bundle: ${bundleId}`);
@@ -273,7 +283,10 @@ export class RepositoryScopeService implements IScopeService {
         promptId: string,
         tracker: InstallationTracker
     ): Promise<void> {
+        this.logger.debug(`[RepositoryScopeService] installFileAndTrack: bundlePath=${bundlePath}, file=${promptDef.file}, promptId=${promptId}`);
         const sourcePath = path.join(bundlePath, promptDef.file);
+        this.logger.debug(`[RepositoryScopeService] Source path: ${sourcePath}`);
+        this.logger.debug(`[RepositoryScopeService] Source exists: ${fs.existsSync(sourcePath)}`);
         if (!fs.existsSync(sourcePath)) {
             this.logger.warn(`[RepositoryScopeService] Source file not found: ${sourcePath}`);
             return;
@@ -281,10 +294,11 @@ export class RepositoryScopeService implements IScopeService {
 
         const fileType = promptDef.type as CopilotFileType || determineFileType(promptDef.file, promptDef.tags);
         const targetPath = this.getTargetPath(fileType, promptId);
+        this.logger.info(`[RepositoryScopeService] File type: ${fileType}, Target path: ${targetPath}`);
 
         await this.ensureDir(path.dirname(targetPath));
         await copyFile(sourcePath, targetPath);
-        this.logger.debug(`[RepositoryScopeService] Copied: ${path.basename(sourcePath)} → ${this.getRelativePath(targetPath)}`);
+        this.logger.info(`[RepositoryScopeService] ✅ Copied: ${sourcePath} → ${targetPath}`);
 
         tracker.absolutePaths.push(targetPath);
         tracker.relativePaths.push(this.getRelativePath(targetPath));
@@ -347,7 +361,16 @@ export class RepositoryScopeService implements IScopeService {
         skillFile: string,
         skillId: string
     ): Promise<string[]> {
-        const sourcePath = path.join(bundlePath, skillFile);
+        // skillFile may be a file path (e.g., "skills/my-skill/SKILL.md") 
+        // Extract the skill directory similar to UserScopeService
+        const skillMatch = skillFile.match(/skills\/([^/]+)/);
+        if (!skillMatch) {
+            this.logger.warn(`[RepositoryScopeService] Invalid skill path format: ${skillFile}`);
+            return [];
+        }
+        
+        const skillName = skillMatch[1];
+        const sourcePath = path.join(bundlePath, 'skills', skillName);
         
         if (!fs.existsSync(sourcePath)) {
             this.logger.warn(`[RepositoryScopeService] Skill directory not found: ${sourcePath}`);
@@ -894,9 +917,9 @@ export class RepositoryScopeService implements IScopeService {
                 sectionContent.split('\n').map(line => line.trim()).filter(line => line.length > 0)
             );
 
-            // Add new paths
+            // Add new paths (normalize to forward slashes for Git compatibility)
             for (const p of paths) {
-                existingEntries.add(p);
+                existingEntries.add(p.replace(/\\/g, '/'));
             }
 
             // Rebuild content
@@ -956,8 +979,8 @@ export class RepositoryScopeService implements IScopeService {
                 sectionContent = remainingContent;
             }
 
-            // Parse and filter entries
-            const pathsToRemove = new Set(paths);
+            // Parse and filter entries (normalize paths to forward slashes for comparison)
+            const pathsToRemove = new Set(paths.map(p => p.replace(/\\/g, '/')));
             const remainingEntries = sectionContent
                 .split('\n')
                 .map(line => line.trim())

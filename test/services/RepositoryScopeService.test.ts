@@ -990,6 +990,43 @@ prompts:
             assert.ok(fs.existsSync(path.join(targetSkillDir, 'SKILL.md')), 'SKILL.md should be copied');
             assert.ok(fs.existsSync(path.join(targetSkillDir, 'index.js')), 'index.js should be copied');
         });
+
+        test('should handle skill manifest with file path (skills/name/SKILL.md) instead of directory path', async () => {
+            // This test covers the AwesomeCopilotAdapter case where the manifest has:
+            // file: skills/my-skill/SKILL.md (file path) instead of file: skills/my-skill (directory path)
+            const bundleId = 'skill-bundle-file-path';
+            const skillName = 'awesome-skill';
+            const bundlePath = path.join(tempDir, 'bundles', bundleId);
+            fs.mkdirSync(bundlePath, { recursive: true });
+            
+            // Create skill directory with files
+            const skillDir = path.join(bundlePath, 'skills', skillName);
+            fs.mkdirSync(skillDir, { recursive: true });
+            fs.mkdirSync(path.join(skillDir, 'resources'), { recursive: true });
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Awesome Skill\nThis is a skill.');
+            fs.writeFileSync(path.join(skillDir, 'resources', 'helper.md'), '# Helper Resource');
+            
+            // Create manifest with FILE PATH (skills/awesome-skill/SKILL.md) - this is what AwesomeCopilotAdapter produces
+            const manifest = `id: ${bundleId}
+version: "1.0.0"
+prompts:
+  - id: ${skillName}
+    name: ${skillName}
+    file: skills/${skillName}/SKILL.md
+    type: skill`;
+            
+            fs.writeFileSync(path.join(bundlePath, 'deployment-manifest.yml'), manifest);
+            
+            mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'commit'));
+            
+            await service.syncBundle(bundleId, bundlePath);
+            
+            // Verify skill directory and all files were copied
+            const targetSkillDir = path.join(workspaceRoot, '.github', 'skills', skillName);
+            assert.ok(fs.existsSync(targetSkillDir), 'Skill directory should be created');
+            assert.ok(fs.existsSync(path.join(targetSkillDir, 'SKILL.md')), 'SKILL.md should be copied');
+            assert.ok(fs.existsSync(path.join(targetSkillDir, 'resources', 'helper.md')), 'resources/helper.md should be copied');
+        });
     });
 
     suite('unsyncBundle - Skills Directory Removal', () => {

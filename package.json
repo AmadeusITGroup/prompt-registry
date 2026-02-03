@@ -829,7 +829,7 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
-    "@prompt-registry/collection-scripts": "file:./lib",
+    "@prompt-registry/collection-scripts": "file:lib",
     "@types/archiver": "^7.0.0",
     "@types/glob": "^8.1.0",
     "archiver": "^7.0.1",
