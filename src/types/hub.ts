@@ -5,6 +5,7 @@
 
 import { Profile } from './registry';
 import { RegistrySource } from './registry';
+import { HubEngagementConfig } from './engagement';
 
 /**
  * Reference to a hub location (GitHub, local, or URL)
@@ -41,6 +42,9 @@ export interface HubConfig {
   
   /** Optional registry configuration */
   configuration?: RegistryConfiguration;
+  
+  /** Optional engagement configuration (telemetry, ratings, feedback) */
+  engagement?: HubEngagementConfig;
 }
 
 /**
@@ -312,6 +316,15 @@ export function validateHubConfig(config: any): ValidationResult {
           });
         }
       });
+    }
+  }
+  
+  // Validate engagement config if provided
+  if (config.engagement) {
+    const { validateHubEngagementConfig } = require('./engagement');
+    const engagementResult = validateHubEngagementConfig(config.engagement);
+    if (!engagementResult.valid) {
+      errors.push(...engagementResult.errors);
     }
   }
   
