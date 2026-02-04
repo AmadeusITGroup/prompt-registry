@@ -26,6 +26,7 @@ import { escapeRegex } from '../utils/regexUtils';
 import { DeploymentManifest } from '../types/registry';
 import { IScopeService, ScopeStatus, SyncBundleOptions } from './IScopeService';
 import { CopilotFileType, determineFileType, getTargetFileName } from '../utils/copilotFileTypeUtils';
+import { checkPathExists } from '../utils/symlinkUtils';
 
 const readFile = promisify(fs.readFile);
 const readdir = promisify(fs.readdir);
@@ -418,18 +419,22 @@ export class UserScopeService implements IScopeService {
 
     /**
      * Create symlink (or copy if symlink fails) to Copilot directory
+     * 
+     * Always removes and recreates symlinks to ensure they point to the correct target.
+     * Uses lstat() to detect symlinks (including broken ones) since fs.existsSync() 
+     * returns false for broken symlinks.
      */
     private async createCopilotFile(file: CopilotFile): Promise<void> {
         try {
-            // Check if target already exists
-            if (fs.existsSync(file.targetPath)) {
-                // Check if it's our symlink/file
-                const stats = await lstat(file.targetPath);
-                
-                if (stats.isSymbolicLink()) {
-                    // Remove old symlink
+            // Check if target already exists using lstat() to detect broken symlinks
+            // fs.existsSync() returns false for broken symlinks, but lstat() can still read them
+            const existingEntry = await checkPathExists(file.targetPath);
+            
+            if (existingEntry.exists) {
+                if (existingEntry.isSymbolicLink) {
+                    // Always remove existing symlink and recreate - simpler and more robust
                     await unlink(file.targetPath);
-                    this.logger.debug(`Removed old symlink: ${file.targetPath}`);
+                    this.logger.debug(`Removed existing symlink: ${file.targetPath}`);
                 } else {
                     // It's a regular file - might be user's custom file, skip
                     this.logger.warn(`File already exists (not managed): ${file.targetPath}`);
@@ -516,13 +521,18 @@ export class UserScopeService implements IScopeService {
                 const sourcePath = path.join(bundlePath, promptDef.file);
                 const copilotFile = this.determineCopilotFileType(promptDef, sourcePath, bundleId);
                 
-                if (fs.existsSync(copilotFile.targetPath)) {
-                    const stats = await lstat(copilotFile.targetPath);
-                    
+                // Use checkPathExists to detect broken symlinks (fs.existsSync returns false for broken symlinks)
+                const existingEntry = await checkPathExists(copilotFile.targetPath);
+                
+                if (existingEntry.exists) {
                     // Only remove if it's a symlink (to avoid deleting user's custom files)
-                    if (stats.isSymbolicLink()) {
+                    if (existingEntry.isSymbolicLink) {
                         await unlink(copilotFile.targetPath);
-                        this.logger.debug(`Removed: ${path.basename(copilotFile.targetPath)}`);
+                        if (existingEntry.isBroken) {
+                            this.logger.debug(`Removed broken symlink: ${path.basename(copilotFile.targetPath)}`);
+                        } else {
+                            this.logger.debug(`Removed: ${path.basename(copilotFile.targetPath)}`);
+                        }
                         removedCount++;
                     } else {
                         // In some environments (like WSL -> Windows), symlinks might fail and fall back to copy

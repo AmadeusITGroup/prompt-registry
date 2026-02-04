@@ -14,14 +14,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
-import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import AdmZip = require('adm-zip');
 import { Logger } from '../utils/logger';
 import { OlafRuntimeInfo, OlafWorkspaceConfig } from '../types/olaf';
-
-const execAsync = promisify(exec);
+import { checkPathExists } from '../utils/symlinkUtils';
 
 /**
  * Cache TTL for runtime status checks (5 minutes)
@@ -127,13 +123,6 @@ export class OlafRuntimeManager {
         
         const globalStoragePath = this.context.globalStorageUri.fsPath;
         return path.join(globalStoragePath, 'olaf-runtime', version);
-    }
-
-    /**
-     * Get workspace runtime path (where symbolic links will be created)
-     */
-    private getWorkspaceRuntimePath(workspacePath: string): string {
-        return workspacePath;
     }
 
     /**
@@ -551,26 +540,22 @@ export class OlafRuntimeManager {
 
     /**
      * Create a symbolic link with conflict detection and fallback
+     * 
+     * Uses checkPathExists() to properly detect broken symlinks.
+     * fs.existsSync() returns false for broken symlinks, which would cause EEXIST errors.
+     * Always removes and recreates symlinks to ensure they point to the correct target.
      */
     private async createSymbolicLink(source: string, target: string): Promise<void> {
         try {
-            // Check if target already exists
-            if (fs.existsSync(target)) {
-                const stats = await fs.promises.lstat(target);
-                
-                if (stats.isSymbolicLink()) {
-                    // Check if it points to the correct location
-                    const currentTarget = await fs.promises.readlink(target);
-                    const resolvedCurrent = path.resolve(path.dirname(target), currentTarget);
-                    const resolvedSource = path.resolve(source);
-                    
-                    if (resolvedCurrent === resolvedSource) {
-                        this.logger.debug(`[OlafRuntime] Symbolic link already exists and is correct: ${target}`);
-                        return;
-                    } else {
-                        this.logger.warn(`[OlafRuntime] Symbolic link exists but points to wrong location: ${target} -> ${currentTarget}`);
-                        await fs.promises.unlink(target);
-                    }
+            // Check if target already exists using checkPathExists to detect broken symlinks
+            // fs.existsSync() returns false for broken symlinks, but lstat() can still read them
+            const existingEntry = await checkPathExists(target);
+            
+            if (existingEntry.exists) {
+                if (existingEntry.isSymbolicLink) {
+                    // Always remove existing symlink and recreate - simpler and more robust
+                    this.logger.debug(`[OlafRuntime] Removing existing symbolic link: ${target}`);
+                    await fs.promises.unlink(target);
                 } else {
                     // Handle existing file/directory conflict
                     await this.handleExistingPath(target);
@@ -603,7 +588,6 @@ export class OlafRuntimeManager {
      */
     private async handleExistingPath(target: string): Promise<void> {
         const stats = await fs.promises.lstat(target);
-        const targetName = path.basename(target);
         
         if (stats.isDirectory()) {
             // Check if directory is empty
@@ -684,18 +668,24 @@ export class OlafRuntimeManager {
 
     /**
      * Remove workspace links
+     * 
+     * Uses checkPathExists() to properly detect and clean up broken symlinks.
      */
     async removeWorkspaceLinks(workspacePath: string): Promise<void> {
         const olafPath = path.join(workspacePath, '.olaf');
         const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
         
         try {
-            // Remove .olaf link/directory
-            if (fs.existsSync(olafPath)) {
-                const stats = await fs.promises.lstat(olafPath);
-                if (stats.isSymbolicLink()) {
+            // Remove .olaf link/directory using checkPathExists to detect broken symlinks
+            const olafEntry = await checkPathExists(olafPath);
+            if (olafEntry.exists) {
+                if (olafEntry.isSymbolicLink) {
                     await fs.promises.unlink(olafPath);
-                    this.logger.debug(`[OlafRuntime] Removed symbolic link: ${olafPath}`);
+                    if (olafEntry.isBroken) {
+                        this.logger.debug(`[OlafRuntime] Removed broken symbolic link: ${olafPath}`);
+                    } else {
+                        this.logger.debug(`[OlafRuntime] Removed symbolic link: ${olafPath}`);
+                    }
                 } else {
                     // If it's a copied directory, remove it
                     await fs.promises.rm(olafPath, { recursive: true, force: true });
@@ -703,12 +693,16 @@ export class OlafRuntimeManager {
                 }
             }
 
-            // Remove IDE-specific link/directory
-            if (fs.existsSync(idePath)) {
-                const stats = await fs.promises.lstat(idePath);
-                if (stats.isSymbolicLink()) {
+            // Remove IDE-specific link/directory using checkPathExists to detect broken symlinks
+            const ideEntry = await checkPathExists(idePath);
+            if (ideEntry.exists) {
+                if (ideEntry.isSymbolicLink) {
                     await fs.promises.unlink(idePath);
-                    this.logger.debug(`[OlafRuntime] Removed symbolic link: ${idePath}`);
+                    if (ideEntry.isBroken) {
+                        this.logger.debug(`[OlafRuntime] Removed broken symbolic link: ${idePath}`);
+                    } else {
+                        this.logger.debug(`[OlafRuntime] Removed symbolic link: ${idePath}`);
+                    }
                 } else {
                     // If it's a copied directory, remove it
                     await fs.promises.rm(idePath, { recursive: true, force: true });
