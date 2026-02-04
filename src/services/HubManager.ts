@@ -16,6 +16,7 @@ import { Logger } from '../utils/logger';
 import { SchemaValidator, ValidationResult } from './SchemaValidator';
 import { RegistrySource } from '../types/registry';
 import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog, ProfileWithUpdates } from '../types/hub';
+import { EngagementService } from './engagement/EngagementService';
 
 const execAsync = promisify(exec);
 
@@ -157,6 +158,9 @@ export class HubManager {
         if (this.registryManager) {
             await this.loadHubSources(hubId);
         }
+        
+        // Register engagement backend if hub has engagement config
+        await this.registerHubEngagement(hubId, config);
         
         this._onHubImported.fire(hubId);
 
@@ -891,6 +895,49 @@ export class HubManager {
         } catch (error) {
             this.logger.error(`Failed to load sources from hub ${hubId}`, error as Error);
             throw error;
+        }
+    }
+
+    /**
+     * Register engagement backend for a hub if it has engagement config
+     * @param hubId Hub identifier
+     * @param config Hub configuration
+     */
+    private async registerHubEngagement(hubId: string, config: HubConfig): Promise<void> {
+        if (!config.engagement) {
+            this.logger.debug(`Hub ${hubId} has no engagement config, skipping backend registration`);
+            return;
+        }
+
+        try {
+            const engagementService = EngagementService.getInstance();
+            await engagementService.registerHubBackend(hubId, config.engagement);
+            this.logger.info(`Registered engagement backend for hub ${hubId}`);
+        } catch (error) {
+            this.logger.warn(`Failed to register engagement backend for hub ${hubId}: ${error instanceof Error ? error.message : String(error)}`);
+            // Don't throw - engagement is optional
+        }
+    }
+
+    /**
+     * Initialize engagement backends for all existing hubs
+     * Should be called during extension activation
+     */
+    async initializeEngagementBackends(): Promise<void> {
+        try {
+            const hubs = await this.listHubs();
+            this.logger.info(`Initializing engagement backends for ${hubs.length} hubs`);
+            
+            for (const hub of hubs) {
+                try {
+                    const hubResult = await this.storage.loadHub(hub.id);
+                    await this.registerHubEngagement(hub.id, hubResult.config);
+                } catch (error) {
+                    this.logger.warn(`Failed to initialize engagement for hub ${hub.id}: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+        } catch (error) {
+            this.logger.error('Failed to initialize engagement backends', error as Error);
         }
     }
 

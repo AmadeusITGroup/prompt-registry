@@ -136,6 +136,24 @@ custom_fix.txt
 *-example.yml
 *_patch.txt
 
+# Working/analysis files
+BRANCH_*.md
+*_ISSUES_*.md
+*_DEBUGGING_*.md
+*_FIX.md
+*_IMPROVEMENT_*.md
+PR-*.md
+!.github/pull_request_template.md
+PR_DESCRIPTION.md
+
+# Test data files in lib/
+lib/collections.yaml
+lib/ratings.json
+
+# Spec working directories
+.kiro/specs/*/IMPLEMENTATION_PLAN.md
+.kiro/specs/*/PROGRESS.md
+
 # Shell scripts for debugging/fixing (keep only essential ones)
 add_metadata_to_tests.sh
 simple_metadata_fix.sh

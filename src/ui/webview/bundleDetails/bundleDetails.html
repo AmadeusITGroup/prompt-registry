@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="{{cspSource}}">
+    <title>{{bundleName}}</title>
+    <link rel="stylesheet" href="{{cssUri}}">
+</head>
+<body>
+    <div class="header">
+        <h1>
+            📦 {{bundleName}}
+            {{installedBadge}}
+        </h1>
+        <div class="meta">
+            by {{author}} • Version {{version}}
+        </div>
+    </div>
+
+    {{autoUpdateSection}}
+
+    <div class="rating-section">
+        <div class="rating-header">
+            <div class="rating-display">
+                {{ratingDisplay}}
+            </div>
+            <div class="feedback-actions">
+                <button class="btn-feedback" data-action="feedback">⭐ Rate & Feedback</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Description</h2>
+        <p>{{description}}</p>
+    </div>
+
+    <div class="section">
+        <h2>📊 Content Breakdown</h2>
+        {{breakdownContent}}
+    </div>
+
+    <div class="section">
+        <h2>ℹ️ Information</h2>
+        <div class="info-grid">
+            <div class="info-row">
+                <div class="info-label">Bundle ID:</div>
+                <div class="info-value"><code>{{displayBundleId}}</code></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Version:</div>
+                <div class="info-value">{{displayVersion}}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Author:</div>
+                <div class="info-value">{{author}}</div>
+            </div>
+            {{installedInfoRows}}
+            <div class="info-row">
+                <div class="info-label">Environments:</div>
+                <div class="info-value">{{environments}}</div>
+            </div>
+        </div>
+    </div>
+
+    {{tagsSection}}
+
+    {{mcpServersSection}}
+
+    {{promptsSection}}
+
+    <script nonce="{{nonce}}">
+        // Initialize bundle details data for the external JS
+        window.bundleDetailsData = {
+            autoUpdateEnabled: {{autoUpdateEnabled}},
+            bundleId: '{{bundleId}}'
+        };
+    </script>
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

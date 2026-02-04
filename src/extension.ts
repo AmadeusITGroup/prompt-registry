@@ -20,6 +20,10 @@ import { ValidateCollectionsCommand } from './commands/ValidateCollectionsComman
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
+import { FeedbackCommands } from './commands/FeedbackCommands';
+import { EngagementService } from './services/engagement/EngagementService';
+import { RatingCache } from './services/engagement/RatingCache';
+import { FeedbackCache } from './services/engagement/FeedbackCache';
 import { StatusBar } from './ui/statusBar';
 import { ExtensionNotifications } from './notifications/ExtensionNotifications';
 import { Logger } from './utils/logger';
@@ -170,6 +174,9 @@ export class PromptRegistryExtension {
             // Ensure only one profile is active (cleanup any multi-active state)
             await this.ensureSingleActiveProfile();
 
+            // Initialize engagement system (ratings cache)
+            await this.initializeEngagementSystem();
+
             this.logger.info('Prompt Registry extension activated successfully');
 
         } catch (error) {
@@ -248,6 +255,12 @@ export class PromptRegistryExtension {
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
+
+        // Engagement commands (feedback only)
+        // Initialize FeedbackCommands with EngagementService for persistence
+        const engagementService = EngagementService.getInstance(this.context);
+        const feedbackCommands = new FeedbackCommands(engagementService);
+        feedbackCommands.registerCommands(this.context);
 
         // Legacy commands
         const updateCommand = new UpdateCommand();
@@ -767,6 +780,75 @@ export class PromptRegistryExtension {
         } catch (error) {
             this.logger.warn('Failed to initialize repository-level installation services', error as Error);
             // Don't fail extension activation if repository services fail
+        }
+    }
+
+    /**
+     * Initialize engagement system (ratings, voting, feedback)
+     * Loads ratings from hubs that have engagement configured
+     */
+    private async initializeEngagementSystem(): Promise<void> {
+        try {
+            this.logger.info('Initializing engagement system...');
+
+            // Initialize EngagementService
+            const engagementService = EngagementService.getInstance(this.context);
+            await engagementService.initialize();
+
+            // Initialize engagement backends for all existing hubs
+            if (this.hubManager) {
+                await this.hubManager.initializeEngagementBackends();
+            }
+
+            // Get RatingCache and FeedbackCache instances
+            const ratingCache = RatingCache.getInstance();
+            const feedbackCache = FeedbackCache.getInstance();
+
+            // Load ratings and feedbacks from all hubs that have them configured
+            if (this.hubManager) {
+                const hubs = await this.hubManager.listHubs();
+                for (const hub of hubs) {
+                    try {
+                        const hubResult = await this.hubManager.loadHub(hub.id);
+                        
+                        // Build source ID mapping for this hub
+                        // Map from ratings.json source_id to actual extension source ID
+                        const sourceIdMap = new Map<string, string>();
+                        const allSources = await this.registryManager.listSources();
+                        const hubPrefix = `hub-${hub.id}-`;
+                        for (const source of allSources) {
+                            if (source.id.startsWith(hubPrefix)) {
+                                // Extract the short source ID from the full hub-prefixed source ID
+                                // e.g., "hub-awesome-copilot-hub-099578-awesome-copilot-official" -> "awesome-copilot-official"
+                                const shortSourceId = source.id.substring(hubPrefix.length);
+                                sourceIdMap.set(shortSourceId, source.id);
+                            }
+                        }
+                        
+                        // Load ratings
+                        const ratingsUrl = hubResult.config?.engagement?.ratings?.ratingsUrl;
+                        if (ratingsUrl) {
+                            this.logger.debug(`Loading ratings from hub ${hub.id}: ${ratingsUrl}`);
+                            await ratingCache.refreshFromHub(hub.id, ratingsUrl, sourceIdMap);
+                        }
+                        
+                        // Load feedbacks
+                        const feedbackUrl = hubResult.config?.engagement?.feedback?.feedbackUrl;
+                        if (feedbackUrl) {
+                            this.logger.debug(`Loading feedbacks from hub ${hub.id}: ${feedbackUrl}`);
+                            await feedbackCache.refreshFromHub(hub.id, feedbackUrl);
+                        }
+                    } catch (error) {
+                        this.logger.debug(`Failed to load engagement data from hub ${hub.id}`, error as Error);
+                        // Continue with other hubs
+                    }
+                }
+            }
+
+            this.logger.info('Engagement system initialized successfully');
+        } catch (error) {
+            this.logger.warn('Failed to initialize engagement system', error as Error);
+            // Don't fail extension activation if engagement system fails
         }
     }
 
