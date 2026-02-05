@@ -4,6 +4,7 @@
  */
 
 import * as assert from 'assert';
+import * as crypto from 'crypto';
 import nock from 'nock';
 import * as sinon from 'sinon';
 import { SkillsAdapter } from '../../src/adapters/SkillsAdapter';
@@ -195,6 +196,60 @@ Instructions for ${skill.name}
             assert.ok(artBundle);
             assert.ok(reviewBundle);
             assert.ok(testingBundle);
+        });
+
+        test('should include nested files when hashing remote skills', async () => {
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-skills-repo/contents/skills')
+                .reply(200, [
+                    { name: 'deep-skill', path: 'skills/deep-skill', type: 'dir' }
+                ]);
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill')
+                .reply(200, [
+                    {
+                        name: 'SKILL.md',
+                        path: 'skills/deep-skill/SKILL.md',
+                        type: 'file',
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md',
+                        sha: 'sha-skill'
+                    },
+                    {
+                        name: 'assets',
+                        path: 'skills/deep-skill/assets',
+                        type: 'dir'
+                    }
+                ]);
+
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill/assets')
+                .reply(200, [
+                    {
+                        name: 'diagram.png',
+                        path: 'skills/deep-skill/assets/diagram.png',
+                        type: 'file',
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/assets/diagram.png',
+                        sha: 'sha-diagram'
+                    }
+                ]);
+
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md')
+                .reply(200, '---\nname: Deep Skill\ndescription: Deep skill description\n---\n\n# Deep Skill');
+
+            const adapter = new SkillsAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 1);
+            const bundle = bundles[0];
+
+            const expectedHash = crypto.createHash('sha256');
+            expectedHash.update('skills/deep-skill/SKILL.md:sha-skill|');
+            expectedHash.update('skills/deep-skill/assets/diagram.png:sha-diagram|');
+            const expectedVersion = `hash:${expectedHash.digest('hex')}`;
+
+            assert.strictEqual(bundle.version, expectedVersion);
         });
 
         test('should handle many skills efficiently', async () => {

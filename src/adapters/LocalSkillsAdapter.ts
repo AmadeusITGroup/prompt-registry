@@ -13,6 +13,7 @@ import * as path from 'path';
 import { promisify } from 'util';
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
+import * as crypto from 'crypto';
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 import { SkillItem, SkillFrontmatter, ParsedSkillFile } from '../types/skills';
@@ -297,7 +298,9 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                     return false;
                 }
             });
-            
+            // Calculate content hash of skill directory
+            const contentHash = await this.calculateContentHash(skillPath, files);
+
             const skillItem: SkillItem = {
                 id: skillId,
                 name: parsedSkillMd.frontmatter.name || skillId,
@@ -306,6 +309,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                 path: `skills/${skillId}`,
                 skillMdPath: `skills/${skillId}/SKILL.md`,
                 files,
+                contentHash,
                 parsedSkillMd,
             };
             
@@ -373,7 +377,8 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         const bundle: Bundle = {
             id: bundleId,
             name: skill.name,
-            version: '1.0.0',
+            // Content hash drives hash-based versioning for update detection.
+            version: this.formatSkillVersion(skill.contentHash),
             description: skill.description,
             author: 'Local',
             sourceId: this.source.id,
@@ -390,6 +395,32 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         };
         
         return bundle;
+    }
+
+    /**
+     * Calculate a stable hash from skill file contents.
+     */
+    private async calculateContentHash(skillPath: string, files: string[]): Promise<string> {
+        const hash = crypto.createHash('sha256');
+        const sortedFiles = [...files].sort((a, b) => a.localeCompare(b));
+
+        for (const file of sortedFiles) {
+            const filePath = path.join(skillPath, file);
+            const content = await readFile(filePath);
+            hash.update(file);
+            hash.update(':');
+            hash.update(content);
+            hash.update('|');
+        }
+
+        return hash.digest('hex');
+    }
+
+    /**
+     * Format skill version from content hash.
+     */
+    private formatSkillVersion(contentHash?: string): string {
+        return contentHash ? `hash:${contentHash}` : '1.0.0';
     }
 
     /**
@@ -542,7 +573,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         
         return {
             id: `local-skills-${sourceName}-${skill.id}`,
-            version: '1.0.0',
+            version: this.formatSkillVersion(skill.contentHash),
             name: skill.name,
             
             metadata: {

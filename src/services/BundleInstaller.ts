@@ -397,7 +397,9 @@ export class BundleInstaller {
     async update(
         installed: InstalledBundle,
         bundle: Bundle,
-        bundleBuffer: Buffer
+        bundleBuffer: Buffer,
+        sourceType?: string,
+        sourceName?: string
     ): Promise<InstalledBundle> {
         this.logger.info(`Updating bundle: ${installed.bundleId} to v${bundle.version}`);
 
@@ -405,12 +407,20 @@ export class BundleInstaller {
             // Uninstall old version
             await this.uninstall(installed);
 
+            const resolvedSourceType = sourceType ?? installed.sourceType;
+
             // Install new version using the unified architecture
-            const newInstalled = await this.installFromBuffer(bundle, bundleBuffer, {
-                scope: installed.scope,
-                version: bundle.version,
-                commitMode: installed.commitMode,
-            });
+            const newInstalled = await this.installFromBuffer(
+                bundle,
+                bundleBuffer,
+                {
+                    scope: installed.scope,
+                    version: bundle.version,
+                    commitMode: installed.commitMode,
+                },
+                resolvedSourceType,
+                sourceName
+            );
 
             this.logger.info('Bundle updated successfully');
             return newInstalled;

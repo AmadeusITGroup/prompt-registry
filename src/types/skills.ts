@@ -60,6 +60,9 @@ export interface SkillItem {
     
     /** List of files in the skill folder */
     files: string[];
+
+    /** Hash representing the skill content (used for versioning) */
+    contentHash?: string;
     
     /** Parsed SKILL.md content */
     parsedSkillMd?: ParsedSkillFile;
