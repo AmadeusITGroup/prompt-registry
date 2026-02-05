@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { MarketplaceViewProvider } from '../../src/ui/MarketplaceViewProvider';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { InstalledBundle, DeploymentManifest } from '../../src/types/registry';
+import { SetupStateManager } from '../../src/services/SetupStateManager';
 
 // Helper to create mock manifest
 function createMockManifest(): DeploymentManifest {
@@ -40,6 +41,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
     let sandbox: sinon.SinonSandbox;
     let mockContext: vscode.ExtensionContext;
     let mockRegistryManager: sinon.SinonStubbedInstance<RegistryManager>;
+    let mockSetupStateManager: sinon.SinonStubbedInstance<SetupStateManager>;
     let marketplaceProvider: MarketplaceViewProvider;
     let onBundleInstalledCallback: ((installation: InstalledBundle) => void) | undefined;
     let onBundleUninstalledCallback: ((bundleId: string) => void) | undefined;
@@ -83,8 +85,15 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             listSources: sandbox.stub().resolves([])
         } as any;
 
+        // Create mock SetupStateManager
+        mockSetupStateManager = {
+            getState: sandbox.stub().resolves('complete'),
+            isComplete: sandbox.stub().resolves(true),
+            isIncomplete: sandbox.stub().resolves(false)
+        } as any;
+
         // Create MarketplaceViewProvider
-        marketplaceProvider = new MarketplaceViewProvider(mockContext, mockRegistryManager as any);
+        marketplaceProvider = new MarketplaceViewProvider(mockContext, mockRegistryManager as any, mockSetupStateManager as any);
     });
 
     teardown(() => {

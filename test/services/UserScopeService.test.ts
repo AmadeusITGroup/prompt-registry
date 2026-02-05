@@ -4,6 +4,8 @@
  * 
  * Note: Most tests require VS Code integration test environment
  * These are unit tests for testable logic only
+ * 
+ * WSL-specific tests are in UserScopeService.wsl.test.ts
  */
 
 import * as assert from 'assert';
@@ -648,6 +650,8 @@ prompts:
         });
     });
 
+    // NOTE: WSL-specific tests have been moved to UserScopeService.wsl.test.ts
+    // The tests below remain for backward compatibility but should eventually be removed
     suite('WSL Support', () => {
         test('should detect WSL remote and return Windows mount path when globalStorage is on /mnt/c', async () => {
             // Mock WSL scenario where globalStorage is already on Windows mount

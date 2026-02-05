@@ -13,12 +13,13 @@ import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { McpServerConfig, McpStdioServerConfig, McpRemoteServerConfig, isStdioServerConfig, isRemoteServerConfig } from '../types/mcp';
+import { SetupStateManager } from '../services/SetupStateManager';
 
 /**
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
@@ -62,7 +63,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly registryManager: RegistryManager
+        private readonly registryManager: RegistryManager,
+        private readonly setupStateManager: SetupStateManager
     ) {
         this.logger = Logger.getInstance();
 
@@ -334,6 +336,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const availableTags = extractAllTags(bundles);
             const availableSources = extractBundleSources(bundles, sources);
 
+            // Get setup state for empty state UI
+            const setupState = await this.setupStateManager.getState();
+
             // Send to webview (only if view is available)
             if (this._view) {
                 this._view.webview.postMessage({
@@ -342,7 +347,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     filterOptions: {
                         tags: availableTags,
                         sources: availableSources
-                    }
+                    },
+                    setupState: setupState
                 });
             }
 
@@ -514,6 +520,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     await this.handleOpenSourceRepository(message.bundleId);
                 }
                 break;
+            case 'completeSetup':
+                await this.handleCompleteSetup();
+                break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
         }
@@ -539,6 +548,40 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             this.logger.error('Failed to open source repository', error as Error);
             vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Handle complete setup request from marketplace empty state.
+     * 
+     * State Management: This method marks setup as started, then delegates to
+     * the initializeHub command. The command handles its own state transitions
+     * (markComplete on success, markIncomplete on failure). We only need to
+     * mark started here and refresh the UI afterward.
+     * 
+     * Requirements: 4.4
+     */
+    private async handleCompleteSetup(): Promise<void> {
+        this.logger.info('User clicked Complete Setup from marketplace');
+        
+        // Mark setup as started before triggering the flow
+        await this.setupStateManager.markStarted();
+        
+        try {
+            // Trigger first-run flow via the extension command
+            // Note: initializeHub handles markComplete/markIncomplete internally
+            await vscode.commands.executeCommand('promptRegistry.initializeHub');
+            
+            // Refresh marketplace to show updated state
+            await this.loadBundles();
+        } catch (error) {
+            this.logger.error('Failed to complete setup from marketplace', error as Error);
+            
+            // Only show error message - state is already marked by initializeHub
+            vscode.window.showErrorMessage(`Failed to complete setup: ${(error as Error).message}`);
+            
+            // Refresh to show current state
+            await this.loadBundles();
         }
     }
 
@@ -2020,6 +2063,21 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             margin-bottom: 8px;
         }
 
+        .primary-button {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 16px;
+        }
+
+        .primary-button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -2112,6 +2170,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         let selectedSource = 'all';
         let selectedTags = [];
         let showInstalledOnly = false;
+        let setupState = 'complete'; // Default to complete to avoid showing setup prompt unnecessarily
 
         // Handle messages from extension
         window.addEventListener('message', event => {
@@ -2120,6 +2179,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             if (message.type === 'bundlesLoaded') {
                 allBundles = message.bundles;
                 filterOptions = message.filterOptions || { tags: [], sources: [] };
+                setupState = message.setupState || 'complete';
                 updateFilterUI();
                 renderBundles();
             }
@@ -2433,14 +2493,31 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 const hasFiltersApplied = searchTerm || selectedSource !== 'all' || selectedTags.length > 0 || showInstalledOnly;
                 
                 if (allBundles.length === 0) {
-                    // No bundles at all - likely still syncing
-                    marketplace.innerHTML = \`
-                        <div class="empty-state">
-                            <div class="spinner"></div>
-                            <div class="empty-state-title">Syncing sources...</div>
-                            <p>Bundles will appear as sources are synced</p>
-                        </div>
-                    \`;
+                    // No bundles at all - check if setup is incomplete
+                    const isSetupIncomplete = setupState === 'incomplete' || setupState === 'not_started';
+                    
+                    if (isSetupIncomplete) {
+                        // Show setup prompt instead of syncing message
+                        marketplace.innerHTML = \`
+                            <div class="empty-state">
+                                <div class="empty-state-icon">⚙️</div>
+                                <div class="empty-state-title">Setup Not Complete</div>
+                                <p>No hub is configured. Complete setup to browse bundles.</p>
+                                <button class="primary-button" onclick="completeSetup()">
+                                    Complete Setup
+                                </button>
+                            </div>
+                        \`;
+                    } else {
+                        // Normal syncing state
+                        marketplace.innerHTML = \`
+                            <div class="empty-state">
+                                <div class="spinner"></div>
+                                <div class="empty-state-title">Syncing sources...</div>
+                                <p>Bundles will appear as sources are synced</p>
+                            </div>
+                        \`;
+                    }
                 } else if (hasFiltersApplied) {
                     // Has bundles but filters hide them all
                     marketplace.innerHTML = \`
@@ -2583,6 +2660,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         function openSourceRepo(bundleId) {
             vscode.postMessage({ type: 'openSourceRepository', bundleId });
+        }
+
+        function completeSetup() {
+            vscode.postMessage({ type: 'completeSetup' });
         }
 
         function toggleVersionDropdown(dropdownId, event) {

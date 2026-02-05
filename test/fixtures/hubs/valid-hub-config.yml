@@ -8,18 +8,22 @@ metadata:
 
 sources:
   - id: "official-prompts"
+    name: "Official Prompts"
     type: "github"
-    repository: "promptregistry/official-bundles"
-    branch: "main"
+    url: "https://github.com/promptregistry/official-bundles"
     enabled: true
     priority: 100
+    config:
+      branch: "main"
     
   - id: "community-prompts"
+    name: "Community Prompts"
     type: "github"
-    repository: "promptregistry/community-bundles"
-    branch: "main"
+    url: "https://github.com/promptregistry/community-bundles"
     enabled: true
     priority: 50
+    config:
+      branch: "main"
 
 profiles:
   - id: "fullstack-developer"

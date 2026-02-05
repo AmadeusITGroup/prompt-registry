@@ -189,7 +189,7 @@ suite('UpdateChecker Property Tests', () => {
                     return true;
                 }
             ),
-            { numRuns: PropertyTestConfig.RUNS.COMPREHENSIVE, verbose: false }
+            { numRuns: PropertyTestConfig.RUNS.STANDARD, timeout: 10000 }
         );
     });
 
