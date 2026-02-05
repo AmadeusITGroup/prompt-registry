@@ -63,6 +63,29 @@ suite('SetupStateManager - Unit Tests', () => {
             
             assert.notStrictEqual(instance1, instance2, 'Should return new instance after reset');
         });
+
+        test('should throw error when context is missing on first call', () => {
+            SetupStateManager.resetInstance();
+            assert.throws(
+                () => SetupStateManager.getInstance(undefined, mockHubManager as any),
+                /SetupStateManager requires context and hubManager on first call/
+            );
+        });
+
+        test('should throw error when hubManager is missing on first call', () => {
+            SetupStateManager.resetInstance();
+            assert.throws(
+                () => SetupStateManager.getInstance(mockContext, undefined),
+                /SetupStateManager requires context and hubManager on first call/
+            );
+        });
+
+        test('should return existing instance without parameters after first call', () => {
+            const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            const instance2 = SetupStateManager.getInstance(); // No parameters
+            
+            assert.strictEqual(instance1, instance2, 'Should return same instance without parameters');
+        });
     });
 
     suite('getState()', () => {
@@ -311,6 +334,167 @@ suite('SetupStateManager - Unit Tests', () => {
             const reason = globalStateData.get('promptregistry.setupIncompleteReason');
             
             assert.strictEqual(reason, 'auth_cancelled');
+        });
+    });
+
+    suite('reset() from different states', () => {
+        test('should reset from INCOMPLETE state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete('hub_cancelled');
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+
+        test('should reset from IN_PROGRESS state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markStarted();
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+
+        test('should reset from COMPLETE state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markComplete();
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+    });
+
+    suite('markIncomplete() with different reasons', () => {
+        test('should store hub_cancelled reason', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete('hub_cancelled');
+            
+            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
+            assert.strictEqual(reason, 'hub_cancelled');
+        });
+
+        test('should store auth_cancelled reason', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete('auth_cancelled');
+            
+            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
+            assert.strictEqual(reason, 'auth_cancelled');
+        });
+
+        test('should overwrite previous reason', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete('hub_cancelled');
+            await manager.markIncomplete('auth_cancelled');
+            
+            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
+            assert.strictEqual(reason, 'auth_cancelled');
+        });
+    });
+
+    suite('state flow scenarios', () => {
+        test('should handle fresh install flow: NOT_STARTED → IN_PROGRESS → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Initial state
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+            
+            // Start setup
+            await manager.markStarted();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.IN_PROGRESS);
+            
+            // Complete setup
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+
+        test('should handle cancellation flow: NOT_STARTED → IN_PROGRESS → INCOMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            await manager.markStarted();
+            await manager.markIncomplete('hub_cancelled');
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.INCOMPLETE);
+            assert.strictEqual(await manager.isIncomplete(), true);
+        });
+
+        test('should handle resume flow: INCOMPLETE → IN_PROGRESS → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Start incomplete
+            await manager.markIncomplete('hub_cancelled');
+            
+            // Resume
+            await manager.markStarted();
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.IN_PROGRESS);
+            
+            // Complete
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+
+        test('should handle skip and reset flow: INCOMPLETE → NOT_STARTED → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Start incomplete and skip
+            await manager.markIncomplete('hub_cancelled');
+            await manager.markResumePromptShown();
+            
+            // Reset
+            await manager.reset();
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+            
+            // Complete after reset
+            await manager.markStarted();
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+    });
+
+    suite('test environment detection', () => {
+        test('should allow marking complete in test environment (VSCODE_TEST)', async () => {
+            const originalEnv = process.env.VSCODE_TEST;
+            try {
+                process.env.VSCODE_TEST = '1';
+                
+                const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                await manager.markComplete();
+                
+                const state = await manager.getState();
+                assert.strictEqual(state, SetupState.COMPLETE);
+            } finally {
+                if (originalEnv === undefined) {
+                    delete process.env.VSCODE_TEST;
+                } else {
+                    process.env.VSCODE_TEST = originalEnv;
+                }
+            }
+        });
+
+        test('should allow marking complete in ExtensionMode.Test', async () => {
+            const testContext = {
+                ...mockContext,
+                extensionMode: 3 as any // ExtensionMode.Test
+            } as vscode.ExtensionContext;
+            
+            SetupStateManager.resetInstance();
+            const manager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+            await manager.markComplete();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
         });
     });
 });

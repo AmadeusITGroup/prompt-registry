@@ -570,6 +570,334 @@ suite('HubManager', () => {
 });
 
 import nock from 'nock';
+import { generateHubSourceId } from '../../src/utils/sourceIdUtils';
+import { RegistrySource } from '../../src/types/registry';
+
+/**
+ * Hub Source Loading - SourceId Format Tests
+ * Tests for the new sourceId format: {sourceType}-{8-char-hash}
+ * Validates Requirement 2: Remove Hub ID from SourceId Generation
+ */
+suite('Hub Source Loading - SourceId Format', () => {
+    let hubManager: HubManager;
+    let storage: HubStorage;
+    let mockValidator: MockSchemaValidator;
+    let mockRegistry: MockRegistryManager;
+    let tempDir: string;
+
+    // Mock RegistryManager for tracking source operations
+    class MockRegistryManager {
+        private sources: RegistrySource[] = [];
+        public addSourceCalls: RegistrySource[] = [];
+        public updateSourceCalls: Array<{ id: string; updates: Partial<RegistrySource> }> = [];
+
+        async listSources(): Promise<RegistrySource[]> {
+            return [...this.sources];
+        }
+
+        async addSource(source: RegistrySource): Promise<void> {
+            this.sources.push(source);
+            this.addSourceCalls.push(source);
+        }
+
+        async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+            const index = this.sources.findIndex(s => s.id === id);
+            if (index >= 0) {
+                this.sources[index] = { ...this.sources[index], ...updates };
+                this.updateSourceCalls.push({ id, updates });
+            }
+        }
+
+        reset(): void {
+            this.sources = [];
+            this.addSourceCalls = [];
+            this.updateSourceCalls = [];
+        }
+
+        getSourceCount(): number {
+            return this.sources.length;
+        }
+
+        hasSource(id: string): boolean {
+            return this.sources.some(s => s.id === id);
+        }
+    }
+
+    const localRef: HubReference = {
+        type: 'local',
+        location: ''  // Will be set in setup
+    };
+
+    setup(() => {
+        // Create temp directory
+        tempDir = path.join(__dirname, '..', '..', 'test-temp-hubmanager-sourceid');
+
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true });
+        }
+        fs.mkdirSync(tempDir, { recursive: true });
+
+        // Use existing valid fixture with sources
+        const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+        localRef.location = fixturePath;
+
+        // Initialize services
+        storage = new HubStorage(tempDir);
+        mockValidator = new MockSchemaValidator();
+        mockRegistry = new MockRegistryManager();
+        hubManager = new HubManager(
+            storage,
+            mockValidator as any,
+            process.cwd(),
+            undefined,
+            mockRegistry as any
+        );
+    });
+
+    teardown(() => {
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true });
+        }
+    });
+
+    suite('New SourceId Format Generation', () => {
+        test('loadHubSources() should generate sourceId in new format {sourceType}-{8-char-hash}', async () => {
+            // Import hub with sources
+            await hubManager.importHub(localRef, 'test-new-format');
+
+            // Verify sources were loaded
+            const sources = await mockRegistry.listSources();
+            assert.ok(sources.length > 0, 'Should have loaded sources');
+
+            // Verify each source has the new format: {sourceType}-{8-char-hash}
+            // Note: sourceType can contain hyphens (e.g., 'awesome-copilot')
+            // Format: ends with -{8-hex-chars}
+            for (const source of sources) {
+                // Verify the sourceId ends with -{8-hex-chars}
+                const hashSuffixRegex = /-[a-f0-9]{8}$/;
+                assert.ok(
+                    hashSuffixRegex.test(source.id),
+                    `Source ID "${source.id}" should end with -{8-hex-chars}`
+                );
+
+                // Verify the sourceId starts with the source type
+                assert.ok(
+                    source.id.startsWith(source.type + '-'),
+                    `Source ID "${source.id}" should start with source type "${source.type}-"`
+                );
+            }
+        });
+
+        test('loadHubSources() should NOT include hub ID in sourceId', async () => {
+            const hubId = 'my-custom-hub-id';
+            
+            // Import hub with a specific hub ID
+            await hubManager.importHub(localRef, hubId);
+
+            // Verify sources were loaded
+            const sources = await mockRegistry.listSources();
+            assert.ok(sources.length > 0, 'Should have loaded sources');
+
+            // Verify NO source ID contains the hub ID
+            for (const source of sources) {
+                assert.ok(
+                    !source.id.includes(hubId),
+                    `Source ID "${source.id}" should NOT contain hub ID "${hubId}"`
+                );
+                
+                // Also verify it doesn't start with 'hub-' (legacy format)
+                assert.ok(
+                    !source.id.startsWith('hub-'),
+                    `Source ID "${source.id}" should NOT start with 'hub-' (legacy format)`
+                );
+            }
+        });
+
+        test('loadHubSources() should generate deterministic sourceId based on type and URL', async () => {
+            // Import hub
+            await hubManager.importHub(localRef, 'test-deterministic');
+
+            // Get the loaded sources
+            const sources = await mockRegistry.listSources();
+            assert.ok(sources.length > 0, 'Should have loaded sources');
+
+            // For each source, verify the ID matches what generateHubSourceId would produce
+            for (const source of sources) {
+                const expectedId = generateHubSourceId(source.type, source.url);
+                assert.strictEqual(
+                    source.id,
+                    expectedId,
+                    `Source ID "${source.id}" should match generateHubSourceId() output "${expectedId}"`
+                );
+            }
+        });
+    });
+
+    suite('Duplicate Detection with URL Matching', () => {
+        test('should detect duplicate sources by URL matching (not by ID)', async () => {
+            // Manually add a source with the new format ID
+            const existingUrl = 'https://github.com/github/awesome-copilot';
+            const existingType = 'awesome-copilot';
+            const existingSourceId = generateHubSourceId(existingType, existingUrl);
+            
+            const existingSource: RegistrySource = {
+                id: existingSourceId,
+                name: 'Existing Source',
+                type: existingType,
+                url: existingUrl,
+                enabled: true,
+                priority: 1,
+                config: {
+                    branch: 'main',
+                    collectionsPath: 'collections'
+                }
+            };
+            await mockRegistry.addSource(existingSource);
+
+            // Import hub that has a source with the same URL
+            // hub-two-sources.yml has source-1 with url: https://github.com/github/awesome-copilot
+            await hubManager.importHub(localRef, 'test-dup-detection');
+
+            // Verify duplicate was detected and skipped
+            const sources = await mockRegistry.listSources();
+            
+            // Should have 2 sources: 1 existing + 1 new (source-2 has different URL)
+            // source-1 should be skipped as duplicate
+            assert.strictEqual(sources.length, 2, 'Should have 2 sources (1 existing + 1 new, duplicate skipped)');
+
+            // Verify the existing source is still there
+            assert.ok(
+                sources.some(s => s.id === existingSourceId),
+                'Existing source should still be present'
+            );
+        });
+
+        test('should update source when same URL but different branch is imported (same sourceId)', async () => {
+            // Add source with branch: main
+            const existingUrl = 'https://github.com/github/awesome-copilot';
+            const existingType = 'awesome-copilot';
+            const existingSourceId = generateHubSourceId(existingType, existingUrl);
+            
+            const existingSource: RegistrySource = {
+                id: existingSourceId,
+                name: 'Existing Source Main',
+                type: existingType,
+                url: existingUrl,
+                enabled: true,
+                priority: 1,
+                config: {
+                    branch: 'main',
+                    collectionsPath: 'collections'
+                }
+            };
+            await mockRegistry.addSource(existingSource);
+
+            // Create a hub config with same URL but different branch
+            // Note: Since sourceId is based on type+URL only, this will have the SAME sourceId
+            // and will UPDATE the existing source, not add a new one
+            const tempHubPath = path.join(tempDir, 'hub-diff-branch.yml');
+            const hubConfig = {
+                version: '1.0.0',
+                metadata: {
+                    name: 'Test Hub',
+                    description: 'Test',
+                    maintainer: 'Test',
+                    updatedAt: new Date().toISOString()
+                },
+                sources: [{
+                    id: 'source-develop',
+                    name: 'Source Develop',
+                    type: 'awesome-copilot',
+                    url: 'https://github.com/github/awesome-copilot',
+                    enabled: true,
+                    priority: 1,
+                    config: {
+                        branch: 'develop',  // Different branch
+                        collectionsPath: 'collections'
+                    }
+                }],
+                profiles: []
+            };
+
+            fs.writeFileSync(tempHubPath, yaml.dump(hubConfig));
+
+            const ref: HubReference = {
+                type: 'local',
+                location: tempHubPath
+            };
+
+            // Reset tracking to see what happens
+            mockRegistry.addSourceCalls = [];
+            mockRegistry.updateSourceCalls = [];
+
+            await hubManager.importHub(ref, 'test-diff-branch');
+
+            // Since sourceId is based on type+URL only (not branch), the source should be UPDATED
+            const sources = await mockRegistry.listSources();
+            assert.strictEqual(sources.length, 1, 'Should have 1 source (updated, not added)');
+            
+            // Verify it was an update, not an add
+            assert.strictEqual(mockRegistry.updateSourceCalls.length, 1, 'Should have 1 update call');
+            assert.strictEqual(mockRegistry.addSourceCalls.length, 0, 'Should have 0 add calls');
+            
+            // Verify the source was updated with the new branch
+            const updatedSource = sources[0];
+            assert.strictEqual(updatedSource.config?.branch, 'develop', 'Branch should be updated to develop');
+        });
+
+        test('should update existing source when re-importing same hub', async () => {
+            // Import hub first time
+            await hubManager.importHub(localRef, 'test-update');
+            
+            const sourcesAfterFirst = await mockRegistry.listSources();
+            assert.strictEqual(sourcesAfterFirst.length, 2, 'Should have 2 sources after first import');
+
+            // Reset tracking
+            mockRegistry.addSourceCalls = [];
+            mockRegistry.updateSourceCalls = [];
+
+            // Re-load sources from same hub
+            await hubManager.loadHubSources('test-update');
+
+            // Verify sources were updated, not duplicated
+            const sourcesAfterReload = await mockRegistry.listSources();
+            assert.strictEqual(sourcesAfterReload.length, 2, 'Should still have only 2 sources (no duplicates)');
+            assert.strictEqual(mockRegistry.updateSourceCalls.length, 2, 'Should have 2 update calls');
+            assert.strictEqual(mockRegistry.addSourceCalls.length, 0, 'Should have 0 add calls on reload');
+        });
+    });
+
+    suite('SourceId Format Verification', () => {
+        test('sourceId should be exactly {type}-{8-hex-chars} format', async () => {
+            await hubManager.importHub(localRef, 'test-format-verify');
+
+            const sources = await mockRegistry.listSources();
+            assert.ok(sources.length > 0, 'Should have loaded sources');
+
+            for (const source of sources) {
+                // The format is {sourceType}-{8-hex-chars}
+                // sourceType can contain hyphens (e.g., 'awesome-copilot')
+                // So we need to extract the hash from the end
+                
+                // Verify it ends with -{8-hex-chars}
+                const hashSuffixRegex = /-([a-f0-9]{8})$/;
+                const match = source.id.match(hashSuffixRegex);
+                assert.ok(match, `Source ID "${source.id}" should end with -{8-hex-chars}`);
+                
+                const hashPart = match![1];
+                assert.strictEqual(hashPart.length, 8, `Hash part "${hashPart}" should be exactly 8 characters`);
+                assert.ok(/^[a-f0-9]+$/.test(hashPart), `Hash part "${hashPart}" should be lowercase hex characters only`);
+                
+                // Verify the prefix is the source type
+                const expectedPrefix = source.type + '-';
+                assert.ok(
+                    source.id.startsWith(expectedPrefix),
+                    `Source ID "${source.id}" should start with "${expectedPrefix}"`
+                );
+            }
+        });
+    });
+});
 
 suite('HubManager HTTP Redirect Handling', () => {
     let hubManager: HubManager;

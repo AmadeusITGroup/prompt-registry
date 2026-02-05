@@ -19,6 +19,8 @@ export enum SetupState {
 
 /**
  * Reason for incomplete setup
+ * - 'auth_cancelled': User cancelled authentication flow
+ * - 'hub_cancelled': User cancelled hub selection or hub configuration failed
  */
 export type IncompleteReason = 'auth_cancelled' | 'hub_cancelled';
 
@@ -40,13 +42,25 @@ export class SetupStateManager {
     }
 
     /**
-     * Get singleton instance
+     * Get singleton instance.
+     * 
+     * Note: On first call, both context and hubManager are required.
+     * Subsequent calls return the existing instance (parameters are ignored).
+     * Use resetInstance() in tests to create a fresh instance.
+     * 
+     * @param context - VS Code extension context (required on first call)
+     * @param hubManager - HubManager instance (required on first call)
+     * @returns SetupStateManager singleton instance
+     * @throws Error if context or hubManager is missing on first call
      */
     public static getInstance(
-        context: vscode.ExtensionContext,
-        hubManager: HubManager
+        context?: vscode.ExtensionContext,
+        hubManager?: HubManager
     ): SetupStateManager {
         if (!SetupStateManager.instance) {
+            if (!context || !hubManager) {
+                throw new Error('SetupStateManager requires context and hubManager on first call');
+            }
             SetupStateManager.instance = new SetupStateManager(context, hubManager);
         }
         return SetupStateManager.instance;

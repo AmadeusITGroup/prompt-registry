@@ -552,8 +552,13 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Handle complete setup request from marketplace empty state
-     * Manages state transitions and triggers the hub initialization flow
+     * Handle complete setup request from marketplace empty state.
+     * 
+     * State Management: This method marks setup as started, then delegates to
+     * the initializeHub command. The command handles its own state transitions
+     * (markComplete on success, markIncomplete on failure). We only need to
+     * mark started here and refresh the UI afterward.
+     * 
      * Requirements: 4.4
      */
     private async handleCompleteSetup(): Promise<void> {
@@ -564,20 +569,19 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         
         try {
             // Trigger first-run flow via the extension command
+            // Note: initializeHub handles markComplete/markIncomplete internally
             await vscode.commands.executeCommand('promptRegistry.initializeHub');
-            
-            // Mark setup as complete on success
-            await this.setupStateManager.markComplete();
             
             // Refresh marketplace to show updated state
             await this.loadBundles();
         } catch (error) {
             this.logger.error('Failed to complete setup from marketplace', error as Error);
             
-            // Mark setup as incomplete on error (user cancelled or error occurred)
-            await this.setupStateManager.markIncomplete('hub_cancelled');
-            
+            // Only show error message - state is already marked by initializeHub
             vscode.window.showErrorMessage(`Failed to complete setup: ${(error as Error).message}`);
+            
+            // Refresh to show current state
+            await this.loadBundles();
         }
     }
 

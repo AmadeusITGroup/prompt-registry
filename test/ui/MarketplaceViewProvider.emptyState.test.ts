@@ -192,8 +192,8 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
                 'should call promptRegistry.initializeHub command');
         });
 
-        test('should call markComplete on successful setup', async () => {
-            // Requirement 4.4: State should be marked as complete on success
+        test('should NOT call markComplete directly (delegated to initializeHub)', async () => {
+            // State management is delegated to initializeHub command
             sandbox.stub(vscode.commands, 'executeCommand').resolves();
             mockSetupStateManager.getState.resolves(SetupState.COMPLETE);
             mockRegistryManager.searchBundles.resolves([]);
@@ -203,8 +203,9 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
             // Call handleCompleteSetup
             await (marketplaceProvider as any).handleCompleteSetup();
 
-            // Verify markComplete was called
-            assert.ok(mockSetupStateManager.markComplete.calledOnce, 'markComplete should be called on success');
+            // Verify markComplete was NOT called (initializeHub handles this)
+            assert.ok(!mockSetupStateManager.markComplete.called, 
+                'markComplete should NOT be called directly - delegated to initializeHub');
         });
 
         test('should refresh marketplace after completing setup', async () => {
@@ -226,19 +227,22 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
             assert.strictEqual(postedMessages[0].type, 'bundlesLoaded');
         });
 
-        test('should call markIncomplete when setup fails', async () => {
-            // Requirement 4.4: Error handling should mark state as incomplete
+        test('should NOT call markIncomplete directly when setup fails (delegated to initializeHub)', async () => {
+            // State management is delegated to initializeHub command
             sandbox.stub(vscode.commands, 'executeCommand')
                 .rejects(new Error('Setup failed'));
             sandbox.stub(vscode.window, 'showErrorMessage').resolves();
+            mockSetupStateManager.getState.resolves(SetupState.COMPLETE);
+            mockRegistryManager.searchBundles.resolves([]);
+            mockRegistryManager.listInstalledBundles.resolves([]);
+            mockRegistryManager.listSources.resolves([]);
 
             // Call handleCompleteSetup - should not throw
             await (marketplaceProvider as any).handleCompleteSetup();
 
-            // Verify markIncomplete was called with correct reason
-            assert.ok(mockSetupStateManager.markIncomplete.calledOnce, 'markIncomplete should be called on error');
-            assert.ok(mockSetupStateManager.markIncomplete.calledWith('hub_cancelled'), 
-                'markIncomplete should be called with hub_cancelled reason');
+            // Verify markIncomplete was NOT called directly (initializeHub handles this)
+            assert.ok(!mockSetupStateManager.markIncomplete.called, 
+                'markIncomplete should NOT be called directly - delegated to initializeHub');
         });
 
         test('should handle errors gracefully when completing setup fails', async () => {

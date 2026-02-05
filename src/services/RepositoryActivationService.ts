@@ -15,6 +15,7 @@ import * as path from 'path';
 import { LockfileManager } from './LockfileManager';
 import { HubManager } from './HubManager';
 import { RegistryStorage } from '../storage/RegistryStorage';
+import { SetupStateManager } from './SetupStateManager';
 import { Lockfile } from '../types/lockfile';
 import { Logger } from '../utils/logger';
 import { InstallOptions } from '../types/registry';
@@ -57,17 +58,20 @@ export class RepositoryActivationService {
     private readonly DECLINED_KEY = 'repositoryActivation.declined';
     private workspaceRoot: string;
     private bundleInstaller?: IBundleInstaller;
+    private readonly setupStateManager?: SetupStateManager;
 
     constructor(
         private lockfileManager: LockfileManager,
         private hubManager: HubManager,
         private storage: RegistryStorage,
         workspaceRoot: string,
-        bundleInstaller?: IBundleInstaller
+        bundleInstaller?: IBundleInstaller,
+        setupStateManager?: SetupStateManager
     ) {
         this.logger = Logger.getInstance();
         this.workspaceRoot = workspaceRoot;
         this.bundleInstaller = bundleInstaller;
+        this.setupStateManager = setupStateManager;
     }
 
     /**
@@ -79,6 +83,7 @@ export class RepositoryActivationService {
      * @param hubManager - HubManager instance
      * @param storage - RegistryStorage instance
      * @param bundleInstaller - Optional IBundleInstaller instance for bundle installation
+     * @param setupStateManager - Optional SetupStateManager instance for checking setup completion
      * @returns RepositoryActivationService instance for the workspace
      * @throws Error if workspaceRoot is not provided on first call
      */
@@ -87,7 +92,8 @@ export class RepositoryActivationService {
         lockfileManager?: LockfileManager,
         hubManager?: HubManager,
         storage?: RegistryStorage,
-        bundleInstaller?: IBundleInstaller
+        bundleInstaller?: IBundleInstaller,
+        setupStateManager?: SetupStateManager
     ): RepositoryActivationService {
         if (!workspaceRoot) {
             throw new Error('Workspace root path required for RepositoryActivationService.getInstance()');
@@ -102,7 +108,7 @@ export class RepositoryActivationService {
             }
             RepositoryActivationService.instances.set(
                 normalizedPath,
-                new RepositoryActivationService(lockfileManager, hubManager, storage, normalizedPath, bundleInstaller)
+                new RepositoryActivationService(lockfileManager, hubManager, storage, normalizedPath, bundleInstaller, setupStateManager)
             );
         }
         return RepositoryActivationService.instances.get(normalizedPath)!;
@@ -142,15 +148,29 @@ export class RepositoryActivationService {
     }
 
     /**
-     * Check for lockfile and prompt activation if appropriate
-     * Called on workspace open
+     * Check for lockfile and detect missing sources/hubs.
+     * Called on workspace open.
+     * 
+     * Setup Timing: Detection is deferred until first-run setup is complete.
+     * This prevents confusing users with source configuration prompts before
+     * they've configured the extension. If SetupStateManager is unavailable,
+     * detection proceeds (fail-open behavior).
+     * 
+     * Note: No longer shows activation prompt - files are already present in repository.
+     * Only checks for missing sources and hubs that need to be configured.
      */
     async checkAndPromptActivation(): Promise<void> {
         try {
+            // Check if setup is complete before proceeding
+            if (!await this.isSetupComplete()) {
+                this.logger.info('First-run setup not complete, deferring source/hub detection');
+                return;
+            }
+
             // Check if lockfile exists
             const lockfile = await this.lockfileManager.read();
             if (!lockfile) {
-                this.logger.debug('No lockfile found, skipping activation prompt');
+                this.logger.debug('No lockfile found, skipping source/hub detection');
                 return;
             }
 
@@ -159,27 +179,16 @@ export class RepositoryActivationService {
             const repositoryPath = this.getRepositoryPath(lockfilePath);
             
             if (await this.wasDeclined(repositoryPath)) {
-                this.logger.debug(`Repository ${repositoryPath} was previously declined, skipping prompt`);
+                this.logger.debug(`Repository ${repositoryPath} was previously declined`);
                 return;
             }
 
-            // Show activation prompt
-            const choice = await this.showActivationPrompt(lockfile);
-
-            switch (choice) {
-                case 'enable':
-                    await this.enableRepositoryBundles(lockfile);
-                    break;
-                case 'never':
-                    await this.rememberDeclined(repositoryPath);
-                    break;
-                case 'decline':
-                default:
-                    // User declined or dismissed - do nothing
-                    break;
-            }
+            // No longer show activation prompt - files are already in repository
+            // Just check for missing sources and hubs
+            await this.checkAndOfferMissingSources(lockfile);
+            
         } catch (error) {
-            this.logger.error('Failed to check and prompt activation:', error instanceof Error ? error : undefined);
+            this.logger.error('Failed to check and detect sources:', error instanceof Error ? error : undefined);
         }
     }
 
@@ -468,5 +477,17 @@ export class RepositoryActivationService {
      */
     private getRepositoryPath(lockfilePath: string): string {
         return path.dirname(lockfilePath);
+    }
+
+    /**
+     * Check if setup is complete before proceeding with source/hub detection
+     * Fail-open: if SetupStateManager is not available, proceed with detection
+     */
+    private async isSetupComplete(): Promise<boolean> {
+        if (!this.setupStateManager) {
+            this.logger.debug('SetupStateManager not available, proceeding with detection');
+            return true;
+        }
+        return await this.setupStateManager.isComplete();
     }
 }

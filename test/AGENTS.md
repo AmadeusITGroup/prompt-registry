@@ -117,6 +117,100 @@ If utilities exist, **USE THEM**. Don't recreate.
 
 ---
 
+## 🚨 CRITICAL: Test Deduplication Rules 🚨
+
+### One Class = Maximum Two Test Files
+
+For any class `MyService`:
+- `MyService.test.ts` - Unit tests (specific examples, edge cases)
+- `MyService.property.test.ts` - Property tests (invariants across inputs)
+
+**That's it. No more files.**
+
+❌ **NEVER create:**
+- `MyServiceBehaviorA.test.ts`
+- `MyServiceBehaviorB.test.ts`  
+- `MyServiceIntegration.test.ts`
+- `ExtensionMyServiceUsage.test.ts`
+
+### Unit vs Property: No Overlap
+
+| Unit Tests Cover | Property Tests Cover |
+|------------------|---------------------|
+| Specific input → specific output | Invariant holds for ALL inputs |
+| Edge cases (null, empty, boundary) | Format/structure guarantees |
+| Error messages and exceptions | Idempotence, commutativity |
+| One example of each behavior | Statistical confidence across inputs |
+
+**If you wrote a unit test for it, DON'T write a property test for the same thing.**
+
+```typescript
+// ✅ Unit test: specific example
+test('should return expected state after operation', async () => {
+    await service.doOperation();
+    assert.strictEqual(await service.getState(), ExpectedState.DONE);
+});
+
+// ✅ Property test: invariant across ALL inputs (different concern)
+test('state is always valid after any operation sequence', async () => {
+    await fc.assert(fc.asyncProperty(
+        fc.array(fc.constantFrom('op1', 'op2', 'op3')),
+        async (ops) => {
+            // ... apply ops
+            return isValidState(await service.getState());
+        }
+    ));
+});
+
+// ❌ WRONG: Property test that duplicates unit test
+test('doOperation sets state to DONE', async () => {
+    await fc.assert(fc.asyncProperty(
+        fc.integer({ min: 1, max: 10 }), // Pointless variation
+        async (count) => {
+            await service.doOperation();
+            return await service.getState() === ExpectedState.DONE; // Same as unit test!
+        }
+    ));
+});
+```
+
+### E2E Tests: Commands Only, Not Methods
+
+E2E tests verify **user-facing commands**, not internal methods.
+
+```typescript
+// ✅ CORRECT E2E: Tests actual VS Code command
+test('command resets application state', async () => {
+    await vscode.commands.executeCommand('myExtension.resetState');
+    // Assert on observable outcome
+});
+
+// ❌ WRONG E2E: Just calls the same method as unit tests
+test('should reset state', async () => {
+    await stateManager.reset(); // This is a UNIT test, not E2E!
+    assert.strictEqual(await stateManager.getState(), State.INITIAL);
+});
+```
+
+### Before Writing Tests: Search First
+
+```bash
+# Check if behavior is already tested
+grep -r "the behavior you want to test" test/ --include="*.test.ts" | head -10
+
+# If you find existing tests, ADD to that file, don't create new file
+```
+
+### Consolidation Checklist
+
+Before creating a new test file, verify:
+- [ ] No existing test file for this class
+- [ ] Behavior isn't already covered in property tests
+- [ ] E2E test actually uses VS Code commands, not direct method calls
+- [ ] Test file count for this feature ≤ 3
+
+---
+
 ## Template
 
 ```typescript
@@ -373,6 +467,19 @@ node test/runExtensionTests.js
 
 **When in doubt**: If your mock setup is becoming complex and error-prone, move the test to `test/suite/` and run it in a real VS Code instance. A working test in real VS Code is better than a broken test with elaborate mocks.
 
+### 🚨 Test Duplication (FORBIDDEN)
+
+❌ **NEVER** create multiple test files for the same class
+❌ **NEVER** write property tests that just repeat unit test assertions with random inputs
+❌ **NEVER** write E2E tests that call internal methods instead of commands
+❌ **NEVER** copy production code into test helper classes
+❌ **NEVER** test the same behavior in multiple files
+
+✅ **ALWAYS** search for existing tests before writing new ones
+✅ **ALWAYS** add tests to existing files rather than creating new files
+✅ **ALWAYS** ensure unit/property/E2E tests cover DIFFERENT concerns
+✅ **ALWAYS** test through actual VS Code commands in E2E tests
+
 ### Other Anti-Patterns
 
 ❌ Over-mocking: `sandbox.createStubInstance(MyService)`
@@ -448,6 +555,10 @@ const response = require('../fixtures/github/releases-response.json');
 - [ ] **Tests verify behavior through public entry points, NOT implementation details**
 - [ ] Checked `test/helpers/` for existing utilities
 - [ ] Found similar tests in same category
+- [ ] **Searched for existing tests covering this behavior** (`grep -r "behavior" test/`)
+- [ ] **Test file count for this class ≤ 2** (unit + property only)
+- [ ] **Unit and property tests cover DIFFERENT concerns** (no overlap)
+- [ ] **E2E tests use VS Code commands, not direct method calls**
 - [ ] Using Mocha TDD style (`suite`, `test`)
 - [ ] Behavior-focused names
 - [ ] Mocking only external boundaries (HTTP, file system, VS Code API)
