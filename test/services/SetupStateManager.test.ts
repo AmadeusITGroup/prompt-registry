@@ -63,6 +63,29 @@ suite('SetupStateManager - Unit Tests', () => {
             
             assert.notStrictEqual(instance1, instance2, 'Should return new instance after reset');
         });
+
+        test('should throw error when context is missing on first call', () => {
+            SetupStateManager.resetInstance();
+            assert.throws(
+                () => SetupStateManager.getInstance(undefined, mockHubManager as any),
+                /SetupStateManager requires context and hubManager on first call/
+            );
+        });
+
+        test('should throw error when hubManager is missing on first call', () => {
+            SetupStateManager.resetInstance();
+            assert.throws(
+                () => SetupStateManager.getInstance(mockContext, undefined),
+                /SetupStateManager requires context and hubManager on first call/
+            );
+        });
+
+        test('should return existing instance without parameters after first call', () => {
+            const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            const instance2 = SetupStateManager.getInstance(); // No parameters
+            
+            assert.strictEqual(instance1, instance2, 'Should return same instance without parameters');
+        });
     });
 
     suite('getState()', () => {
@@ -111,7 +134,7 @@ suite('SetupStateManager - Unit Tests', () => {
     suite('isIncomplete()', () => {
         test('should return true when state is INCOMPLETE', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
+            await manager.markIncomplete();
             
             const isIncomplete = await manager.isIncomplete();
             assert.strictEqual(isIncomplete, true);
@@ -153,31 +176,15 @@ suite('SetupStateManager - Unit Tests', () => {
             assert.strictEqual(state, SetupState.COMPLETE);
         });
 
-        test('should clear incomplete reason', async () => {
-            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
-            await manager.markComplete();
-            
-            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
-            assert.strictEqual(reason, undefined);
-        });
     });
 
     suite('markIncomplete()', () => {
         test('should transition to INCOMPLETE', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('auth_cancelled');
+            await manager.markIncomplete();
             
             const state = await manager.getState();
             assert.strictEqual(state, SetupState.INCOMPLETE);
-        });
-
-        test('should store incomplete reason', async () => {
-            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
-            
-            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
-            assert.strictEqual(reason, 'hub_cancelled');
         });
     });
 
@@ -191,29 +198,29 @@ suite('SetupStateManager - Unit Tests', () => {
             assert.strictEqual(state, SetupState.NOT_STARTED);
         });
 
-        test('should clear incomplete reason', async () => {
+        test('should reset resume prompt shown flag (in-memory)', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
-            await manager.reset();
-            
-            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
-            assert.strictEqual(reason, undefined);
-        });
-
-        test('should reset resume prompt shown flag', async () => {
-            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete();
             await manager.markResumePromptShown();
+            
+            // Verify flag is set (prompt should not show)
+            let shouldShow = await manager.shouldShowResumePrompt();
+            assert.strictEqual(shouldShow, false, 'Should be false after marking shown');
+            
+            // Reset
             await manager.reset();
             
-            const promptShown = globalStateData.get('promptregistry.resumePromptShown');
-            assert.strictEqual(promptShown, false);
+            // Flag should be reset (prompt should show again after marking incomplete)
+            await manager.markIncomplete();
+            shouldShow = await manager.shouldShowResumePrompt();
+            assert.strictEqual(shouldShow, true, 'Should be true after reset');
         });
     });
 
     suite('detectIncompleteSetup()', () => {
         test('should return true when state is INCOMPLETE', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
+            await manager.markIncomplete();
             
             const isIncomplete = await manager.detectIncompleteSetup();
             assert.strictEqual(isIncomplete, true);
@@ -257,7 +264,7 @@ suite('SetupStateManager - Unit Tests', () => {
     suite('shouldShowResumePrompt()', () => {
         test('should return true when incomplete and prompt not shown', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
+            await manager.markIncomplete();
             
             const shouldShow = await manager.shouldShowResumePrompt();
             assert.strictEqual(shouldShow, true);
@@ -265,7 +272,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
         test('should return false when incomplete but prompt already shown', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager.markIncomplete('hub_cancelled');
+            await manager.markIncomplete();
             await manager.markResumePromptShown();
             
             const shouldShow = await manager.shouldShowResumePrompt();
@@ -282,19 +289,43 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     suite('markResumePromptShown()', () => {
-        test('should set resume prompt shown flag', async () => {
+        test('should set resume prompt shown flag in-memory only', async () => {
             const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
             await manager.markResumePromptShown();
             
+            // Should NOT be persisted to globalState
             const promptShown = globalStateData.get('promptregistry.resumePromptShown');
-            assert.strictEqual(promptShown, true);
+            assert.strictEqual(promptShown, undefined, 'Should not persist to globalState');
+            
+            // But should affect shouldShowResumePrompt
+            await manager.markIncomplete();
+            const shouldShow = await manager.shouldShowResumePrompt();
+            assert.strictEqual(shouldShow, false, 'Should remember within same instance');
+        });
+
+        test('should reset flag when instance is reset (session-scoped)', async () => {
+            const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager1.markIncomplete();
+            await manager1.markResumePromptShown();
+            
+            // Verify flag is set
+            let shouldShow = await manager1.shouldShowResumePrompt();
+            assert.strictEqual(shouldShow, false, 'Should be false after marking shown');
+            
+            // Reset instance (simulate new session)
+            SetupStateManager.resetInstance();
+            const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Flag should be reset
+            shouldShow = await manager2.shouldShowResumePrompt();
+            assert.strictEqual(shouldShow, true, 'Should be true in new instance (flag reset)');
         });
     });
 
     suite('state persistence', () => {
         test('should persist state across manager instances', async () => {
             const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager1.markIncomplete('hub_cancelled');
+            await manager1.markIncomplete();
             
             SetupStateManager.resetInstance();
             const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
@@ -302,15 +333,141 @@ suite('SetupStateManager - Unit Tests', () => {
             
             assert.strictEqual(state, SetupState.INCOMPLETE);
         });
+    });
 
-        test('should persist incomplete reason across manager instances', async () => {
-            const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-            await manager1.markIncomplete('auth_cancelled');
+    suite('reset() from different states', () => {
+        test('should reset from INCOMPLETE state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markIncomplete();
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+
+        test('should reset from IN_PROGRESS state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markStarted();
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+
+        test('should reset from COMPLETE state', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            await manager.markComplete();
+            
+            await manager.reset();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+        });
+    });
+
+
+
+    suite('state flow scenarios', () => {
+        test('should handle fresh install flow: NOT_STARTED → IN_PROGRESS → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Initial state
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+            
+            // Start setup
+            await manager.markStarted();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.IN_PROGRESS);
+            
+            // Complete setup
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+
+        test('should handle cancellation flow: NOT_STARTED → IN_PROGRESS → INCOMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            await manager.markStarted();
+            await manager.markIncomplete();
+            
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.INCOMPLETE);
+            assert.strictEqual(await manager.isIncomplete(), true);
+        });
+
+        test('should handle resume flow: INCOMPLETE → IN_PROGRESS → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Start incomplete
+            await manager.markIncomplete();
+            
+            // Resume
+            await manager.markStarted();
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.IN_PROGRESS);
+            
+            // Complete
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+
+        test('should handle skip and reset flow: INCOMPLETE → NOT_STARTED → COMPLETE', async () => {
+            const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+            
+            // Start incomplete and skip
+            await manager.markIncomplete();
+            await manager.markResumePromptShown();
+            
+            // Reset
+            await manager.reset();
+            let state = await manager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED);
+            
+            // Complete after reset
+            await manager.markStarted();
+            await manager.markComplete();
+            state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
+        });
+    });
+
+    suite('test environment detection', () => {
+        test('should allow marking complete in test environment (VSCODE_TEST)', async () => {
+            const originalEnv = process.env.VSCODE_TEST;
+            try {
+                process.env.VSCODE_TEST = '1';
+                
+                const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                await manager.markComplete();
+                
+                const state = await manager.getState();
+                assert.strictEqual(state, SetupState.COMPLETE);
+            } finally {
+                if (originalEnv === undefined) {
+                    delete process.env.VSCODE_TEST;
+                } else {
+                    process.env.VSCODE_TEST = originalEnv;
+                }
+            }
+        });
+
+        test('should allow marking complete in ExtensionMode.Test', async () => {
+            const testContext = {
+                ...mockContext,
+                extensionMode: 3 as any // ExtensionMode.Test
+            } as vscode.ExtensionContext;
             
             SetupStateManager.resetInstance();
-            const reason = globalStateData.get('promptregistry.setupIncompleteReason');
+            const manager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+            await manager.markComplete();
             
-            assert.strictEqual(reason, 'auth_cancelled');
+            const state = await manager.getState();
+            assert.strictEqual(state, SetupState.COMPLETE);
         });
     });
 });

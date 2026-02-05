@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 import { RepositoryActivationService } from '../../src/services/RepositoryActivationService';
 import { LockfileManager } from '../../src/services/LockfileManager';
 import { HubManager } from '../../src/services/HubManager';
+import { SetupStateManager } from '../../src/services/SetupStateManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { Lockfile } from '../../src/types/lockfile';
 import { LockfileGenerators, LOCKFILE_DEFAULTS } from '../helpers/lockfileTestHelpers';
@@ -43,7 +44,7 @@ suite('RepositoryActivationService - Property Tests', () => {
         RepositoryActivationService.resetInstance();
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - lockfile presence triggers prompt', () => {
+    test('Property 11: Repository Activation - lockfile presence triggers source detection (no activation prompt per Requirement 1.6)', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
@@ -68,6 +69,18 @@ suite('RepositoryActivationService - Property Tests', () => {
                         }
                     } as any;
                     mockStorage.getContext.returns(mockContext);
+                    // Configure all sources so no missing sources prompt is shown
+                    const sourceIds = Object.keys(lockfile.sources || {});
+                    const configuredSources = sourceIds.map(id => ({
+                        id,
+                        type: lockfile.sources![id].type,
+                        url: lockfile.sources![id].url,
+                        name: `Source ${id}`,
+                        enabled: true,
+                        priority: 0
+                    }));
+                    mockStorage.getSources.resolves(configuredSources as any);
+                    mockHubManager.listHubs.resolves([]);
                     
                     const service = new RepositoryActivationService(
                         mockLockfileManager,
@@ -79,16 +92,17 @@ suite('RepositoryActivationService - Property Tests', () => {
                     // Act
                     await service.checkAndPromptActivation();
 
-                    // Assert - prompt should be shown for any valid lockfile
-                    assert.ok(showInformationMessageStub.calledOnce,
-                        'Should show activation prompt for any valid lockfile');
+                    // Assert - lockfile should be read (source detection happens)
+                    // No activation prompt is shown per Requirement 1.6
+                    assert.ok(mockLockfileManager.read.calledOnce,
+                        'Should read lockfile for source detection');
                 }
             ),
             { numRuns: 100 }
         );
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - declined repositories never prompt', () => {
+    test('Property 11: Repository Activation - declined repositories never trigger detection', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
@@ -133,7 +147,7 @@ suite('RepositoryActivationService - Property Tests', () => {
         );
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - prompt includes bundle count', () => {
+    test('Property 11: Repository Activation - checks for missing sources when lockfile exists', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 20 }),
@@ -157,6 +171,9 @@ suite('RepositoryActivationService - Property Tests', () => {
                         }
                     } as any;
                     mockStorage.getContext.returns(mockContext);
+                    // No sources configured - will trigger missing sources detection
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
                     
                     const service = new RepositoryActivationService(
                         mockLockfileManager,
@@ -168,26 +185,23 @@ suite('RepositoryActivationService - Property Tests', () => {
                     // Act
                     await service.checkAndPromptActivation();
 
-                    // Assert - message should include bundle count
-                    const message = showInformationMessageStub.firstCall.args[0] as string;
-                    const bundleCount = Object.keys(lockfile.bundles).length;
-                    assert.ok(message.includes(bundleCount.toString()),
-                        `Prompt message should include bundle count (${bundleCount})`);
+                    // Assert - should check for missing sources (no activation prompt per Requirement 1.6)
+                    assert.ok(mockLockfileManager.read.calledOnce,
+                        'Should read lockfile to check for missing sources');
                 }
             ),
             { numRuns: 100 }
         );
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - user choice determines action', () => {
+    test('Property 11: Repository Activation - no activation prompt shown (Requirement 1.6)', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 5 }),
-                fc.constantFrom('Enable', 'Not now', 'Don\'t ask again', undefined),
-                async (lockfile, userChoice) => {
+                async (lockfile) => {
                     // Reset stub history for each iteration
                     showInformationMessageStub.resetHistory();
-                    showInformationMessageStub.resolves(userChoice);
+                    showInformationMessageStub.resolves('Not now');
                     RepositoryActivationService.resetInstance();
                     
                     // Arrange
@@ -207,9 +221,17 @@ suite('RepositoryActivationService - Property Tests', () => {
                     } as any;
                     mockStorage.getContext.returns(mockContext);
                     
-                    // Stub getInstalledBundles to always return empty array
-                    mockStorage.getInstalledBundles.resolves([]);
-                    mockStorage.getSources.resolves([]);
+                    // All sources configured - no missing sources prompt
+                    const sourceIds = Object.keys(lockfile.sources || {});
+                    const configuredSources = sourceIds.map(id => ({
+                        id,
+                        type: lockfile.sources![id].type,
+                        url: lockfile.sources![id].url,
+                        name: `Source ${id}`,
+                        enabled: true,
+                        priority: 0
+                    }));
+                    mockStorage.getSources.resolves(configuredSources as any);
                     mockHubManager.listHubs.resolves([]);
                     
                     const service = new RepositoryActivationService(
@@ -222,20 +244,12 @@ suite('RepositoryActivationService - Property Tests', () => {
                     // Act
                     await service.checkAndPromptActivation();
 
-                    // Assert - behavior should match user choice
-                    if (userChoice === 'Enable') {
-                        // Should attempt to enable bundles
-                        assert.ok(mockStorage.getInstalledBundles.called,
-                            'Should check installed bundles when Enable is selected');
-                    } else if (userChoice === 'Don\'t ask again') {
-                        // Should remember declined
-                        assert.ok(updateStub.called,
-                            'Should update global state when "Don\'t ask again" is selected');
-                        assert.strictEqual(updateStub.firstCall.args[0], 'repositoryActivation.declined');
-                    } else {
-                        // 'Not now' or undefined - should do nothing
-                        assert.ok(!mockStorage.getInstalledBundles.called,
-                            'Should not enable bundles when declined or dismissed');
+                    // Assert - no activation prompt should be shown (Requirement 1.6)
+                    // Files are already in repository, no need to ask user to "enable"
+                    if (showInformationMessageStub.called) {
+                        const message = showInformationMessageStub.firstCall.args[0] as string;
+                        assert.ok(!message.toLowerCase().includes('enable'),
+                            'Should not show activation prompt - files already in repository');
                     }
                 }
             ),
@@ -243,7 +257,7 @@ suite('RepositoryActivationService - Property Tests', () => {
         );
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - prompt has exactly three buttons', () => {
+    test('Property 11: Repository Activation - does not call enableRepositoryBundles automatically', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 5 }),
@@ -268,6 +282,20 @@ suite('RepositoryActivationService - Property Tests', () => {
                     } as any;
                     mockStorage.getContext.returns(mockContext);
                     
+                    // All sources configured
+                    const sourceIds = Object.keys(lockfile.sources || {});
+                    const configuredSources = sourceIds.map(id => ({
+                        id,
+                        type: lockfile.sources![id].type,
+                        url: lockfile.sources![id].url,
+                        name: `Source ${id}`,
+                        enabled: true,
+                        priority: 0
+                    }));
+                    mockStorage.getSources.resolves(configuredSources as any);
+                    mockHubManager.listHubs.resolves([]);
+                    mockStorage.getInstalledBundles.resolves([]);
+                    
                     const service = new RepositoryActivationService(
                         mockLockfileManager,
                         mockHubManager,
@@ -278,14 +306,10 @@ suite('RepositoryActivationService - Property Tests', () => {
                     // Act
                     await service.checkAndPromptActivation();
 
-                    // Assert - should always have exactly 3 buttons
-                    const callArgs = showInformationMessageStub.firstCall.args;
-                    const buttons = callArgs.slice(1); // Skip message
-                    assert.strictEqual(buttons.length, 3,
-                        'Prompt should always have exactly 3 action buttons');
-                    assert.ok(buttons.includes('Enable'), 'Should have Enable button');
-                    assert.ok(buttons.includes('Not now'), 'Should have Not now button');
-                    assert.ok(buttons.includes('Don\'t ask again'), 'Should have Don\'t ask again button');
+                    // Assert - should NOT call getInstalledBundles (no automatic enablement)
+                    // Files are already in repository per Requirement 1.6
+                    assert.ok(!mockStorage.getInstalledBundles.called,
+                        'Should not call getInstalledBundles - files already in repository');
                 }
             ),
             { numRuns: 100 }
@@ -327,7 +351,7 @@ suite('RepositoryActivationService - Property Tests', () => {
         );
     });
 
-    test('Property 11: Repository Activation Prompt Behavior - remember declined persists across calls', () => {
+    test('Property 11: Repository Activation - declined repositories skip source detection', () => {
         return fc.assert(
             fc.asyncProperty(
                 LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 5 }),
@@ -335,7 +359,6 @@ suite('RepositoryActivationService - Property Tests', () => {
                 async (lockfile, repositoryPath) => {
                     // Reset stub history for each iteration
                     showInformationMessageStub.resetHistory();
-                    showInformationMessageStub.resolves('Don\'t ask again');
                     RepositoryActivationService.resetInstance();
                     
                     // Arrange
@@ -346,15 +369,11 @@ suite('RepositoryActivationService - Property Tests', () => {
                     mockLockfileManager.read.resolves(lockfile);
                     mockLockfileManager.getLockfilePath.returns(`${repositoryPath}/prompt-registry.lock.json`);
                     
-                    const declinedList: string[] = [];
-                    const updateStub = sandbox.stub().callsFake(async (key: string, value: string[]) => {
-                        declinedList.length = 0;
-                        declinedList.push(...value);
-                    });
-                    
+                    // Repository is already in declined list
+                    const declinedList = [repositoryPath];
                     const getStub = sandbox.stub().callsFake((key: string, defaultValue: any) => {
                         if (key === 'repositoryActivation.declined') {
-                            return declinedList.length > 0 ? [...declinedList] : defaultValue;
+                            return [...declinedList];
                         }
                         return defaultValue;
                     });
@@ -362,12 +381,13 @@ suite('RepositoryActivationService - Property Tests', () => {
                     const mockContext = {
                         globalState: {
                             get: getStub,
-                            update: updateStub
+                            update: sandbox.stub()
                         }
                     } as any;
                     
-                    // Return the same context every time getContext is called
                     mockStorage.getContext.returns(mockContext);
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
                     
                     const service = new RepositoryActivationService(
                         mockLockfileManager,
@@ -376,22 +396,12 @@ suite('RepositoryActivationService - Property Tests', () => {
                         repositoryPath
                     );
 
-                    // Act - first call with "Don't ask again"
+                    // Act
                     await service.checkAndPromptActivation();
-                    const firstCallCount = showInformationMessageStub.callCount;
-                    
-                    // Act - second call should not prompt
-                    showInformationMessageStub.resetHistory();
-                    await service.checkAndPromptActivation();
-                    const secondCallCount = showInformationMessageStub.callCount;
 
-                    // Assert - first call prompts, second call doesn't
-                    assert.strictEqual(firstCallCount, 1,
-                        'First call should show prompt');
-                    assert.strictEqual(secondCallCount, 0,
-                        'Second call should not show prompt after "Don\'t ask again"');
-                    assert.ok(declinedList.includes(repositoryPath),
-                        'Repository should be in declined list');
+                    // Assert - should not show any prompt for declined repositories
+                    assert.ok(!showInformationMessageStub.called,
+                        'Should not show any prompt for declined repositories');
                 }
             ),
             { numRuns: 100 }
@@ -766,6 +776,373 @@ suite('RepositoryActivationService - Property Tests (Missing Sources/Hubs)', () 
                         'Missing sources detection should be deterministic');
                     assert.deepStrictEqual(result1.missingHubs.sort(), result2.missingHubs.sort(),
                         'Missing hubs detection should be deterministic');
+                }
+            ),
+            { numRuns: 100 }
+        );
+    });
+});
+
+
+/**
+ * Feature: lockfile-timing-and-hub-decoupling, Setup Timing Properties
+ * 
+ * Property 1: Setup Timing Invariant
+ * Source/hub detection MUST NOT occur before setup is complete.
+ * 
+ * Property 5: Fail-Open Behavior
+ * If SetupStateManager is unavailable, detection MUST proceed.
+ * 
+ * **Validates: Requirements 1.1, 1.2, 1.4, 6.4**
+ */
+suite('RepositoryActivationService - Setup Timing Properties', () => {
+    let sandbox: sinon.SinonSandbox;
+    let showInformationMessageStub: sinon.SinonStub;
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
+        RepositoryActivationService.resetInstance();
+    });
+
+    teardown(() => {
+        sandbox.restore();
+        RepositoryActivationService.resetInstance();
+    });
+
+    /**
+     * Property 1: Setup Timing Invariant
+     * 
+     * **Validates: Requirements 1.1, 1.4**
+     * 
+     * Statement: Source/hub detection MUST NOT occur before setup is complete.
+     * 
+     * ∀ activation events:
+     *   IF SetupStateManager.isComplete() = false
+     *   THEN RepositoryActivationService.checkAndPromptActivation() returns early
+     *   AND no user prompts are shown
+     */
+    test('Property 1: Setup Timing Invariant - detection never occurs when setup incomplete', () => {
+        return fc.assert(
+            fc.asyncProperty(
+                LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
+                fc.constantFrom('not_started', 'in_progress', 'incomplete'),
+                async (lockfile, setupState) => {
+                    // Reset stub history for each iteration
+                    showInformationMessageStub.resetHistory();
+                    RepositoryActivationService.resetInstance();
+                    
+                    // Arrange
+                    const mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+                    const mockHubManager = sandbox.createStubInstance(HubManager);
+                    const mockStorage = sandbox.createStubInstance(RegistryStorage);
+                    const mockSetupStateManager = sandbox.createStubInstance(SetupStateManager);
+                    
+                    // Setup state is NOT complete
+                    mockSetupStateManager.isComplete.resolves(false);
+                    mockSetupStateManager.getState.resolves(setupState as any);
+                    
+                    mockLockfileManager.read.resolves(lockfile);
+                    mockLockfileManager.getLockfilePath.returns('/repo/prompt-registry.lock.json');
+                    
+                    // Mock storage to return no configured sources (so prompt would be shown if detection proceeds)
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
+                    
+                    // Mock context with no declined repositories
+                    const mockContext = {
+                        globalState: {
+                            get: sandbox.stub().returns([])
+                        }
+                    } as any;
+                    mockStorage.getContext.returns(mockContext);
+                    
+                    const service = new RepositoryActivationService(
+                        mockLockfileManager,
+                        mockHubManager,
+                        mockStorage,
+                        TEST_WORKSPACE_ROOT,
+                        undefined, // bundleInstaller
+                        mockSetupStateManager
+                    );
+
+                    // Act
+                    await service.checkAndPromptActivation();
+
+                    // Assert - no prompts should be shown when setup is incomplete
+                    assert.ok(!showInformationMessageStub.called,
+                        `Should NOT show any prompts when setup state is '${setupState}' (not complete)`);
+                    
+                    // Verify that storage.getSources was NOT called (early return before source check)
+                    assert.ok(!mockStorage.getSources.called,
+                        'Should NOT check for missing sources when setup is incomplete');
+                }
+            ),
+            { numRuns: 100 }
+        );
+    });
+
+    /**
+     * Property 1 (continued): Setup Timing Invariant - detection proceeds when setup IS complete
+     * 
+     * **Validates: Requirements 1.2**
+     * 
+     * Statement: When setup IS complete, detection should proceed normally.
+     * This is verified by checking that the service attempts to check for missing sources.
+     */
+    test('Property 1: Setup Timing Invariant - detection proceeds when setup is complete', () => {
+        return fc.assert(
+            fc.asyncProperty(
+                LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
+                async (lockfile) => {
+                    // Reset stub history for each iteration
+                    showInformationMessageStub.resetHistory();
+                    showInformationMessageStub.resolves('Not now');
+                    RepositoryActivationService.resetInstance();
+                    
+                    // Arrange
+                    const mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+                    const mockHubManager = sandbox.createStubInstance(HubManager);
+                    const mockStorage = sandbox.createStubInstance(RegistryStorage);
+                    const mockSetupStateManager = sandbox.createStubInstance(SetupStateManager);
+                    
+                    // Setup state IS complete
+                    mockSetupStateManager.isComplete.resolves(true);
+                    
+                    mockLockfileManager.read.resolves(lockfile);
+                    mockLockfileManager.getLockfilePath.returns('/repo/prompt-registry.lock.json');
+                    
+                    // Mock storage to return no configured sources (so prompt will be shown)
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
+                    
+                    // Mock context with no declined repositories
+                    const mockContext = {
+                        globalState: {
+                            get: sandbox.stub().returns([])
+                        }
+                    } as any;
+                    mockStorage.getContext.returns(mockContext);
+                    
+                    const service = new RepositoryActivationService(
+                        mockLockfileManager,
+                        mockHubManager,
+                        mockStorage,
+                        TEST_WORKSPACE_ROOT,
+                        undefined, // bundleInstaller
+                        mockSetupStateManager
+                    );
+
+                    // Act
+                    await service.checkAndPromptActivation();
+
+                    // Assert - detection should proceed when setup is complete
+                    // Verify by checking that storage.getSources was called (source detection proceeded)
+                    assert.ok(mockStorage.getSources.called,
+                        'Should check for missing sources when setup is complete');
+                }
+            ),
+            { numRuns: 100 }
+        );
+    });
+
+    /**
+     * Property 5: Fail-Open Behavior
+     * 
+     * **Validates: Requirements 6.4**
+     * 
+     * Statement: If SetupStateManager is unavailable, detection MUST proceed.
+     * 
+     * IF setupStateManager = undefined
+     * THEN isSetupComplete() = true
+     * AND detection proceeds normally
+     */
+    test('Property 5: Fail-Open Behavior - detection proceeds when SetupStateManager undefined', () => {
+        return fc.assert(
+            fc.asyncProperty(
+                LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
+                async (lockfile) => {
+                    // Reset stub history for each iteration
+                    showInformationMessageStub.resetHistory();
+                    showInformationMessageStub.resolves('Not now');
+                    RepositoryActivationService.resetInstance();
+                    
+                    // Arrange
+                    const mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+                    const mockHubManager = sandbox.createStubInstance(HubManager);
+                    const mockStorage = sandbox.createStubInstance(RegistryStorage);
+                    
+                    mockLockfileManager.read.resolves(lockfile);
+                    mockLockfileManager.getLockfilePath.returns('/repo/prompt-registry.lock.json');
+                    
+                    // Mock storage to return no configured sources (so prompt will be shown)
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
+                    
+                    // Mock context with no declined repositories
+                    const mockContext = {
+                        globalState: {
+                            get: sandbox.stub().returns([])
+                        }
+                    } as any;
+                    mockStorage.getContext.returns(mockContext);
+                    
+                    // Create service WITHOUT SetupStateManager (undefined)
+                    const service = new RepositoryActivationService(
+                        mockLockfileManager,
+                        mockHubManager,
+                        mockStorage,
+                        TEST_WORKSPACE_ROOT,
+                        undefined, // bundleInstaller
+                        undefined  // setupStateManager - explicitly undefined for fail-open
+                    );
+
+                    // Act
+                    await service.checkAndPromptActivation();
+
+                    // Assert - detection should proceed (fail-open behavior)
+                    // When SetupStateManager is undefined, the service should assume setup is complete
+                    // Verify by checking that storage.getSources was called (source detection proceeded)
+                    assert.ok(mockStorage.getSources.called,
+                        'Should proceed with source detection when SetupStateManager is undefined (fail-open)');
+                }
+            ),
+            { numRuns: 100 }
+        );
+    });
+
+    /**
+     * Property 5 (continued): Fail-Open Behavior - contrast with defined SetupStateManager
+     * 
+     * **Validates: Requirements 6.4**
+     * 
+     * This test verifies that when SetupStateManager IS defined and returns incomplete,
+     * detection is blocked - contrasting with the fail-open behavior when undefined.
+     */
+    test('Property 5: Fail-Open Behavior - contrast: defined SetupStateManager blocks when incomplete', () => {
+        return fc.assert(
+            fc.asyncProperty(
+                LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 10 }),
+                async (lockfile) => {
+                    // Reset stub history for each iteration
+                    showInformationMessageStub.resetHistory();
+                    RepositoryActivationService.resetInstance();
+                    
+                    // Arrange
+                    const mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+                    const mockHubManager = sandbox.createStubInstance(HubManager);
+                    const mockStorage = sandbox.createStubInstance(RegistryStorage);
+                    const mockSetupStateManager = sandbox.createStubInstance(SetupStateManager);
+                    
+                    // Setup state is NOT complete (defined but incomplete)
+                    mockSetupStateManager.isComplete.resolves(false);
+                    
+                    mockLockfileManager.read.resolves(lockfile);
+                    mockLockfileManager.getLockfilePath.returns('/repo/prompt-registry.lock.json');
+                    
+                    // Mock storage to return no configured sources
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
+                    
+                    // Mock context with no declined repositories
+                    const mockContext = {
+                        globalState: {
+                            get: sandbox.stub().returns([])
+                        }
+                    } as any;
+                    mockStorage.getContext.returns(mockContext);
+                    
+                    // Create service WITH SetupStateManager that returns incomplete
+                    const service = new RepositoryActivationService(
+                        mockLockfileManager,
+                        mockHubManager,
+                        mockStorage,
+                        TEST_WORKSPACE_ROOT,
+                        undefined, // bundleInstaller
+                        mockSetupStateManager // defined SetupStateManager
+                    );
+
+                    // Act
+                    await service.checkAndPromptActivation();
+
+                    // Assert - detection should be blocked when SetupStateManager is defined and incomplete
+                    assert.ok(!mockStorage.getSources.called,
+                        'Should NOT check for missing sources when SetupStateManager is defined and returns incomplete');
+                }
+            ),
+            { numRuns: 100 }
+        );
+    });
+
+    /**
+     * Property 1 & 5 Combined: Deterministic behavior across setup states
+     * 
+     * **Validates: Requirements 1.1, 1.2, 6.4**
+     * 
+     * This test verifies that the behavior is deterministic:
+     * - undefined SetupStateManager -> always proceeds (fail-open)
+     * - defined SetupStateManager with isComplete=true -> always proceeds
+     * - defined SetupStateManager with isComplete=false -> always blocks
+     */
+    test('Property 1 & 5: Deterministic behavior across setup states', () => {
+        return fc.assert(
+            fc.asyncProperty(
+                LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 5 }),
+                fc.constantFrom('undefined', 'complete', 'incomplete'),
+                async (lockfile, setupManagerState) => {
+                    // Reset stub history for each iteration
+                    showInformationMessageStub.resetHistory();
+                    showInformationMessageStub.resolves('Not now');
+                    RepositoryActivationService.resetInstance();
+                    
+                    // Arrange
+                    const mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+                    const mockHubManager = sandbox.createStubInstance(HubManager);
+                    const mockStorage = sandbox.createStubInstance(RegistryStorage);
+                    
+                    mockLockfileManager.read.resolves(lockfile);
+                    mockLockfileManager.getLockfilePath.returns('/repo/prompt-registry.lock.json');
+                    
+                    // Mock storage to return no configured sources
+                    mockStorage.getSources.resolves([]);
+                    mockHubManager.listHubs.resolves([]);
+                    
+                    const mockContext = {
+                        globalState: {
+                            get: sandbox.stub().returns([])
+                        }
+                    } as any;
+                    mockStorage.getContext.returns(mockContext);
+                    
+                    // Configure SetupStateManager based on test case
+                    let mockSetupStateManager: sinon.SinonStubbedInstance<SetupStateManager> | undefined;
+                    if (setupManagerState !== 'undefined') {
+                        mockSetupStateManager = sandbox.createStubInstance(SetupStateManager);
+                        mockSetupStateManager.isComplete.resolves(setupManagerState === 'complete');
+                    }
+                    
+                    const service = new RepositoryActivationService(
+                        mockLockfileManager,
+                        mockHubManager,
+                        mockStorage,
+                        TEST_WORKSPACE_ROOT,
+                        undefined,
+                        mockSetupStateManager
+                    );
+
+                    // Act
+                    await service.checkAndPromptActivation();
+
+                    // Assert - behavior should be deterministic based on setup state
+                    const shouldProceed = setupManagerState === 'undefined' || setupManagerState === 'complete';
+                    
+                    if (shouldProceed) {
+                        assert.ok(mockStorage.getSources.called,
+                            `Should proceed with source detection when setupManagerState='${setupManagerState}'`);
+                    } else {
+                        assert.ok(!mockStorage.getSources.called,
+                            `Should block source detection when setupManagerState='${setupManagerState}'`);
+                    }
                 }
             ),
             { numRuns: 100 }

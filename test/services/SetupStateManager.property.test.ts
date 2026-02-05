@@ -90,10 +90,10 @@ suite('SetupStateManager - Property Tests', () => {
                                 await manager.markComplete();
                                 break;
                             case 'cancel_auth':
-                                await manager.markIncomplete('auth_cancelled');
+                                await manager.markIncomplete();
                                 break;
                             case 'cancel_hub':
-                                await manager.markIncomplete('hub_cancelled');
+                                await manager.markIncomplete();
                                 break;
                             case 'resume':
                                 await manager.markStarted();
@@ -195,7 +195,7 @@ suite('SetupStateManager - Property Tests', () => {
                             await manager1.markComplete();
                             break;
                         case SetupState.INCOMPLETE:
-                            await manager1.markIncomplete('hub_cancelled');
+                            await manager1.markIncomplete();
                             break;
                     }
 
@@ -335,7 +335,7 @@ suite('SetupStateManager - Property Tests', () => {
                                 await manager.markComplete();
                                 break;
                             case 'incomplete':
-                                await manager.markIncomplete('hub_cancelled');
+                                await manager.markIncomplete();
                                 break;
                             case 'reset':
                                 await manager.reset();
@@ -369,7 +369,7 @@ suite('SetupStateManager - Property Tests', () => {
                     const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
 
                     // Set up incomplete state
-                    await manager.markIncomplete('hub_cancelled');
+                    await manager.markIncomplete();
 
                     // First check: should show prompt
                     const shouldShowFirst = await manager.shouldShowResumePrompt();
@@ -392,12 +392,23 @@ suite('SetupStateManager - Property Tests', () => {
                         );
                     }
 
-                    // Verify the flag persists in global state
+                    // Verify the flag is session-scoped (NOT persisted to global state)
                     const promptShownFlag = globalStateData.get('promptregistry.resumePromptShown');
                     assert.strictEqual(
                         promptShownFlag,
+                        undefined,
+                        `Resume prompt shown flag should NOT be persisted in global state (session-scoped) (checkCount=${checkCount})`
+                    );
+
+                    // Verify that a new instance (simulating new session) allows prompt again
+                    SetupStateManager.resetInstance();
+                    const newSessionManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                    await newSessionManager.markIncomplete();
+                    const shouldShowInNewSession = await newSessionManager.shouldShowResumePrompt();
+                    assert.strictEqual(
+                        shouldShowInNewSession,
                         true,
-                        `Resume prompt shown flag should be persisted in global state (checkCount=${checkCount})`
+                        `Should show resume prompt in new session (flag is session-scoped)`
                     );
 
                     return true;
@@ -487,6 +498,217 @@ suite('SetupStateManager - Property Tests', () => {
                             delete process.env.VSCODE_TEST;
                         }
                     }
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+    });
+
+    // Property 7: Cancellation Graceful Handling
+    // For any cancellation, markIncomplete() should set state to INCOMPLETE
+    // and state should persist across multiple calls
+    // **Validates: Requirements 8.1, 8.2, 9.1, 9.2**
+    test('Property 7: Cancellation handling sets INCOMPLETE state (Req 8.1-8.2, 9.1-9.2)', async () => {
+        await fc.assert(
+            fc.asyncProperty(
+                fc.integer({ min: 1, max: 5 }), // Number of cancellation calls
+                async (callCount) => {
+                    globalStateData.clear();
+                    SetupStateManager.resetInstance();
+
+                    const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                    const testParams = formatTestParams({ callCount });
+
+                    // Simulate the cancellation flow
+                    await manager.markStarted();
+                    
+                    // Call markIncomplete multiple times (simulating repeated cancellations)
+                    for (let i = 0; i < callCount; i++) {
+                        await manager.markIncomplete();
+                    }
+
+                    // Verify state is INCOMPLETE
+                    const finalState = await manager.getState();
+                    assert.strictEqual(
+                        finalState,
+                        SetupState.INCOMPLETE,
+                        `Req 8.1, 9.1: State should be INCOMPLETE after cancellation (${testParams})`
+                    );
+
+                    // Verify isIncomplete() returns true
+                    const isIncomplete = await manager.isIncomplete();
+                    assert.strictEqual(
+                        isIncomplete,
+                        true,
+                        `Req 8.1, 9.1: isIncomplete() should return true (${testParams})`
+                    );
+
+                    // Verify isComplete() returns false
+                    const isComplete = await manager.isComplete();
+                    assert.strictEqual(
+                        isComplete,
+                        false,
+                        `State should not be complete after cancellation (${testParams})`
+                    );
+
+                    return true;
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+    });
+
+    // Property 8: State Transition Idempotence
+    // Calling the same state transition multiple times should result in the same final state
+    // **Validates: Requirements 8.3, 8.4, 9.3, 9.4**
+    test('Property 8: State transitions are idempotent (Req 8.3-8.4, 9.3-9.4)', async () => {
+        const stateTransitionArbitrary = fc.constantFrom(
+            'markStarted',
+            'markComplete',
+            'markIncomplete',
+            'reset'
+        );
+
+        await fc.assert(
+            fc.asyncProperty(
+                stateTransitionArbitrary,
+                fc.integer({ min: 2, max: 10 }), // Number of repeated calls
+                async (transition, repeatCount) => {
+                    globalStateData.clear();
+                    SetupStateManager.resetInstance();
+
+                    const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                    const testParams = formatTestParams({ transition, repeatCount });
+
+                    // Apply the transition once
+                    switch (transition) {
+                        case 'markStarted':
+                            await manager.markStarted();
+                            break;
+                        case 'markComplete':
+                            await manager.markComplete();
+                            break;
+                        case 'markIncomplete':
+                            await manager.markIncomplete();
+                            break;
+                        case 'reset':
+                            await manager.reset();
+                            break;
+                    }
+
+                    const stateAfterFirst = await manager.getState();
+
+                    // Apply the same transition multiple more times
+                    for (let i = 1; i < repeatCount; i++) {
+                        switch (transition) {
+                            case 'markStarted':
+                                await manager.markStarted();
+                                break;
+                            case 'markComplete':
+                                await manager.markComplete();
+                                break;
+                            case 'markIncomplete':
+                                await manager.markIncomplete();
+                                break;
+                            case 'reset':
+                                await manager.reset();
+                                break;
+                        }
+                    }
+
+                    const stateAfterRepeated = await manager.getState();
+
+                    // State should be the same after repeated calls
+                    assert.strictEqual(
+                        stateAfterRepeated,
+                        stateAfterFirst,
+                        `Req 8.3, 9.3: State should be idempotent for ${transition} (${testParams})`
+                    );
+
+                    return true;
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+    });
+
+    // Property 10: Reset Command Completeness
+    // For any initial state, reset() should transition to NOT_STARTED
+    // and shouldShowResumePrompt() should return false after reset
+    // **Validates: Requirements 7.1, 7.2, 7.3**
+    test('Property 10: Reset transitions to NOT_STARTED from any state (Req 7.1-7.3)', async () => {
+        const initialStateArbitrary = fc.constantFrom(
+            SetupState.NOT_STARTED,
+            SetupState.IN_PROGRESS,
+            SetupState.COMPLETE,
+            SetupState.INCOMPLETE
+        );
+
+        await fc.assert(
+            fc.asyncProperty(
+                initialStateArbitrary,
+                fc.integer({ min: 1, max: 5 }), // Number of reset calls
+                async (initialState, resetCount) => {
+                    globalStateData.clear();
+                    SetupStateManager.resetInstance();
+
+                    const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+                    const testParams = formatTestParams({ initialState, resetCount });
+
+                    // Set initial state
+                    switch (initialState) {
+                        case SetupState.IN_PROGRESS:
+                            await manager.markStarted();
+                            break;
+                        case SetupState.COMPLETE:
+                            await manager.markComplete();
+                            break;
+                        case SetupState.INCOMPLETE:
+                            await manager.markIncomplete();
+                            // Also mark resume prompt as shown to test it gets cleared
+                            await manager.markResumePromptShown();
+                            break;
+                        // NOT_STARTED is default
+                    }
+
+                    // Verify initial state is set correctly
+                    const stateBeforeReset = await manager.getState();
+                    assert.strictEqual(
+                        stateBeforeReset,
+                        initialState,
+                        `Initial state should be ${initialState} (${testParams})`
+                    );
+
+                    // Execute reset multiple times
+                    for (let i = 0; i < resetCount; i++) {
+                        await manager.reset();
+                    }
+
+                    // Verify state is NOT_STARTED after reset
+                    const finalState = await manager.getState();
+                    assert.strictEqual(
+                        finalState,
+                        SetupState.NOT_STARTED,
+                        `Req 7.2: State should be NOT_STARTED after reset (${testParams})`
+                    );
+
+                    // Verify shouldShowResumePrompt returns false (prompt flag cleared)
+                    const shouldShowPrompt = await manager.shouldShowResumePrompt();
+                    assert.strictEqual(
+                        shouldShowPrompt,
+                        false,
+                        `Req 7.3: shouldShowResumePrompt should return false after reset (${testParams})`
+                    );
+
+                    // Verify isComplete returns false
+                    const isComplete = await manager.isComplete();
+                    assert.strictEqual(
+                        isComplete,
+                        false,
+                        `isComplete should return false after reset (${testParams})`
+                    );
+
+                    return true;
                 }
             ),
             { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }

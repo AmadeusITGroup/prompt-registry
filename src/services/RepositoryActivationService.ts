@@ -15,6 +15,7 @@ import * as path from 'path';
 import { LockfileManager } from './LockfileManager';
 import { HubManager } from './HubManager';
 import { RegistryStorage } from '../storage/RegistryStorage';
+import { SetupStateManager } from './SetupStateManager';
 import { Lockfile } from '../types/lockfile';
 import { Logger } from '../utils/logger';
 import { InstallOptions } from '../types/registry';
@@ -57,17 +58,20 @@ export class RepositoryActivationService {
     private readonly DECLINED_KEY = 'repositoryActivation.declined';
     private workspaceRoot: string;
     private bundleInstaller?: IBundleInstaller;
+    private readonly setupStateManager?: SetupStateManager;
 
     constructor(
         private lockfileManager: LockfileManager,
         private hubManager: HubManager,
         private storage: RegistryStorage,
         workspaceRoot: string,
-        bundleInstaller?: IBundleInstaller
+        bundleInstaller?: IBundleInstaller,
+        setupStateManager?: SetupStateManager
     ) {
         this.logger = Logger.getInstance();
         this.workspaceRoot = workspaceRoot;
         this.bundleInstaller = bundleInstaller;
+        this.setupStateManager = setupStateManager;
     }
 
     /**
@@ -79,6 +83,7 @@ export class RepositoryActivationService {
      * @param hubManager - HubManager instance
      * @param storage - RegistryStorage instance
      * @param bundleInstaller - Optional IBundleInstaller instance for bundle installation
+     * @param setupStateManager - Optional SetupStateManager instance for checking setup completion
      * @returns RepositoryActivationService instance for the workspace
      * @throws Error if workspaceRoot is not provided on first call
      */
@@ -87,7 +92,8 @@ export class RepositoryActivationService {
         lockfileManager?: LockfileManager,
         hubManager?: HubManager,
         storage?: RegistryStorage,
-        bundleInstaller?: IBundleInstaller
+        bundleInstaller?: IBundleInstaller,
+        setupStateManager?: SetupStateManager
     ): RepositoryActivationService {
         if (!workspaceRoot) {
             throw new Error('Workspace root path required for RepositoryActivationService.getInstance()');
@@ -102,7 +108,7 @@ export class RepositoryActivationService {
             }
             RepositoryActivationService.instances.set(
                 normalizedPath,
-                new RepositoryActivationService(lockfileManager, hubManager, storage, normalizedPath, bundleInstaller)
+                new RepositoryActivationService(lockfileManager, hubManager, storage, normalizedPath, bundleInstaller, setupStateManager)
             );
         }
         return RepositoryActivationService.instances.get(normalizedPath)!;
@@ -142,15 +148,29 @@ export class RepositoryActivationService {
     }
 
     /**
-     * Check for lockfile and prompt activation if appropriate
-     * Called on workspace open
+     * Check for lockfile and detect missing sources/hubs.
+     * Called on workspace open.
+     * 
+     * Setup Timing: Detection is deferred until first-run setup is complete.
+     * This prevents confusing users with source configuration prompts before
+     * they've configured the extension. If SetupStateManager is unavailable,
+     * detection proceeds (fail-open behavior).
+     * 
+     * Note: No longer shows activation prompt - files are already present in repository.
+     * Only checks for missing sources and hubs that need to be configured.
      */
     async checkAndPromptActivation(): Promise<void> {
         try {
+            // Check if setup is complete before proceeding
+            if (!await this.isSetupComplete()) {
+                this.logger.info('First-run setup not complete, deferring source/hub detection');
+                return;
+            }
+
             // Check if lockfile exists
             const lockfile = await this.lockfileManager.read();
             if (!lockfile) {
-                this.logger.debug('No lockfile found, skipping activation prompt');
+                this.logger.debug('No lockfile found, skipping source/hub detection');
                 return;
             }
 
@@ -159,120 +179,16 @@ export class RepositoryActivationService {
             const repositoryPath = this.getRepositoryPath(lockfilePath);
             
             if (await this.wasDeclined(repositoryPath)) {
-                this.logger.debug(`Repository ${repositoryPath} was previously declined, skipping prompt`);
+                this.logger.debug(`Repository ${repositoryPath} was previously declined`);
                 return;
             }
 
-            // Show activation prompt
-            const choice = await this.showActivationPrompt(lockfile);
-
-            switch (choice) {
-                case 'enable':
-                    await this.enableRepositoryBundles(lockfile);
-                    break;
-                case 'never':
-                    await this.rememberDeclined(repositoryPath);
-                    break;
-                case 'decline':
-                default:
-                    // User declined or dismissed - do nothing
-                    break;
-            }
-        } catch (error) {
-            this.logger.error('Failed to check and prompt activation:', error instanceof Error ? error : undefined);
-        }
-    }
-
-    /**
-     * Show activation prompt to user
-     * @param lockfile - The lockfile to activate
-     * @returns User's choice: 'enable', 'decline', or 'never'
-     */
-    async showActivationPrompt(lockfile: Lockfile): Promise<'enable' | 'decline' | 'never'> {
-        const bundleCount = Object.keys(lockfile.bundles).length;
-        const profileCount = lockfile.profiles ? Object.keys(lockfile.profiles).length : 0;
-
-        let message = `This repository has ${bundleCount} bundle${bundleCount !== 1 ? 's' : ''} configured`;
-        if (profileCount > 0) {
-            message += ` and ${profileCount} profile${profileCount !== 1 ? 's' : ''}`;
-        }
-        message += '. Would you like to enable them?';
-
-        const choice = await vscode.window.showInformationMessage(
-            message,
-            'Enable',
-            'Not now',
-            'Don\'t ask again'
-        );
-
-        switch (choice) {
-            case 'Enable':
-                return 'enable';
-            case 'Don\'t ask again':
-                return 'never';
-            case 'Not now':
-            default:
-                return 'decline';
-        }
-    }
-
-    /**
-     * Enable repository bundles
-     * Verifies bundles are installed and checks for missing sources/hubs
-     * 
-     * @param lockfile - The lockfile to enable
-     */
-    async enableRepositoryBundles(lockfile: Lockfile): Promise<void> {
-        try {
-            this.logger.debug('Enabling repository bundles...');
-            
-            // Check which bundles are installed - this MUST be called for proper activation
-            const installedBundles = await this.storage.getInstalledBundles('repository');
-            this.logger.debug(`Found ${installedBundles.length} installed bundles at repository scope`);
-            
-            const installedBundleIds = new Set(installedBundles.map(b => b.bundleId));
-            
-            const lockfileBundleIds = Object.keys(lockfile.bundles);
-            const missingBundleIds = lockfileBundleIds.filter(id => !installedBundleIds.has(id));
-
-            // Offer to install missing bundles
-            if (missingBundleIds.length > 0) {
-                this.logger.debug(`Found ${missingBundleIds.length} missing bundles`);
-                const choice = await vscode.window.showInformationMessage(
-                    `${missingBundleIds.length} bundle${missingBundleIds.length !== 1 ? 's are' : ' is'} not installed. Would you like to install them?`,
-                    'Install',
-                    'Skip'
-                );
-
-                if (choice === 'Install') {
-                    this.logger.info(`User chose to install ${missingBundleIds.length} missing bundles`);
-                    // Install missing bundles using RegistryManager
-                    const result = await this.installMissingBundles(lockfile, missingBundleIds);
-                    
-                    // Report results to user
-                    if (result.succeeded.length > 0) {
-                        this.logger.info(`Successfully installed ${result.succeeded.length} bundles`);
-                    }
-                    if (result.failed.length > 0) {
-                        this.logger.warn(`Failed to install ${result.failed.length} bundles`);
-                        vscode.window.showWarningMessage(
-                            `${result.failed.length} bundle${result.failed.length !== 1 ? 's' : ''} failed to install. See logs for details.`
-                        );
-                    }
-                    if (result.cancelled) {
-                        this.logger.info('Bundle installation was cancelled by user');
-                    }
-                }
-            } else {
-                this.logger.debug('All bundles from lockfile are already installed');
-            }
-
-            // Check for missing sources and hubs
+            // No longer show activation prompt - files are already in repository
+            // Just check for missing sources and hubs
             await this.checkAndOfferMissingSources(lockfile);
-
+            
         } catch (error) {
-            this.logger.error('Failed to enable repository bundles:', error instanceof Error ? error : undefined);
-            vscode.window.showErrorMessage('Failed to enable repository bundles. See logs for details.');
+            this.logger.error('Failed to check and detect sources:', error instanceof Error ? error : undefined);
         }
     }
 
@@ -425,24 +341,6 @@ export class RepositoryActivationService {
     }
 
     /**
-     * Remember that user declined activation for this repository
-     * @param repositoryPath - Path to the repository
-     */
-    async rememberDeclined(repositoryPath: string): Promise<void> {
-        try {
-            const declined = await this.getDeclinedRepositories();
-            
-            if (!declined.includes(repositoryPath)) {
-                declined.push(repositoryPath);
-                await this.storage.getContext().globalState.update(this.DECLINED_KEY, declined);
-                this.logger.debug(`Remembered declined activation for: ${repositoryPath}`);
-            }
-        } catch (error) {
-            this.logger.error('Failed to remember declined repository:', error instanceof Error ? error : undefined);
-        }
-    }
-
-    /**
      * Check if user previously declined activation for this repository
      * @param repositoryPath - Path to the repository
      * @returns True if previously declined
@@ -468,5 +366,22 @@ export class RepositoryActivationService {
      */
     private getRepositoryPath(lockfilePath: string): string {
         return path.dirname(lockfilePath);
+    }
+
+    /**
+     * Check if setup is complete before proceeding with source/hub detection.
+     * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
+     */
+    private async isSetupComplete(): Promise<boolean> {
+        if (!this.setupStateManager) {
+            this.logger.debug('SetupStateManager not available, proceeding with detection');
+            return true;
+        }
+        try {
+            return await this.setupStateManager.isComplete();
+        } catch (error) {
+            this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
+            return true;
+        }
     }
 }

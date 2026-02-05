@@ -231,7 +231,7 @@ Both lockfiles use the same schema structure. The `commitMode` field is deprecat
   "bundles": {
     "bundle-id": {
       "version": "1.0.0",
-      "sourceId": "source-id",
+      "sourceId": "github-a1b2c3d4e5f6",
       "sourceType": "github",
       "installedAt": "...",
       "files": [
@@ -240,12 +240,55 @@ Both lockfiles use the same schema structure. The `commitMode` field is deprecat
     }
   },
   "sources": {
-    "source-id": { "type": "github", "url": "..." }
+    "github-a1b2c3d4e5f6": { "type": "github", "url": "..." }
+  },
+  "hubs": {
+    "b5c6d7e8a9f0": { "name": "My Hub", "url": "https://example.com/hub.json" }
   }
 }
 ```
 
 > **Note:** Existing lockfiles with `commitMode` field continue to work for backward compatibility. The field is ignored on read (file location determines mode) and not included in new entries.
+
+### SourceId Generation
+
+SourceIds uniquely identify sources in the lockfile. The format depends on the source origin:
+
+| Source Origin | Format | Example |
+|---------------|--------|---------|
+| Hub source | `{type}-{12-char-hash}` | `github-a1b2c3d4e5f6` |
+| Non-hub source | `{source.id}` | `my-local-source` |
+
+For hub sources, the sourceId is generated using `generateHubSourceId(type, url)` from `src/utils/sourceIdUtils.ts`:
+
+1. Normalize the URL (lowercase, remove protocol, remove trailing slashes)
+2. Hash `{type}:{normalizedUrl}` using SHA256
+3. Take the first 12 characters of the hex digest
+4. Format as `{type}-{hash}`
+
+This ensures:
+- **Determinism**: Same source always produces the same ID
+- **Portability**: SourceIds don't depend on hub configuration
+- **Collision resistance**: 12 hex chars (48 bits) provides sufficient uniqueness
+
+**Legacy format**: Older lockfiles may contain hub-prefixed sourceIds (`hub-{hubId}-{sourceId}`). These continue to work for backward compatibility—sources are resolved by matching the sourceId in the `sources` section.
+
+### Hub Key Generation
+
+Hub entries in the lockfile use URL-based keys instead of user-defined hub IDs:
+
+```json
+"hubs": {
+  "b5c6d7e8a9f0": { "name": "My Hub", "url": "https://example.com/hub.json" }
+}
+```
+
+The key is generated using `generateHubKey(url, branch?)`:
+- Hash the normalized URL using SHA256
+- Take the first 12 characters
+- Append `-{branch}` if branch is not `main` or `master`
+
+This makes lockfiles portable across different hub configurations.
 
 ### Commit Mode Switching
 
@@ -293,7 +336,28 @@ If a bundle ID exists in both lockfiles (should not happen in normal operation),
 
 ## Repository Activation
 
-When a workspace with a lockfile is opened:
+When a workspace with a lockfile is opened, the extension checks for missing sources and hubs. This detection is **deferred until first-run setup is complete** to avoid confusing users with source configuration prompts before they've configured the extension.
+
+### Setup Timing
+
+```mermaid
+flowchart TD
+    A[Extension Activated] --> B{First-run setup complete?}
+    B -->|No| C[Defer source/hub detection]
+    B -->|Yes| D[Check for lockfile]
+    C --> E[Wait for setup completion]
+    E --> D
+    D --> F{Lockfile exists?}
+    F -->|No| Z[Done]
+    F -->|Yes| G[Check missing sources/hubs]
+```
+
+The `RepositoryActivationService` accepts a `SetupStateManager` dependency:
+- If setup is incomplete, detection is deferred and logged
+- If `SetupStateManager` is unavailable, detection proceeds (fail-open behavior)
+- After setup completes, detection is triggered automatically
+
+### Activation Flow
 
 ```mermaid
 flowchart TD
@@ -302,22 +366,16 @@ flowchart TD
     C -->|No| Z[Done]
     C -->|Yes| D{Previously declined?}
     D -->|Yes| Z
-    D -->|No| E[Show activation prompt]
-    E --> F{User choice}
-    F -->|Enable| G[Check missing sources/hubs]
-    F -->|Decline| H[Remember choice]
-    F -->|Never| I[Remember permanently]
-    G --> J{Missing sources?}
-    J -->|Yes| K[Offer to add sources]
-    J -->|No| L[Verify bundles installed]
-    K --> L
-    L --> M{Missing bundles?}
-    M -->|Yes| N[Download and install]
-    M -->|No| O[Sync to Copilot]
-    N --> O
-    H --> Z
-    I --> Z
-    O --> Z
+    D -->|No| E[Check missing sources/hubs]
+    E --> F{Missing sources?}
+    F -->|Yes| G[Offer to add sources]
+    F -->|No| H[Verify bundles installed]
+    G --> H
+    H --> I{Missing bundles?}
+    I -->|Yes| J[Download and install]
+    I -->|No| K[Sync to Copilot]
+    J --> K
+    K --> Z
 ```
 
 ## AwesomeCopilot Flow

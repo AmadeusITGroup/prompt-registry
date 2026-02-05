@@ -33,6 +33,7 @@ import {
 import { RepositoryCommitMode } from '../../src/types/registry';
 import { LockfileManager } from '../../src/services/LockfileManager';
 import { BundleCommands } from '../../src/commands/BundleCommands';
+import { generateHubSourceId, isLegacyHubSourceId } from '../../src/utils/sourceIdUtils';
 
 suite('E2E: Lockfile as Single Source of Truth Tests', () => {
     let testContext: E2ETestContext;
@@ -716,6 +717,290 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             const remainingBundle = lockfileAfter!.bundles[actualBundleId2!];
             assert.strictEqual(remainingBundle.version, '1.0.0', 'Remaining bundle version should be intact');
             assert.strictEqual(remainingBundle.sourceId, sourceId2, 'Remaining bundle sourceId should be intact');
+        });
+    });
+
+
+    suite('12.2: Lockfile Portability - SourceId Format', () => {
+        /**
+         * E2E Test: Verify lockfile with new sourceId format works across different hub configurations
+         * 
+         * The new sourceId format is `{sourceType}-{12-char-hash}` (e.g., `github-a1b2c3d4e5f6`)
+         * which is based on source properties (type + URL), not hub ID.
+         * This makes lockfiles portable across different hub configurations.
+         * 
+         * Requirements covered:
+         * - Requirement 2: Remove Hub ID from SourceId Generation
+         * - Requirement 3: Backward Compatibility for Legacy Lockfiles
+         */
+        test('Requirement 2.1, 2.3: Lockfile with new sourceId format is portable across hub configurations', async function() {
+            this.timeout(60000);
+            
+            // Stub workspace folders
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
+            ]);
+            
+            // Generate a sourceId using the new format
+            const sourceUrl = 'https://github.com/test-owner/test-repo';
+            const sourceType = 'github';
+            const newFormatSourceId = generateHubSourceId(sourceType, sourceUrl);
+            
+            assert.ok(
+                !isLegacyHubSourceId(newFormatSourceId),
+                'New format sourceId should NOT be detected as legacy format'
+            );
+
+            // Create a lockfile with the new sourceId format
+            const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            const bundleId = 'portable-bundle-v1.0.0';
+            
+            const mockLockfile = {
+                $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
+                version: '1.0.0',
+                generatedAt: new Date().toISOString(),
+                generatedBy: 'prompt-registry@1.0.0',
+                bundles: {
+                    [bundleId]: {
+                        version: '1.0.0',
+                        sourceId: newFormatSourceId,
+                        sourceType: sourceType,
+                        installedAt: new Date().toISOString(),
+                        commitMode: 'commit',
+                        files: [{ path: '.github/prompts/portable.prompt.md', checksum: 'abc123' }]
+                    }
+                },
+                sources: {
+                    [newFormatSourceId]: {
+                        type: sourceType,
+                        url: sourceUrl
+                    }
+                }
+            };
+            
+            // Create the bundle files so they're not marked as missing
+            const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
+            fs.mkdirSync(promptsDir, { recursive: true });
+            fs.writeFileSync(path.join(promptsDir, 'portable.prompt.md'), '# Portable Prompt');
+            
+            fs.writeFileSync(lockfilePath, JSON.stringify(mockLockfile, null, 2));
+            
+            // Reset LockfileManager to pick up the new lockfile
+            LockfileManager.resetInstance();
+            
+            // Query repository bundles - this simulates a different user with different hub config
+            // The lockfile should work regardless of what hubs the user has configured
+            const installedBundles = await testContext.registryManager.listInstalledBundles('repository');
+            
+            // Verify bundle is returned correctly
+            assert.strictEqual(installedBundles.length, 1, 'Should return exactly one bundle');
+            assert.strictEqual(installedBundles[0].bundleId, bundleId, 'Bundle ID should match');
+            assert.strictEqual(installedBundles[0].version, '1.0.0', 'Version should match');
+            assert.strictEqual(installedBundles[0].sourceId, newFormatSourceId, 'SourceId should use new format');
+            assert.strictEqual(installedBundles[0].sourceType, sourceType, 'SourceType should match');
+            assert.strictEqual(installedBundles[0].scope, 'repository', 'Scope should be repository');
+        });
+
+        test('Requirement 2.2, 2.3: Same source URL always produces same sourceId (deterministic)', async function() {
+            this.timeout(30000);
+            
+            const sourceUrl = 'https://github.com/owner/repo';
+            const sourceType = 'github';
+            
+            // Generate sourceId multiple times
+            const sourceId1 = generateHubSourceId(sourceType, sourceUrl);
+            const sourceId2 = generateHubSourceId(sourceType, sourceUrl);
+            const sourceId3 = generateHubSourceId(sourceType, sourceUrl);
+            
+            // All should be identical (deterministic)
+            assert.strictEqual(sourceId1, sourceId2, 'SourceId should be deterministic (1 vs 2)');
+            assert.strictEqual(sourceId2, sourceId3, 'SourceId should be deterministic (2 vs 3)');
+        });
+
+        test('Requirement 2.3: SourceId is URL-normalized (case-insensitive, protocol-agnostic)', async function() {
+            this.timeout(30000);
+            
+            const sourceType = 'github';
+            
+            // Different URL variations that should produce the same sourceId
+            const url1 = 'https://github.com/Owner/Repo';
+            const url2 = 'HTTPS://GITHUB.COM/OWNER/REPO';
+            const url3 = 'http://github.com/owner/repo';
+            const url4 = 'https://github.com/owner/repo/';
+            
+            const sourceId1 = generateHubSourceId(sourceType, url1);
+            const sourceId2 = generateHubSourceId(sourceType, url2);
+            const sourceId3 = generateHubSourceId(sourceType, url3);
+            const sourceId4 = generateHubSourceId(sourceType, url4);
+            
+            // All should produce the same sourceId due to URL normalization
+            assert.strictEqual(sourceId1, sourceId2, 'SourceId should be case-insensitive');
+            assert.strictEqual(sourceId2, sourceId3, 'SourceId should be protocol-agnostic');
+            assert.strictEqual(sourceId3, sourceId4, 'SourceId should ignore trailing slashes');
+        });
+
+        test('Requirement 3.1, 3.4: Legacy hub-prefixed sourceId still resolves correctly', async function() {
+            this.timeout(60000);
+            
+            // Stub workspace folders
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
+            ]);
+            
+            // Create a lockfile with legacy hub-prefixed sourceId format
+            const legacySourceId = 'hub-my-hub-github-source';
+            const bundleId = 'legacy-bundle-v1.0.0';
+            
+            // Verify this is detected as legacy format
+            assert.ok(
+                isLegacyHubSourceId(legacySourceId),
+                'Legacy sourceId should be detected as legacy format'
+            );
+            
+            const mockLockfile = {
+                $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
+                version: '1.0.0',
+                generatedAt: new Date().toISOString(),
+                generatedBy: 'prompt-registry@1.0.0',
+                bundles: {
+                    [bundleId]: {
+                        version: '1.0.0',
+                        sourceId: legacySourceId,
+                        sourceType: 'github',
+                        installedAt: new Date().toISOString(),
+                        commitMode: 'commit',
+                        files: [{ path: '.github/prompts/legacy.prompt.md', checksum: 'def456' }]
+                    }
+                },
+                sources: {
+                    [legacySourceId]: {
+                        type: 'github',
+                        url: 'https://github.com/legacy-owner/legacy-repo'
+                    }
+                }
+            };
+            
+            // Create the bundle files
+            const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
+            fs.mkdirSync(promptsDir, { recursive: true });
+            fs.writeFileSync(path.join(promptsDir, 'legacy.prompt.md'), '# Legacy Prompt');
+            
+            const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            fs.writeFileSync(lockfilePath, JSON.stringify(mockLockfile, null, 2));
+            
+            // Reset LockfileManager
+            LockfileManager.resetInstance();
+            
+            // Query repository bundles - legacy format should still work
+            const installedBundles = await testContext.registryManager.listInstalledBundles('repository');
+            
+            // Verify bundle is returned correctly (backward compatibility)
+            assert.strictEqual(installedBundles.length, 1, 'Should return exactly one bundle');
+            assert.strictEqual(installedBundles[0].bundleId, bundleId, 'Bundle ID should match');
+            assert.strictEqual(installedBundles[0].sourceId, legacySourceId, 'Legacy sourceId should be preserved');
+            assert.strictEqual(installedBundles[0].sourceType, 'github', 'SourceType should match');
+        });
+
+        test('Requirement 2.5: Different source types with same URL produce different sourceIds', async function() {
+            this.timeout(30000);
+            
+            const url = 'https://example.com/repo';
+            
+            // Same URL but different source types
+            const githubSourceId = generateHubSourceId('github', url);
+            const gitlabSourceId = generateHubSourceId('gitlab', url);
+            const httpSourceId = generateHubSourceId('http', url);
+            
+            // All should be different because source type is part of the hash input
+            assert.notStrictEqual(githubSourceId, gitlabSourceId, 'Different types should produce different sourceIds');
+            assert.notStrictEqual(gitlabSourceId, httpSourceId, 'Different types should produce different sourceIds');
+            assert.notStrictEqual(githubSourceId, httpSourceId, 'Different types should produce different sourceIds');
+            
+            // Verify each has correct type prefix
+            assert.ok(githubSourceId.startsWith('github-'), 'GitHub sourceId should start with github-');
+            assert.ok(gitlabSourceId.startsWith('gitlab-'), 'GitLab sourceId should start with gitlab-');
+            assert.ok(httpSourceId.startsWith('http-'), 'HTTP sourceId should start with http-');
+        });
+
+        test('Requirement 2: Lockfile with multiple bundles from different sources works correctly', async function() {
+            this.timeout(60000);
+            
+            // Stub workspace folders
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
+            ]);
+            
+            // Generate sourceIds for different sources
+            const githubSourceId = generateHubSourceId('github', 'https://github.com/owner1/repo1');
+            const gitlabSourceId = generateHubSourceId('gitlab', 'https://gitlab.com/group/project');
+            
+            // Create a lockfile with bundles from multiple sources
+            const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
+            const bundle1Id = 'github-bundle-v1.0.0';
+            const bundle2Id = 'gitlab-bundle-v2.0.0';
+            
+            const mockLockfile = {
+                $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
+                version: '1.0.0',
+                generatedAt: new Date().toISOString(),
+                generatedBy: 'prompt-registry@1.0.0',
+                bundles: {
+                    [bundle1Id]: {
+                        version: '1.0.0',
+                        sourceId: githubSourceId,
+                        sourceType: 'github',
+                        installedAt: new Date().toISOString(),
+                        commitMode: 'commit',
+                        files: [{ path: '.github/prompts/github-bundle.prompt.md', checksum: 'gh123' }]
+                    },
+                    [bundle2Id]: {
+                        version: '2.0.0',
+                        sourceId: gitlabSourceId,
+                        sourceType: 'gitlab',
+                        installedAt: new Date().toISOString(),
+                        commitMode: 'commit',
+                        files: [{ path: '.github/prompts/gitlab-bundle.prompt.md', checksum: 'gl456' }]
+                    }
+                },
+                sources: {
+                    [githubSourceId]: {
+                        type: 'github',
+                        url: 'https://github.com/owner1/repo1'
+                    },
+                    [gitlabSourceId]: {
+                        type: 'gitlab',
+                        url: 'https://gitlab.com/group/project'
+                    }
+                }
+            };
+            
+            // Create the bundle files
+            const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
+            fs.mkdirSync(promptsDir, { recursive: true });
+            fs.writeFileSync(path.join(promptsDir, 'github-bundle.prompt.md'), '# GitHub Bundle');
+            fs.writeFileSync(path.join(promptsDir, 'gitlab-bundle.prompt.md'), '# GitLab Bundle');
+            
+            fs.writeFileSync(lockfilePath, JSON.stringify(mockLockfile, null, 2));
+            
+            // Reset LockfileManager
+            LockfileManager.resetInstance();
+            
+            // Query repository bundles
+            const installedBundles = await testContext.registryManager.listInstalledBundles('repository');
+            
+            // Verify both bundles are returned correctly
+            assert.strictEqual(installedBundles.length, 2, 'Should return both bundles');
+            
+            const githubBundle = installedBundles.find(b => b.bundleId === bundle1Id);
+            const gitlabBundle = installedBundles.find(b => b.bundleId === bundle2Id);
+            
+            assert.ok(githubBundle, 'Should find GitHub bundle');
+            assert.strictEqual(githubBundle!.sourceId, githubSourceId, 'GitHub bundle sourceId should match');
+            assert.strictEqual(githubBundle!.sourceType, 'github', 'GitHub bundle sourceType should match');
+            
+            assert.ok(gitlabBundle, 'Should find GitLab bundle');
+            assert.strictEqual(gitlabBundle!.sourceId, gitlabSourceId, 'GitLab bundle sourceId should match');
+            assert.strictEqual(gitlabBundle!.sourceType, 'gitlab', 'GitLab bundle sourceType should match');
         });
     });
 });

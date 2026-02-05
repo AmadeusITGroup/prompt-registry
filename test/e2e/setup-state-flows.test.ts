@@ -5,6 +5,12 @@
  * Tests complete user flows through the setup state machine.
  * 
  * Requirements: 1.1, 1.2, 2.2, 2.3, 2.4, 3.1, 3.3, 3.4, 3.5, 5.1, 5.2, 5.4, 5.5, 6.1-6.5, 7.1, 7.5, 9.1, 9.5
+ * 
+ * Lockfile Timing Requirements (Requirement 1 from lockfile-timing-and-hub-decoupling):
+ * - 1.1: Detection deferred when setup not complete
+ * - 1.2: Detection proceeds when setup is complete
+ * - 1.3: Detection triggers after setup completes
+ * - 1.5: Deferral is logged
  */
 
 import * as assert from 'assert';
@@ -12,7 +18,9 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { SetupStateManager, SetupState } from '../../src/services/SetupStateManager';
 import { HubManager } from '../../src/services/HubManager';
-import { NotificationManager } from '../../src/services/NotificationManager';
+import { RepositoryActivationService } from '../../src/services/RepositoryActivationService';
+import { LockfileManager } from '../../src/services/LockfileManager';
+import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { createMockHubData } from '../helpers/setupStateTestHelpers';
 
 suite('E2E: Setup State Flows', () => {
@@ -153,7 +161,7 @@ suite('E2E: Setup State Flows', () => {
             assert.strictEqual(state, SetupState.IN_PROGRESS, 'State should be IN_PROGRESS');
 
             // Simulate hub selection cancellation
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
             state = await setupStateManager.getState();
             assert.strictEqual(state, SetupState.INCOMPLETE, 'State should be INCOMPLETE after cancellation');
 
@@ -179,7 +187,7 @@ suite('E2E: Setup State Flows', () => {
          */
         test('should allow resumption after cancellation', async () => {
             // Setup incomplete state
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
 
             // Verify can resume
             const isIncomplete = await setupStateManager.isIncomplete();
@@ -201,7 +209,7 @@ suite('E2E: Setup State Flows', () => {
         test('should show resume prompt on next activation after cancellation', async () => {
             // Cancel during setup
             await setupStateManager.markStarted();
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
 
             // Simulate extension reload
             SetupStateManager.resetInstance();
@@ -220,7 +228,7 @@ suite('E2E: Setup State Flows', () => {
          */
         test('should handle skip and remain incomplete', async () => {
             // Setup incomplete state
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
 
             // Simulate user skipping (mark prompt as shown)
             await setupStateManager.markResumePromptShown();
@@ -240,7 +248,7 @@ suite('E2E: Setup State Flows', () => {
          */
         test('should allow manual reset after skip: incomplete → not_started → complete', async () => {
             // Setup incomplete state and skip
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
             await setupStateManager.markResumePromptShown();
 
             // Verify incomplete
@@ -272,7 +280,7 @@ suite('E2E: Setup State Flows', () => {
          * Test skip logs correctly (verified via state transitions)
          */
         test('should track skip action via prompt shown flag', async () => {
-            await setupStateManager.markIncomplete('hub_cancelled');
+            await setupStateManager.markIncomplete();
             
             // Before skip
             let shouldShow = await setupStateManager.shouldShowResumePrompt();
@@ -422,7 +430,7 @@ suite('E2E: Setup State Flows', () => {
             const testManager = SetupStateManager.getInstance(testContext, mockHubManager as any);
 
             // Even if we try to mark incomplete, test environment should allow marking complete
-            await testManager.markIncomplete('hub_cancelled');
+            await testManager.markIncomplete();
             await testManager.markComplete();
 
             const state = await testManager.getState();
@@ -456,6 +464,299 @@ suite('E2E: Setup State Flows', () => {
                     process.env.VSCODE_TEST = originalEnv;
                 }
             }
+        });
+    });
+
+    suite('14.6: Setup Timing and Lockfile Detection', () => {
+        /**
+         * Tests for Requirement 1 from lockfile-timing-and-hub-decoupling spec:
+         * - Detection is deferred until setup completes
+         * - Detection triggers after setup completes
+         */
+
+        let mockLockfileManager: sinon.SinonStubbedInstance<LockfileManager>;
+        let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
+        let repositoryActivationService: RepositoryActivationService;
+        const testWorkspaceRoot = '/test/workspace';
+
+        /**
+         * Create a mock lockfile for testing
+         */
+        const createMockLockfile = () => ({
+            $schema: 'https://example.com/lockfile.schema.json',
+            version: '1.0.0',
+            generatedAt: new Date().toISOString(),
+            generatedBy: 'prompt-registry@0.0.2',
+            bundles: {
+                'test-bundle': {
+                    version: '1.0.0',
+                    sourceId: 'test-source',
+                    sourceType: 'github',
+                    installedAt: new Date().toISOString(),
+                    files: []
+                }
+            },
+            sources: {
+                'test-source': {
+                    type: 'github',
+                    url: 'https://github.com/test/repo'
+                }
+            }
+        });
+
+        setup(() => {
+            // Reset RepositoryActivationService instances
+            RepositoryActivationService.resetInstance();
+
+            // Create mock LockfileManager
+            mockLockfileManager = sandbox.createStubInstance(LockfileManager);
+            mockLockfileManager.getLockfilePath.returns(`${testWorkspaceRoot}/prompt-registry.lock.json`);
+
+            // Create mock RegistryStorage
+            mockStorage = sandbox.createStubInstance(RegistryStorage);
+            mockStorage.getSources.resolves([]);
+            mockStorage.getInstalledBundles.resolves([]);
+            mockStorage.getContext.returns(mockContext);
+        });
+
+        teardown(() => {
+            RepositoryActivationService.resetInstance();
+        });
+
+        /**
+         * Requirement 1.1: WHEN the extension activates AND a lockfile exists AND first-run setup is NOT complete,
+         * THE RepositoryActivationService SHALL defer source/hub detection until setup completes
+         */
+        test('should defer detection when setup is not complete', async () => {
+            // Setup: Mark setup as NOT complete (IN_PROGRESS state)
+            await setupStateManager.markStarted();
+            const isComplete = await setupStateManager.isComplete();
+            assert.strictEqual(isComplete, false, 'Setup should not be complete');
+
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService with SetupStateManager
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Act: Call checkAndPromptActivation
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert: Lockfile should NOT have been read (detection was deferred)
+            // The method returns early before reading the lockfile when setup is incomplete
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Lockfile should not be read when setup is incomplete');
+        });
+
+        /**
+         * Requirement 1.2: WHEN the extension activates AND a lockfile exists AND first-run setup IS complete,
+         * THE RepositoryActivationService SHALL check for missing sources and hubs
+         */
+        test('should proceed with detection when setup is complete', async () => {
+            // Setup: Mark setup as complete
+            await setupStateManager.markComplete();
+            const isComplete = await setupStateManager.isComplete();
+            assert.strictEqual(isComplete, true, 'Setup should be complete');
+
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService with SetupStateManager
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Act: Call checkAndPromptActivation
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert: Lockfile should have been read (detection proceeded)
+            assert.strictEqual(mockLockfileManager.read.called, true, 
+                'Lockfile should be read when setup is complete');
+        });
+
+        /**
+         * Requirement 1.3: WHEN first-run setup completes AND a lockfile exists,
+         * THE Extension SHALL trigger source/hub detection
+         * 
+         * This test simulates the flow: setup incomplete → setup completes → detection triggers
+         */
+        test('should trigger detection after setup completes', async () => {
+            // Setup: Start with incomplete setup
+            await setupStateManager.markStarted();
+            
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService with SetupStateManager
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Act 1: Call checkAndPromptActivation while setup is incomplete
+            await repositoryActivationService.checkAndPromptActivation();
+            
+            // Assert 1: Detection was deferred
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Detection should be deferred while setup is incomplete');
+
+            // Act 2: Complete setup
+            simulateHubConfigured();
+            await setupStateManager.markComplete();
+
+            // Act 3: Call checkAndPromptActivation again (simulating what extension.ts does after setup completes)
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert 2: Detection now proceeds
+            assert.strictEqual(mockLockfileManager.read.called, true, 
+                'Detection should proceed after setup completes');
+        });
+
+        /**
+         * Requirement 1.4: IF the SetupStateManager returns INCOMPLETE state,
+         * THEN THE RepositoryActivationService SHALL skip source/hub detection
+         */
+        test('should skip detection when setup state is INCOMPLETE', async () => {
+            // Setup: Mark setup as incomplete (cancelled)
+            await setupStateManager.markIncomplete();
+            const state = await setupStateManager.getState();
+            assert.strictEqual(state, SetupState.INCOMPLETE, 'State should be INCOMPLETE');
+
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService with SetupStateManager
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Act: Call checkAndPromptActivation
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert: Detection was skipped
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Detection should be skipped when setup is INCOMPLETE');
+        });
+
+        /**
+         * Requirement 6 (Property 5): Fail-open behavior - detection proceeds when SetupStateManager undefined
+         */
+        test('should proceed with detection when SetupStateManager is not provided (fail-open)', async () => {
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService WITHOUT SetupStateManager
+            RepositoryActivationService.resetInstance(testWorkspaceRoot);
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                undefined  // No SetupStateManager
+            );
+
+            // Act: Call checkAndPromptActivation
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert: Detection proceeded (fail-open behavior)
+            assert.strictEqual(mockLockfileManager.read.called, true, 
+                'Detection should proceed when SetupStateManager is not provided');
+        });
+
+        /**
+         * Test the complete flow: fresh install → setup → detection
+         */
+        test('should complete full flow: fresh install → setup incomplete → setup complete → detection', async () => {
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Phase 1: Fresh install - setup not started
+            let state = await setupStateManager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED, 'Initial state should be NOT_STARTED');
+
+            // Create RepositoryActivationService
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Phase 2: Extension activates, setup starts
+            await setupStateManager.markStarted();
+            await repositoryActivationService.checkAndPromptActivation();
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Detection should be deferred during setup');
+
+            // Phase 3: User cancels hub selection
+            await setupStateManager.markIncomplete();
+            mockLockfileManager.read.resetHistory();
+            await repositoryActivationService.checkAndPromptActivation();
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Detection should be deferred when setup is incomplete');
+
+            // Phase 4: User resumes and completes setup
+            await setupStateManager.markStarted();
+            simulateHubConfigured();
+            await setupStateManager.markComplete();
+            
+            mockLockfileManager.read.resetHistory();
+            await repositoryActivationService.checkAndPromptActivation();
+            assert.strictEqual(mockLockfileManager.read.called, true, 
+                'Detection should proceed after setup completes');
+        });
+
+        /**
+         * Test that detection is deferred for NOT_STARTED state
+         */
+        test('should defer detection when setup state is NOT_STARTED', async () => {
+            // Setup: State is NOT_STARTED (default)
+            const state = await setupStateManager.getState();
+            assert.strictEqual(state, SetupState.NOT_STARTED, 'State should be NOT_STARTED');
+
+            // Setup: Lockfile exists
+            mockLockfileManager.read.resolves(createMockLockfile());
+
+            // Create RepositoryActivationService with SetupStateManager
+            repositoryActivationService = RepositoryActivationService.getInstance(
+                testWorkspaceRoot,
+                mockLockfileManager as any,
+                mockHubManager as any,
+                mockStorage as any,
+                undefined,
+                setupStateManager
+            );
+
+            // Act: Call checkAndPromptActivation
+            await repositoryActivationService.checkAndPromptActivation();
+
+            // Assert: Detection was deferred (NOT_STARTED means setup hasn't completed)
+            assert.strictEqual(mockLockfileManager.read.called, false, 
+                'Detection should be deferred when setup is NOT_STARTED');
         });
     });
 });

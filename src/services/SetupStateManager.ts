@@ -17,10 +17,7 @@ export enum SetupState {
     INCOMPLETE = 'incomplete'
 }
 
-/**
- * Reason for incomplete setup
- */
-export type IncompleteReason = 'auth_cancelled' | 'hub_cancelled';
+
 
 /**
  * SetupStateManager manages setup state and provides state transition logic
@@ -29,8 +26,9 @@ export class SetupStateManager {
     private static instance: SetupStateManager | undefined;
     private readonly logger: Logger;
     private readonly SETUP_STATE_KEY = 'promptregistry.setupState';
-    private readonly RESUME_PROMPT_SHOWN_KEY = 'promptregistry.resumePromptShown';
-    private readonly INCOMPLETE_REASON_KEY = 'promptregistry.setupIncompleteReason';
+    
+    // Session-scoped flag (not persisted across extension reloads)
+    private resumePromptShown: boolean = false;
 
     private constructor(
         private readonly context: vscode.ExtensionContext,
@@ -40,13 +38,25 @@ export class SetupStateManager {
     }
 
     /**
-     * Get singleton instance
+     * Get singleton instance.
+     * 
+     * Note: On first call, both context and hubManager are required.
+     * Subsequent calls return the existing instance (parameters are ignored).
+     * Use resetInstance() in tests to create a fresh instance.
+     * 
+     * @param context - VS Code extension context (required on first call)
+     * @param hubManager - HubManager instance (required on first call)
+     * @returns SetupStateManager singleton instance
+     * @throws Error if context or hubManager is missing on first call
      */
     public static getInstance(
-        context: vscode.ExtensionContext,
-        hubManager: HubManager
+        context?: vscode.ExtensionContext,
+        hubManager?: HubManager
     ): SetupStateManager {
         if (!SetupStateManager.instance) {
+            if (!context || !hubManager) {
+                throw new Error('SetupStateManager requires context and hubManager on first call');
+            }
             SetupStateManager.instance = new SetupStateManager(context, hubManager);
         }
         return SetupStateManager.instance;
@@ -102,17 +112,14 @@ export class SetupStateManager {
      */
     public async markComplete(): Promise<void> {
         await this.transitionState(SetupState.COMPLETE);
-        // Clear incomplete reason when completing
-        await this.context.globalState.update(this.INCOMPLETE_REASON_KEY, undefined);
     }
 
     /**
      * Mark setup as incomplete
      */
-    public async markIncomplete(reason: IncompleteReason): Promise<void> {
+    public async markIncomplete(): Promise<void> {
         await this.transitionState(SetupState.INCOMPLETE);
-        await this.context.globalState.update(this.INCOMPLETE_REASON_KEY, reason);
-        this.logger.info(`Setup marked as incomplete: ${reason}`);
+        this.logger.info('Setup marked as incomplete');
     }
 
     /**
@@ -120,8 +127,7 @@ export class SetupStateManager {
      */
     public async reset(): Promise<void> {
         await this.transitionState(SetupState.NOT_STARTED);
-        await this.context.globalState.update(this.INCOMPLETE_REASON_KEY, undefined);
-        await this.context.globalState.update(this.RESUME_PROMPT_SHOWN_KEY, false);
+        this.resumePromptShown = false;
         this.logger.info('Setup state reset to not_started');
     }
 
@@ -149,7 +155,7 @@ export class SetupStateManager {
             if (hubs.length === 0 && !activeHub) {
                 // Migrate to new state system
                 this.logger.info('Detected incomplete setup from old flags, migrating to new state system');
-                await this.markIncomplete('hub_cancelled');
+                await this.markIncomplete();
                 return true;
             }
         }
@@ -167,15 +173,14 @@ export class SetupStateManager {
             return false;
         }
         
-        const promptShown = this.context.globalState.get<boolean>(this.RESUME_PROMPT_SHOWN_KEY, false);
-        return !promptShown;
+        return !this.resumePromptShown;
     }
 
     /**
      * Mark resume prompt as shown for this session
      */
     public async markResumePromptShown(): Promise<void> {
-        await this.context.globalState.update(this.RESUME_PROMPT_SHOWN_KEY, true);
+        this.resumePromptShown = true;
         this.logger.debug('Resume prompt marked as shown for this session');
     }
 

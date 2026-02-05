@@ -1715,4 +1715,218 @@ suite('LockfileManager', () => {
             assert.strictEqual(bundles[0].scope, 'repository');
         });
     });
+
+    suite('Backward Compatibility - Legacy SourceId Format', () => {
+        /**
+         * Tests for backward compatibility with legacy hub-prefixed sourceId format.
+         * 
+         * Legacy format: `hub-{hubId}-{sourceId}` (e.g., "hub-my-hub-github-source")
+         * New format: `{sourceType}-{12-char-hash}` (e.g., "github-a1b2c3d4e5f6")
+         * 
+         * Requirements covered:
+         * - Requirement 3.1: Legacy sourceIds should resolve correctly
+         * - Requirement 3.2: Bundle updates should write new sourceId format
+         */
+
+        test('should read lockfile with legacy hub-prefixed sourceId correctly', async () => {
+            // Requirements: 3.1 - Legacy sourceIds should resolve correctly
+            // Legacy format: hub-{hubId}-{sourceId}
+            const legacySourceId = 'hub-my-hub-github-source';
+            
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId, 'github', 'https://github.com/owner/repo')
+                .withBundle('test-bundle', '1.0.0', legacySourceId, {
+                    sourceType: 'github',
+                    files: [createMockFileEntry('.github/prompts/test.prompt.md')]
+                })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            // Bundle should be read correctly with legacy sourceId
+            assert.strictEqual(bundles.length, 1, 'Should read 1 bundle');
+            assert.strictEqual(bundles[0].bundleId, 'test-bundle');
+            assert.strictEqual(bundles[0].version, '1.0.0');
+            assert.strictEqual(bundles[0].sourceId, legacySourceId, 'Legacy sourceId should be preserved');
+            assert.strictEqual(bundles[0].sourceType, 'github');
+        });
+
+        test('should read lockfile with multiple legacy sourceIds correctly', async () => {
+            // Requirements: 3.1 - Multiple legacy sourceIds should all resolve
+            const legacySourceId1 = 'hub-test-hub-source1';
+            const legacySourceId2 = 'hub-another-hub-gitlab-source';
+            
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId1, 'github', 'https://github.com/owner/repo1')
+                .withSource(legacySourceId2, 'gitlab', 'https://gitlab.com/group/project')
+                .withBundle('bundle-1', '1.0.0', legacySourceId1, { sourceType: 'github' })
+                .withBundle('bundle-2', '2.0.0', legacySourceId2, { sourceType: 'gitlab' })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 2, 'Should read 2 bundles');
+            
+            const bundle1 = bundles.find(b => b.bundleId === 'bundle-1');
+            const bundle2 = bundles.find(b => b.bundleId === 'bundle-2');
+            
+            assert.ok(bundle1, 'bundle-1 should exist');
+            assert.strictEqual(bundle1!.sourceId, legacySourceId1);
+            
+            assert.ok(bundle2, 'bundle-2 should exist');
+            assert.strictEqual(bundle2!.sourceId, legacySourceId2);
+        });
+
+        test('should read lockfile with mixed legacy and new sourceId formats', async () => {
+            // Requirements: 3.1 - System should handle both formats in same lockfile
+            const legacySourceId = 'hub-old-hub-github-source';
+            const newSourceId = 'github-a1b2c3d4e5f6'; // New format: {type}-{hash}
+            
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId, 'github', 'https://github.com/owner/legacy-repo')
+                .withSource(newSourceId, 'github', 'https://github.com/owner/new-repo')
+                .withBundle('legacy-bundle', '1.0.0', legacySourceId, { sourceType: 'github' })
+                .withBundle('new-bundle', '2.0.0', newSourceId, { sourceType: 'github' })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 2, 'Should read both bundles');
+            
+            const legacyBundle = bundles.find(b => b.bundleId === 'legacy-bundle');
+            const newBundle = bundles.find(b => b.bundleId === 'new-bundle');
+            
+            assert.ok(legacyBundle, 'Legacy bundle should exist');
+            assert.strictEqual(legacyBundle!.sourceId, legacySourceId, 'Legacy sourceId preserved');
+            
+            assert.ok(newBundle, 'New bundle should exist');
+            assert.strictEqual(newBundle!.sourceId, newSourceId, 'New sourceId preserved');
+        });
+
+        test('should write new sourceId format when bundle is updated', async () => {
+            // Requirements: 3.2 - Bundle update should write new sourceId format
+            // When createOrUpdate is called with a new sourceId, it should be written
+            const newSourceId = 'github-b5c6d7e8';
+            
+            // Start with a lockfile containing a legacy sourceId
+            const legacySourceId = 'hub-my-hub-old-source';
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId, 'github', 'https://github.com/owner/repo')
+                .withBundle('test-bundle', '1.0.0', legacySourceId, { sourceType: 'github' })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            
+            // Update the bundle with new sourceId format
+            const updateOptions: CreateOrUpdateOptions = {
+                bundleId: 'test-bundle',
+                version: '2.0.0',
+                sourceId: newSourceId,
+                sourceType: 'github',
+                commitMode: 'commit',
+                files: [createMockFileEntry('.github/prompts/test.prompt.md')],
+                source: createMockSourceEntry('github', 'https://github.com/owner/repo')
+            };
+            
+            await manager.createOrUpdate(updateOptions);
+            
+            // Read the lockfile from disk to verify the new format was written
+            const updatedLockfile = readLockfileFromDisk();
+            assert.ok(updatedLockfile, 'Lockfile should exist');
+            
+            // Bundle should have new sourceId
+            assert.strictEqual(
+                updatedLockfile!.bundles['test-bundle'].sourceId,
+                newSourceId,
+                'Bundle should have new sourceId format'
+            );
+            
+            // New source entry should exist
+            assert.ok(
+                updatedLockfile!.sources[newSourceId],
+                'New source entry should exist'
+            );
+            
+            // Note: Legacy source is NOT automatically cleaned up on update.
+            // Source cleanup only happens when bundles are removed (orphan cleanup).
+            // This is expected behavior - the legacy source remains until no bundles reference it.
+            // The important thing is that the bundle now uses the new sourceId format.
+        });
+
+        test('should preserve legacy sourceId when bundle is not updated', async () => {
+            // Requirements: 3.1 - Legacy sourceIds should continue to work without migration
+            const legacySourceId = 'hub-preserved-hub-source';
+            
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId, 'github', 'https://github.com/owner/repo')
+                .withBundle('preserved-bundle', '1.0.0', legacySourceId, { sourceType: 'github' })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            
+            // Add a different bundle (not updating the existing one)
+            const newSourceId = 'github-newbundle';
+            const addOptions: CreateOrUpdateOptions = {
+                bundleId: 'new-bundle',
+                version: '1.0.0',
+                sourceId: newSourceId,
+                sourceType: 'github',
+                commitMode: 'commit',
+                files: [createMockFileEntry('.github/prompts/new.prompt.md')],
+                source: createMockSourceEntry('github', 'https://github.com/owner/new-repo')
+            };
+            
+            await manager.createOrUpdate(addOptions);
+            
+            // Read the lockfile from disk
+            const updatedLockfile = readLockfileFromDisk();
+            assert.ok(updatedLockfile, 'Lockfile should exist');
+            
+            // Original bundle should still have legacy sourceId
+            assert.strictEqual(
+                updatedLockfile!.bundles['preserved-bundle'].sourceId,
+                legacySourceId,
+                'Legacy sourceId should be preserved for unchanged bundle'
+            );
+            
+            // Legacy source should still exist
+            assert.ok(
+                updatedLockfile!.sources[legacySourceId],
+                'Legacy source should still exist'
+            );
+            
+            // New bundle should have new sourceId
+            assert.strictEqual(
+                updatedLockfile!.bundles['new-bundle'].sourceId,
+                newSourceId,
+                'New bundle should have new sourceId'
+            );
+        });
+
+        test('should handle legacy sourceId with many segments correctly', async () => {
+            // Requirements: 3.1 - Legacy format can have 3+ segments
+            // Example: hub-my-hub-github-enterprise-source (5 segments)
+            const legacySourceId = 'hub-my-hub-github-enterprise-source';
+            
+            const lockfile = LockfileBuilder.create()
+                .withSource(legacySourceId, 'github', 'https://github.enterprise.com/owner/repo')
+                .withBundle('enterprise-bundle', '1.0.0', legacySourceId, { sourceType: 'github' })
+                .build();
+            writeLockfile(lockfile);
+            
+            const manager = LockfileManager.getInstance(tempDir);
+            const bundles = await manager.getInstalledBundles();
+            
+            assert.strictEqual(bundles.length, 1, 'Should read 1 bundle');
+            assert.strictEqual(bundles[0].sourceId, legacySourceId, 'Multi-segment legacy sourceId preserved');
+        });
+    });
 });

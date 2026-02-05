@@ -21,6 +21,7 @@ import { HubCommands } from '../../src/commands/HubCommands';
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubReference } from '../../src/types/hub';
+import { generateHubSourceId } from '../../src/utils/sourceIdUtils';
 
 // Mock SchemaValidator for testing
 class MockSchemaValidator {
@@ -406,16 +407,13 @@ suite('HubCommands', () => {
             await testHubManager.importHub(ref, 'test-hub');
             
             // Count sources - should have 2 sources (official-prompts, community-prompts)
-            // but each should only be added ONCE (with prefixed IDs)
+            // but each should only be added ONCE (with new format IDs)
             const sourceCount = addedSources.length;
             
             // If there are more than 2 sources, we have duplicates
             assert.strictEqual(sourceCount, 2, 
                 `Expected 2 sources but got ${sourceCount}: ${addedSources.join(', ')}`);
             
-            // Verify the IDs are prefixed correctly
-            assert.ok(addedSources.every(id => id.startsWith('hub-test-hub-')),
-                `Source IDs should be prefixed with hub-test-hub-: ${addedSources.join(', ')}`);
         });
     });
 });

@@ -361,11 +361,13 @@ export const LockfileGenerators = {
 
     /**
      * Generate a valid bundle ID (lowercase alphanumeric with hyphens)
+     * Filters out JavaScript reserved property names like 'constructor', 'prototype', etc.
      */
     bundleId: (): fc.Arbitrary<string> => {
+        const reservedNames = ['constructor', 'prototype', '__proto__', 'hasOwnProperty', 'toString', 'valueOf'];
         return fc.string({ minLength: 1, maxLength: 30 })
             .map(s => s.replace(/[^a-zA-Z0-9-]/g, 'a').toLowerCase())
-            .filter(s => s.length > 0);
+            .filter(s => s.length > 0 && !reservedNames.includes(s));
     },
 
     /**

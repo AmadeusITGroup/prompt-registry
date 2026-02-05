@@ -137,11 +137,12 @@ suite('Extension Activation Integration', () => {
 
     suite('Activation Prompt Flow', () => {
         /**
-         * Requirement 13.1: WHEN a workspace with a lockfile is opened for the first time,
-         * THE Extension SHALL display a notification asking if the user wants to enable
-         * repository bundles
+         * Requirement 1.6: THE System SHALL NOT prompt users to "enable" or "install" 
+         * repository bundles since the files are already present in the repository.
+         * 
+         * Instead, the system only checks for missing sources/hubs.
          */
-        test('should show activation prompt when lockfile is detected', async () => {
+        test('should NOT show activation prompt when lockfile is detected (Requirement 1.6)', async () => {
             // Arrange
             const mockLockfile = {
                 $schema: 'https://example.com/lockfile.schema.json',
@@ -171,7 +172,18 @@ suite('Extension Activation Integration', () => {
 
             // Mock notification
             const mockShowInformationMessage = sandbox.stub(vscode.window, 'showInformationMessage');
-            mockShowInformationMessage.resolves('Enable' as any);
+            mockShowInformationMessage.resolves('Not now' as any);
+
+            // Mock storage to return the source as configured (no missing sources)
+            testContext.storage.getSources = sandbox.stub().resolves([{
+                id: 'test-source',
+                type: 'github',
+                url: 'https://github.com/test/repo',
+                name: 'Test Source',
+                enabled: true,
+                priority: 0
+            }]);
+            mockHubManager.listHubs.resolves([]);
 
             // Act
             const lockfileManager = LockfileManager.getInstance(testContext.tempStoragePath);
@@ -184,10 +196,16 @@ suite('Extension Activation Integration', () => {
             );
             await activationService.checkAndPromptActivation();
 
-            // Assert
-            assert.ok(mockShowInformationMessage.called, 'Should show activation prompt');
-            const callArgs = mockShowInformationMessage.firstCall.args;
-            assert.ok(callArgs[0].includes('1 bundle'), 'Should mention bundle count');
+            // Assert - no activation prompt should be shown (Requirement 1.6)
+            // Files are already in repository, no need to ask user to "enable"
+            if (mockShowInformationMessage.called) {
+                const callArgs = mockShowInformationMessage.firstCall.args;
+                // If any prompt is shown, it should NOT be an activation prompt
+                assert.ok(!callArgs[0].toLowerCase().includes('enable'), 
+                    'Should NOT show activation prompt - files already in repository');
+                assert.ok(!callArgs[0].toLowerCase().includes('bundle'), 
+                    'Should NOT mention bundle count in activation prompt');
+            }
         });
 
         /**
@@ -257,26 +275,41 @@ suite('Extension Activation Integration', () => {
         });
 
         /**
-         * Requirement 13.5: THE Extension SHALL provide a "Don't ask again" option
-         * in the notification
+         * Requirement 1.6: THE System SHALL NOT prompt users to "enable" or "install" 
+         * repository bundles since the files are already present in the repository.
+         * 
+         * The "Don't ask again" functionality now applies to missing source/hub prompts,
+         * not activation prompts (which no longer exist per Requirement 1.6).
          */
-        test('should remember "Don\'t ask again" choice', async () => {
+        test('should skip source detection for declined repositories', async () => {
             // Arrange
+            const workspacePath = testContext.tempStoragePath;
+            // Implementation uses array-based tracking: repositoryActivation.declined = [path1, path2, ...]
+            await testContext.mockContext.globalState.update('repositoryActivation.declined', [workspacePath]);
+
             const mockLockfile = {
                 $schema: 'https://example.com/lockfile.schema.json',
                 version: '1.0.0',
                 generatedAt: new Date().toISOString(),
                 generatedBy: 'prompt-registry@1.0.0',
                 bundles: {},
-                sources: {}
+                sources: {
+                    'test-source': {
+                        type: 'github',
+                        url: 'https://github.com/test/repo'
+                    }
+                }
             };
 
             // Write lockfile to temp directory
             writeLockfile(mockLockfile);
 
-            // Mock notification - user selects "Don't ask again"
+            // Mock notification
             const mockShowInformationMessage = sandbox.stub(vscode.window, 'showInformationMessage');
-            mockShowInformationMessage.resolves("Don't ask again" as any);
+            
+            // Mock storage to return no sources (would trigger missing source prompt if not declined)
+            testContext.storage.getSources = sandbox.stub().resolves([]);
+            mockHubManager.listHubs.resolves([]);
 
             // Act
             const lockfileManager = LockfileManager.getInstance(testContext.tempStoragePath);
@@ -288,11 +321,8 @@ suite('Extension Activation Integration', () => {
             );
             await activationService.checkAndPromptActivation();
 
-            // Assert
-            const workspacePath = testContext.tempStoragePath;
-            // Implementation uses array-based tracking: repositoryActivation.declined = [path1, path2, ...]
-            const declined = testContext.mockContext.globalState.get<string[]>('repositoryActivation.declined', []);
-            assert.ok(declined.includes(workspacePath), 'Should remember declined choice in array');
+            // Assert - no prompt should be shown for declined repositories
+            assert.ok(mockShowInformationMessage.notCalled, 'Should not show any prompt for declined repositories');
         });
     });
 });

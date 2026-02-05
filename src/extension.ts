@@ -89,6 +89,7 @@ export class PromptRegistryExtension {
     private lockfileManager: LockfileManager | undefined;
     private repositoryActivationService: RepositoryActivationService | undefined;
 
+
     // Legacy (to be removed)
     private readonly installationManager: InstallationManager;
     private disposables: vscode.Disposable[] = [];
@@ -393,7 +394,12 @@ export class PromptRegistryExtension {
 
             // Reset First Run Command
             vscode.commands.registerCommand('promptRegistry.resetFirstRun', async () => {
-                await this.setupStateManager!.reset();
+                if (!this.setupStateManager) {
+                    this.logger.warn('SetupStateManager not initialized');
+                    vscode.window.showErrorMessage('Cannot reset first run state: extension not fully initialized');
+                    return;
+                }
+                await this.setupStateManager.reset();
                 // Clear active hub to ensure hub selector is shown
                 await this.hubManager?.setActiveHub(null);
                 this.logger.info('First run state reset via SetupStateManager');
@@ -401,8 +407,15 @@ export class PromptRegistryExtension {
             }),
 
             // Initialize Hub Command (internal, used by marketplace setup button)
-            vscode.commands.registerCommand('promptRegistry.initializeHub', async () => {
+            vscode.commands.registerCommand('promptRegistry.initializeHub', async (options?: { resetAuth?: boolean }) => {
+                if (options?.resetAuth && this.hubManager) {
+                    this.hubManager.clearAuthCache();
+                }
                 await this.initializeHub();
+                // Mark setup complete when hub is initialized via this command (e.g. marketplace button)
+                if (this.setupStateManager) {
+                    await this.setupStateManager.markComplete();
+                }
             }),
 
             
@@ -747,7 +760,8 @@ export class PromptRegistryExtension {
                 this.lockfileManager,
                 this.hubManager!,
                 registryStorage,
-                this.registryManager  // Pass RegistryManager for missing bundle installation
+                this.registryManager,  // Pass RegistryManager for missing bundle installation
+                this.setupStateManager  // Pass SetupStateManager for timing check
             );
 
             // Check for lockfile and prompt activation
@@ -803,7 +817,8 @@ export class PromptRegistryExtension {
                 lockfileManager,
                 this.hubManager!,
                 registryStorage,
-                this.registryManager  // Pass RegistryManager for missing bundle installation
+                this.registryManager,  // Pass RegistryManager for missing bundle installation
+                this.setupStateManager  // Pass SetupStateManager for timing check
             );
 
             // Check for lockfile and prompt activation
@@ -1185,95 +1200,159 @@ export class PromptRegistryExtension {
     }
 
     /**
+     * Check if first-run dialogs should be skipped
+     * Detects test/CI environments via VSCODE_TEST env var or extensionMode
+     * @returns true if running in test environment, false otherwise
+     */
+    private shouldSkipFirstRun(): boolean {
+        return process.env.VSCODE_TEST === '1' || 
+               this.context.extensionMode === vscode.ExtensionMode.Test;
+    }
+    /**
+     * Handle incomplete setup from previous session.
+     * Shows the resume notification non-blockingly so the marketplace UI
+     * can render the "Setup Not Complete" empty state while the user decides.
+     * @returns true if setup is incomplete (caller should skip fresh-install flow), false otherwise
+     */
+    private async handleIncompleteSetup(): Promise<boolean> {
+        // Check for incomplete setup from previous session
+        const isIncomplete = await this.setupStateManager!.detectIncompleteSetup();
+
+        if (isIncomplete && await this.setupStateManager!.shouldShowResumePrompt()) {
+            // Fire the resume prompt without awaiting — let activation finish
+            // so the marketplace webview can render and show the "Complete Setup" button.
+            this.showResumeSetupPrompt();
+            return true;
+        }
+
+        // Prompt was already shown or setup is not incomplete - don't block fresh install
+        return false;
+    }
+
+    /**
+     * Handle fresh install flow
+     * Initializes default sources, hub, and shows welcome notification
+     */
+    private async handleFreshInstall(): Promise<void> {
+        // Check if this is first run
+        const state = await this.setupStateManager!.getState();
+        
+        if (state === SetupState.NOT_STARTED) {
+            await this.setupStateManager!.markStarted();
+            
+            // Initialize default sources (Awesome Copilot)
+            await this.initializeDefaultSources();
+            
+            // Initialize hub (first-run hub selector or migration)
+            await this.initializeHub();
+            
+            // If we get here, setup completed successfully
+            await this.setupStateManager!.markComplete();
+            
+            // Trigger source/hub detection now that setup is complete
+            if (this.repositoryActivationService) {
+                await this.repositoryActivationService.checkAndPromptActivation();
+            }
+            
+            // Show welcome notification
+            const installedScopes = await this.installationManager.getInstalledScopes();
+            if (installedScopes.length === 0) {
+                setTimeout(async () => {
+                    await this.notifications.showWelcomeNotification();
+                }, 2000);
+            }
+            
+            this.logger.info('First run completed successfully');
+        }
+    }
 
     /**
      * Check if this is the first run and show welcome message
      */
     private async checkFirstRun(): Promise<void> {
+        if (!this.setupStateManager) {
+            this.logger.warn('SetupStateManager not initialized, skipping first-run check');
+            return;
+        }
+
         try {
             // Skip first-run dialogs in test/CI environments
-            // Detection: VSCODE_TEST environment variable or extensionMode
-            const isTestEnvironment = process.env.VSCODE_TEST === '1' || 
-                                      this.context.extensionMode === vscode.ExtensionMode.Test;
-            
-            if (isTestEnvironment) {
+            if (this.shouldSkipFirstRun()) {
                 this.logger.info('Test environment detected, skipping first-run dialogs');
                 // Mark setup as complete to prevent future dialogs
-                await this.setupStateManager!.markComplete();
+                await this.setupStateManager.markComplete();
                 return;
             }
 
             // Check for incomplete setup from previous session
-            const isIncomplete = await this.setupStateManager!.detectIncompleteSetup();
-            
-            if (isIncomplete && await this.setupStateManager!.shouldShowResumePrompt()) {
-                await this.showResumeSetupPrompt();
+            if (await this.handleIncompleteSetup()) {
                 return;
             }
 
-            // Check if this is first run
-            const state = await this.setupStateManager!.getState();
-            
-            if (state === SetupState.NOT_STARTED) {
-                await this.setupStateManager!.markStarted();
-                
-                // Initialize default sources (Awesome Copilot)
-                await this.initializeDefaultSources();
-                
-                // Initialize hub (first-run hub selector or migration)
-                await this.initializeHub();
-                
-                // If we get here, setup completed successfully
-                await this.setupStateManager!.markComplete();
-                
-                // Show welcome notification
-                const installedScopes = await this.installationManager.getInstalledScopes();
-                if (installedScopes.length === 0) {
-                    setTimeout(async () => {
-                        await this.notifications.showWelcomeNotification();
-                    }, 2000);
-                }
-                
-                this.logger.info('First run completed successfully');
-            }
+            // Handle fresh install
+            await this.handleFreshInstall();
 
         } catch (error) {
             this.logger.error('Failed during first run', error as Error);
-            await this.setupStateManager!.markIncomplete('hub_cancelled');
+            await this.setupStateManager.markIncomplete();
         }
     }
 
     /**
-     * Show resume setup prompt to user
-     * Uses NotificationManager for consistent notification handling
+     * Show resume setup notification to the user.
+     *
+     * Fires non-blockingly so the marketplace UI can render the "Setup Not
+     * Complete" empty state while the notification is visible.  The handler
+     * guards against double-execution: if setup was already completed via the
+     * marketplace button, clicking "Complete Setup" on the notification is a
+     * safe no-op.
      */
-    private async showResumeSetupPrompt(): Promise<void> {
+    private showResumeSetupPrompt(): void {
+        if (!this.setupStateManager) {
+            this.logger.warn('SetupStateManager not initialized, skipping resume prompt');
+            return;
+        }
+
         // Mark prompt as shown to prevent showing it multiple times in the same session
-        await this.setupStateManager!.markResumePromptShown();
-        
-        // Show notification with action buttons using NotificationManager
-        const action = await this.notificationManager!.showInfo(
-            'Setup was not completed. Would you like to finish configuring Prompt Registry?',
+        this.setupStateManager.markResumePromptShown();
+
+        // Fire-and-forget: the .then() handler runs when the user clicks a button
+        vscode.window.showInformationMessage(
+            'Setup was not completed. Would you like to resume?',
             'Complete Setup',
             'Skip for Now'
-        );
-        
-        if (action === 'Complete Setup') {
-            this.logger.info('User chose to resume setup');
-            await this.setupStateManager!.markStarted();
-            
-            try {
-                await this.initializeHub();
-                await this.setupStateManager!.markComplete();
-                this.logger.info('Setup resumed and completed successfully');
-            } catch (error) {
-                this.logger.error('Failed to complete setup during resume', error as Error);
-                await this.setupStateManager!.markIncomplete('hub_cancelled');
+        ).then(async (action) => {
+            if (action === 'Complete Setup') {
+                // Guard: setup may have been completed via the marketplace button
+                const currentState = await this.setupStateManager!.getState();
+                if (currentState === SetupState.COMPLETE) {
+                    this.logger.info('Setup already completed via another path, ignoring notification click');
+                    return;
+                }
+
+                this.logger.info('User chose to resume setup via notification');
+                await this.setupStateManager!.markStarted();
+
+                try {
+                    if (this.hubManager) {
+                        this.hubManager.clearAuthCache();
+                    }
+                    await this.initializeHub();
+                    await this.setupStateManager!.markComplete();
+
+                    if (this.repositoryActivationService) {
+                        await this.repositoryActivationService.checkAndPromptActivation();
+                    }
+
+                    this.logger.info('Setup resumed and completed successfully via notification');
+                } catch (error) {
+                    this.logger.error('Failed to complete setup during resume', error as Error);
+                    await this.setupStateManager!.markIncomplete();
+                }
+            } else {
+                this.logger.info('User skipped setup resumption');
             }
-        } else {
-            // Handle both "Skip for Now" action and dismissal (undefined)
-            this.logger.info('User skipped setup resumption');
-        }
+        });
     }
 
     /**
@@ -1329,11 +1408,18 @@ export class PromptRegistryExtension {
 
 
     /**
-     * Initialize hub configuration on first run or migrate existing installations
+     * Initialize hub configuration on first run or migrate existing installations.
+     *
+     * State Management: On error or cancellation, this method calls markIncomplete()
+     * and re-throws. The caller is responsible for calling markComplete() on success.
      */
     private async initializeHub(): Promise<void> {
+        if (!this.hubManager) {
+            throw new Error('HubManager not initialized');
+        }
+
         try {
-            const hubManager = this.hubManager!;
+            const hubManager = this.hubManager;
 
             // Check existing hubs
             const hubs = await hubManager.listHubs();
@@ -1349,9 +1435,9 @@ export class PromptRegistryExtension {
                 const activeHubAfter = await hubManager.getActiveHub();
                 
                 if (hubsAfter.length === 0 && !activeHubAfter) {
-                    // User cancelled - mark as incomplete and throw to prevent markComplete()
-                    this.logger.info('Hub selection cancelled, marking setup as incomplete');
-                    await this.setupStateManager!.markIncomplete('hub_cancelled');
+                    // User cancelled - throw to prevent markComplete()
+                    // The catch block below will call markIncomplete()
+                    this.logger.info('Hub selection cancelled');
                     throw new Error('Hub selection cancelled by user');
                 }
             } else if (hubs.length > 0 && !activeHubResult) {
@@ -1369,7 +1455,9 @@ export class PromptRegistryExtension {
 
         } catch (error) {
             this.logger.error('Failed to initialize hub', error as Error);
-            await this.setupStateManager!.markIncomplete('hub_cancelled');
+            if (this.setupStateManager) {
+                await this.setupStateManager.markIncomplete();
+            }
             throw error;
         }
     }

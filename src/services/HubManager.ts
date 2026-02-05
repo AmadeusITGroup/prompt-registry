@@ -13,6 +13,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { HubStorage, LoadHubResult } from '../storage/HubStorage';
 import { Logger } from '../utils/logger';
+import { generateHubSourceId } from '../utils/sourceIdUtils';
 import { SchemaValidator, ValidationResult } from './SchemaValidator';
 import { RegistrySource } from '../types/registry';
 import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog, ProfileWithUpdates } from '../types/hub';
@@ -77,6 +78,16 @@ export class HubManager {
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
 
+    /**
+     * Clear cached authentication state so that the next call to
+     * getAuthenticationToken() performs a fresh authentication attempt.
+     * Used when re-triggering setup after a user previously declined auth.
+     */
+    public clearAuthCache(): void {
+        this.authToken = undefined;
+        this.authMethod = 'none';
+        this.logger.info('[HubManager] Authentication cache cleared');
+    }
 
     /**
      * Initialize HubManager
@@ -786,9 +797,20 @@ export class HubManager {
     }
 
     /**
-     * Load hub sources into RegistryManager
-     * Converts HubSource objects to RegistrySource and adds them to the registry
-     * Skips sources that are duplicates (same URL, type, branch, and collectionsPath)
+     * Load hub sources into RegistryManager.
+     * Converts HubSource objects to RegistrySource and adds them to the registry.
+     * Skips sources that are duplicates (same URL, type, branch, and collectionsPath).
+     * 
+     * SourceId Format: Uses `generateHubSourceId(type, url, config)` to create stable IDs
+     * in the format `{type}-{12-char-hash}`. The hash includes branch and collectionsPath
+     * to prevent collisions when the same URL is used with different configurations.
+     * This makes lockfiles portable across different hub configurations since IDs are
+     * based on source properties, not hub ID.
+     * 
+     * Backward Compatibility: Existing sources with legacy hub-prefixed IDs
+     * (`hub-{hubId}-{sourceId}`) continue to work. Duplicate detection uses URL
+     * matching, not ID matching, to handle both formats.
+     * 
      * @param hubId Hub identifier
      */
     async loadHubSources(hubId: string): Promise<void> {
@@ -820,8 +842,11 @@ export class HubManager {
                     continue;
                 }
                 
-                // Create unique source ID by prefixing with hub ID
-                const sourceId = `hub-${hubId}-${hubSource.id}`;
+                // Generate stable sourceId based on type, URL, and config (branch, collectionsPath)
+                const sourceId = generateHubSourceId(hubSource.type, hubSource.url, {
+                    branch: hubSource.config?.branch,
+                    collectionsPath: hubSource.config?.collectionsPath
+                });
                 
                 // Check if source with same ID already exists (from this hub)
                 const existingSourceById = existingSources.find((s: RegistrySource) => s.id === sourceId);

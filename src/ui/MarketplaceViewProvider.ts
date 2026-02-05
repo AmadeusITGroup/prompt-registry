@@ -552,8 +552,13 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Handle complete setup request from marketplace empty state
-     * Manages state transitions and triggers the hub initialization flow
+     * Handle complete setup request from marketplace empty state.
+     * 
+     * State Management: This method marks setup as started, then delegates to
+     * the initializeHub command. The command handles its own state transitions
+     * (markComplete on success, markIncomplete on failure). We only need to
+     * mark started here and refresh the UI afterward.
+     * 
      * Requirements: 4.4
      */
     private async handleCompleteSetup(): Promise<void> {
@@ -564,20 +569,20 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         
         try {
             // Trigger first-run flow via the extension command
-            await vscode.commands.executeCommand('promptRegistry.initializeHub');
-            
-            // Mark setup as complete on success
-            await this.setupStateManager.markComplete();
+            // Note: initializeHub handles markComplete/markIncomplete internally
+            // Pass resetAuth to clear cached auth so the user is re-prompted for GitHub authentication
+            await vscode.commands.executeCommand('promptRegistry.initializeHub', { resetAuth: true });
             
             // Refresh marketplace to show updated state
             await this.loadBundles();
         } catch (error) {
             this.logger.error('Failed to complete setup from marketplace', error as Error);
             
-            // Mark setup as incomplete on error (user cancelled or error occurred)
-            await this.setupStateManager.markIncomplete('hub_cancelled');
-            
+            // Only show error message - state is already marked by initializeHub
             vscode.window.showErrorMessage(`Failed to complete setup: ${(error as Error).message}`);
+            
+            // Refresh to show current state
+            await this.loadBundles();
         }
     }
 
@@ -2043,8 +2048,15 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
 
         .empty-state {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             text-align: center;
             padding: 60px 20px;
+            box-sizing: border-box;
+            max-width: 1100px;
             color: var(--vscode-descriptionForeground);
         }
 
@@ -2489,8 +2501,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 const hasFiltersApplied = searchTerm || selectedSource !== 'all' || selectedTags.length > 0 || showInstalledOnly;
                 
                 if (allBundles.length === 0) {
-                    // No bundles at all - check if setup is incomplete
-                    const isSetupIncomplete = setupState === 'incomplete' || setupState === 'not_started';
+                    // No bundles at all - check if setup is incomplete or in progress
+                    const isSetupIncomplete = setupState === 'incomplete' || setupState === 'not_started' || setupState === 'in_progress';
                     
                     if (isSetupIncomplete) {
                         // Show setup prompt instead of syncing message

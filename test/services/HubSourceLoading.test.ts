@@ -11,6 +11,7 @@ import { HubStorage } from '../../src/storage/HubStorage';
 import { HubReference, HubConfig } from '../../src/types/hub';
 import { RegistrySource } from '../../src/types/registry';
 import { ValidationResult } from '../../src/services/SchemaValidator';
+import { generateHubSourceId } from '../../src/utils/sourceIdUtils';
 
 // Mock SchemaValidator for unit tests
 class MockSchemaValidator {
@@ -109,12 +110,16 @@ suite('Hub Source Loading', () => {
             const sources = await mockRegistry.listSources();
             assert.strictEqual(sources.length, 2, 'Should have 2 sources loaded');
 
-            // Check source IDs are prefixed correctly
-            assert.ok(sources.some(s => s.id === 'hub-test-hub-source-1'), 'Should have hub-test-hub-source-1');
-            assert.ok(sources.some(s => s.id === 'hub-test-hub-source-2'), 'Should have hub-test-hub-source-2');
+            // Compute expected sourceIds using the new format
+            const expectedSource1Id = generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot');
+            const expectedSource2Id = generateHubSourceId('awesome-copilot', 'https://github.com/org/other-repo');
+
+            // Check source IDs use new format (type-hash)
+            assert.ok(sources.some(s => s.id === expectedSource1Id), `Should have source with id ${expectedSource1Id}`);
+            assert.ok(sources.some(s => s.id === expectedSource2Id), `Should have source with id ${expectedSource2Id}`);
 
             // Verify source properties
-            const source1 = sources.find(s => s.id === 'hub-test-hub-source-1');
+            const source1 = sources.find(s => s.id === expectedSource1Id);
             assert.ok(source1, 'Source 1 should exist');
             assert.strictEqual(source1.name, 'Source 1');
             assert.strictEqual(source1.type, 'awesome-copilot');
@@ -135,9 +140,13 @@ suite('Hub Source Loading', () => {
             const sources = await mockRegistry.listSources();
             assert.strictEqual(sources.length, 1, 'Should have only 1 enabled source loaded');
 
+            // Compute expected sourceIds using the new format
+            const expectedEnabledSourceId = generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot');
+            const expectedDisabledSourceId = generateHubSourceId('awesome-copilot', 'https://github.com/disabled/repo');
+
             // Check correct source was loaded
-            assert.ok(mockRegistry.hasSource('hub-test-hub-disabled-enabled-source'), 'Should have enabled source');
-            assert.ok(!mockRegistry.hasSource('hub-test-hub-disabled-disabled-source'), 'Should not have disabled source');
+            assert.ok(mockRegistry.hasSource(expectedEnabledSourceId), 'Should have enabled source');
+            assert.ok(!mockRegistry.hasSource(expectedDisabledSourceId), 'Should not have disabled source');
         });
 
         test('should update existing hub sources on re-import', async () => {
@@ -199,12 +208,18 @@ suite('Hub Source Loading', () => {
             const sources = await mockRegistry.listSources();
             assert.strictEqual(sources.length, 2, 'Should have 2 sources (1 existing + 1 new, 1 duplicate skipped)');
 
-            // Verify the duplicate source-1 was skipped
-            const hubSource1 = sources.find(s => s.id === 'hub-test-hub-dup-source-1');
+            // Compute expected sourceIds using the new format
+            const expectedSource1Id = generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot');
+            const expectedSource2Id = generateHubSourceId('awesome-copilot', 'https://github.com/org/other-repo');
+
+            // Verify the duplicate source-1 was skipped (URL matches existing source)
+            // Note: The hub source would have the same ID as existing since they have same URL+type
+            // But since existing source already exists with different ID, the hub source is skipped
+            const hubSource1 = sources.find(s => s.id === expectedSource1Id);
             assert.strictEqual(hubSource1, undefined, 'Duplicate source-1 should be skipped');
 
             // Verify source-2 was added (different URL)
-            const hubSource2 = sources.find(s => s.id === 'hub-test-hub-dup-source-2');
+            const hubSource2 = sources.find(s => s.id === expectedSource2Id);
             assert.ok(hubSource2, 'Non-duplicate source-2 should be added');
         });
 
@@ -341,11 +356,15 @@ suite('Hub Source Loading', () => {
             // So we should still have only 2 sources total (duplicates were skipped)
             assert.strictEqual(sourcesAfterSecondHub.length, 2, 'Should have only 2 sources (hub-b duplicates were skipped)');
             
-            // Verify we still only have hub-a sources
-            assert.ok(mockRegistry.hasSource('hub-hub-a-source-1'), 'Should have hub-a source-1');
-            assert.ok(mockRegistry.hasSource('hub-hub-a-source-2'), 'Should have hub-a source-2');
-            assert.ok(!mockRegistry.hasSource('hub-hub-b-source-1'), 'Should not have hub-b source-1 (duplicate)');
-            assert.ok(!mockRegistry.hasSource('hub-hub-b-source-2'), 'Should not have hub-b source-2 (duplicate)');
+            // Compute expected sourceIds using the new format
+            const expectedSource1Id = generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot');
+            const expectedSource2Id = generateHubSourceId('awesome-copilot', 'https://github.com/org/other-repo');
+
+            // Verify we have the sources with new format IDs
+            // Note: With new format, sourceIds are based on URL+type, not hubId
+            // So both hubs would generate the same sourceId for the same URL+type
+            assert.ok(mockRegistry.hasSource(expectedSource1Id), `Should have source with id ${expectedSource1Id}`);
+            assert.ok(mockRegistry.hasSource(expectedSource2Id), `Should have source with id ${expectedSource2Id}`);
         });
     });
 
@@ -406,7 +425,10 @@ suite('Hub Source Loading', () => {
             // Verify 3 sources exist after sync
             const sourcesAfterSync = await mockRegistry.listSources();
             assert.strictEqual(sourcesAfterSync.length, 3, 'Should have 3 sources after sync');
-            assert.ok(mockRegistry.hasSource('hub-test-sync-source-3'), 'Should have the newly added source-3');
+            
+            // Compute expected sourceId for the new source using the new format
+            const expectedSource3Id = generateHubSourceId('awesome-copilot', 'https://github.com/org/new-repo');
+            assert.ok(mockRegistry.hasSource(expectedSource3Id), `Should have the newly added source with id ${expectedSource3Id}`);
         });
     });
 });
