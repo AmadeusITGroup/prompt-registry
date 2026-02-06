@@ -341,7 +341,25 @@ suite('HubSchemaValidator - TDD', () => {
             assert.strictEqual(result.valid, true, 'Profile path should be valid');
         });
 
-        test('should reject path with invalid characters', async () => {
+        test('should accept path with spaces', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.profiles[0].path = ['Amadeus Airlines', 'Solutions'];
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, 'Profile path with spaces should be valid');
+        });
+
+        test('should accept path with dots', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.profiles[0].path = ['Company.Division', 'Team.Project'];
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, 'Profile path with dots should be valid');
+        });
+
+        test('should reject path with invalid characters like slashes', async () => {
             const config = JSON.parse(JSON.stringify(validHubConfig));
             config.profiles[0].path = ['Invalid/Character'];
             
@@ -359,6 +377,147 @@ suite('HubSchemaValidator - TDD', () => {
             
             assert.strictEqual(result.valid, false);
             assert.ok(result.errors.some(e => e.includes('path') || e.includes('array')));
+        });
+    });
+
+    suite('Engagement configuration validation', () => {
+        test('should accept valid engagement configuration with all fields', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: {
+                    type: 'github-discussions',
+                    repository: 'owner/repo'
+                },
+                telemetry: {
+                    enabled: false,
+                    anonymize: true
+                },
+                ratings: {
+                    enabled: true,
+                    ratingsUrl: 'https://example.com/ratings.json'
+                },
+                feedback: {
+                    enabled: true,
+                    requireRating: false,
+                    maxLength: 2000,
+                    feedbackUrl: 'https://example.com/feedbacks.json'
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should accept engagement configuration without optional URLs', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: {
+                    type: 'file'
+                },
+                ratings: {
+                    enabled: true
+                },
+                feedback: {
+                    enabled: true
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should accept all backend types', async () => {
+            const backendTypes = ['file', 'github-issues', 'github-discussions', 'api'];
+            
+            for (const backendType of backendTypes) {
+                const config = JSON.parse(JSON.stringify(validHubConfig));
+                config.engagement = {
+                    enabled: true,
+                    backend: {
+                        type: backendType
+                    }
+                };
+                
+                const result = await validator.validate(config, hubSchemaPath);
+                
+                assert.strictEqual(result.valid, true, `Backend type ${backendType} should be valid`);
+            }
+        });
+
+        test('should reject invalid backend type', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: {
+                    type: 'invalid-backend'
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('type') || e.includes('enum')));
+        });
+
+        test('should accept github repository format in backend', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: {
+                    type: 'github-discussions',
+                    repository: 'Amadeus-xDLC/genai.prompt-registry-engagement'
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, `Validation failed: ${result.errors.join(', ')}`);
+        });
+
+        test('should reject invalid repository format in backend', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: {
+                    type: 'github-discussions',
+                    repository: 'invalid-format'
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, false);
+            assert.ok(result.errors.some(e => e.includes('repository') || e.includes('pattern')));
+        });
+
+        test('should validate feedback maxLength constraints', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            config.engagement = {
+                enabled: true,
+                backend: { type: 'file' },
+                feedback: {
+                    enabled: true,
+                    maxLength: 50
+                }
+            };
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, false, 'maxLength below minimum should fail');
+            assert.ok(result.errors.some(e => e.includes('maxLength') || e.includes('minimum')));
+        });
+
+        test('should accept hub config without engagement section', async () => {
+            const config = JSON.parse(JSON.stringify(validHubConfig));
+            delete config.engagement;
+            
+            const result = await validator.validate(config, hubSchemaPath);
+            
+            assert.strictEqual(result.valid, true, 'Hub config without engagement should be valid');
         });
     });
 });
