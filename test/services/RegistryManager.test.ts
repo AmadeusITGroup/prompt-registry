@@ -10,7 +10,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { RegistrySource } from '../../src/types/registry';
+import { RegistrySource, InstalledBundle, Bundle } from '../../src/types/registry';
 import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
 import { BundleBuilder, TEST_SOURCE_IDS } from '../helpers/bundleTestHelpers';
 
@@ -379,6 +379,139 @@ suite('RegistryManager - Event Emission Behavior', () => {
         assert.strictEqual(firedUpdate.bundleId, 'test-bundle', 'Event should contain correct bundle ID');
         assert.strictEqual(firedUpdate.version, '2.0.0', 'Event should contain new version');
         
+        listener.dispose();
+    });
+
+    test('should pass source metadata to installer during update', async () => {
+        const currentInstallation = {
+            bundleId: 'skills-owner-repo-demo',
+            version: 'hash:abc',
+            sourceId: 'skills-source',
+            sourceType: 'skills' as const,
+            installedAt: new Date().toISOString(),
+            scope: 'user' as const,
+            installPath: '/mock/path',
+            manifest: { id: 'skills-owner-repo-demo', name: 'Demo', version: 'hash:abc' } as any
+        };
+
+        const updatedBundle = {
+            id: 'skills-owner-repo-demo',
+            name: 'Demo Skill',
+            version: 'hash:def',
+            description: 'Updated',
+            author: 'owner',
+            tags: [],
+            sourceId: 'skills-source',
+            downloadUrl: 'http://example.com/bundle.zip',
+            manifestUrl: 'http://example.com/manifest.json',
+            lastUpdated: new Date().toISOString(),
+            downloads: 0,
+            rating: 0,
+            environments: []
+        };
+
+        const skillsSource: RegistrySource = {
+            id: 'skills-source',
+            name: 'Remote Skills Source',
+            type: 'skills',
+            url: 'https://github.com/owner/repo',
+            enabled: true,
+            priority: 1
+        };
+
+        mockStorage.getInstalledBundles.resolves([currentInstallation]);
+        mockStorage.getSources.resolves([skillsSource]);
+        mockStorage.recordInstallation.resolves();
+        mockStorage.removeInstallation.resolves();
+
+        const mockAdapter = {
+            downloadBundle: sandbox.stub().resolves(Buffer.from('test'))
+        };
+        sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
+
+        const mockInstaller = (manager as any).installer;
+        const updateStub = sandbox.stub(mockInstaller, 'update').resolves({
+            bundleId: 'skills-owner-repo-demo',
+            version: 'hash:def',
+            sourceId: 'skills-source',
+            sourceType: 'skills',
+            installedAt: new Date().toISOString(),
+            scope: 'user'
+        });
+
+        sandbox.stub(manager as any, 'getBundleDetails').resolves(updatedBundle);
+
+        await manager.updateBundle('skills-owner-repo-demo');
+
+        assert.ok(updateStub.calledOnce, 'Installer should be invoked once');
+        const callArgs = updateStub.firstCall.args;
+        assert.strictEqual(callArgs[3], 'skills', 'source type should be forwarded');
+        assert.strictEqual(callArgs[4], 'Remote Skills Source', 'source name should be forwarded');
+    });
+
+    test('should refresh local skill installations on sync', async () => {
+        const localSkillInstall: InstalledBundle = {
+            bundleId: 'local-skills-repo-plan-angular-migration',
+            version: 'hash:old',
+            installedAt: new Date(Date.now() - 60000).toISOString(),
+            scope: 'user',
+            installPath: '/mock/path',
+            manifest: { id: 'local-skills-repo-plan-angular-migration', name: 'Plan Angular Migration', version: 'hash:old' } as any,
+            sourceId: 'local-source',
+            sourceType: 'local-skills'
+        };
+
+        mockStorage.getSources.resolves([{
+            id: 'local-source',
+            name: 'Local Skill Shelf',
+            type: 'local-skills',
+            url: 'file:///skills-shelf',
+            enabled: true,
+            priority: 1
+        } as RegistrySource]);
+
+        const mockAdapter = {
+            fetchBundles: sandbox.stub().resolves([
+                {
+                    id: 'local-skills-repo-plan-angular-migration',
+                    name: 'Plan Angular Migration',
+                    version: 'hash:new',
+                    description: 'Plan Angular Migration',
+                    author: 'Local',
+                    sourceId: 'local-source',
+                    environments: [],
+                    tags: [],
+                    lastUpdated: new Date().toISOString(),
+                    size: '1KB',
+                    dependencies: [],
+                    license: 'MIT',
+                    manifestUrl: 'file:///manifest',
+                    downloadUrl: 'file:///skill'
+                } as Bundle
+            ])
+        };
+
+        sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
+        mockStorage.getInstalledBundles.resolves([localSkillInstall]);
+        const updatedInstallations: InstalledBundle[] = [];
+        mockStorage.recordInstallation.callsFake(async (installation: InstalledBundle) => {
+            updatedInstallations.push(installation);
+        });
+
+        let updatedEventPayload: InstalledBundle | undefined;
+        const listener = manager.onBundleUpdated(bundle => {
+            updatedEventPayload = bundle;
+        });
+
+        await manager.syncSource('local-source');
+
+        assert.strictEqual(mockAdapter.fetchBundles.callCount, 1, 'Local skills adapter should fetch bundles');
+        assert.strictEqual(updatedInstallations.length, 1, 'Installation record should be updated to latest hash');
+        const refreshed = updatedInstallations[0];
+        assert.strictEqual(refreshed.version, 'hash:new', 'Version should match latest content hash');
+        assert.ok(updatedEventPayload, 'Should emit onBundleUpdated for refreshed skill');
+        assert.strictEqual(updatedEventPayload?.bundleId, refreshed.bundleId);
+
         listener.dispose();
     });
 });

@@ -141,6 +141,12 @@ Skills can restrict which tools they use via the `allowed-tools` field. Common t
 4. **Reusable Scripts**: Place utility scripts in the `scripts/` directory
 5. **Reference Materials**: Include relevant documentation in `references/`
 
+### Versioning & Updates
+
+- Prompt Registry calculates the displayed version for GitHub/local skills from a **content hash**. Any change to files inside the skill directory (`SKILL.md`, `scripts/`, `references/`, `assets/`, etc.) produces a new hash so the Marketplace shows **Update** after sync.
+- The optional `metadata.version` field in `SKILL.md` is still useful for humans but is not the signal that drives update detection.
+- When developing locally, simply edit your files and run **Sync Source**—the installed entry refreshes automatically because local installs are symlinked to the source folder.
+
 ## Examples
 
 ### Code Review Skill

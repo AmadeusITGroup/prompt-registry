@@ -87,6 +87,11 @@ export class VersionManager {
         if (!installedVersion || !latestVersion) {
             throw new Error('Version strings cannot be empty or null');
         }
+
+        // Hash-based versions update whenever the hash differs.
+        if (this.isContentHashVersion(installedVersion) || this.isContentHashVersion(latestVersion)) {
+            return installedVersion !== latestVersion;
+        }
         
         const cleanInstalled = semver.clean(installedVersion) || semver.coerce(installedVersion)?.version;
         const cleanLatest = semver.clean(latestVersion) || semver.coerce(latestVersion)?.version;
@@ -98,6 +103,10 @@ export class VersionManager {
         // Fallback to comparison
         this.logger.debug(`Using compareVersions fallback for update check: ${installedVersion} vs ${latestVersion}`);
         return this.compareVersions(installedVersion, latestVersion) > 0;
+    }
+
+    private static isContentHashVersion(version: string): boolean {
+        return version.startsWith('hash:');
     }
     
     /**

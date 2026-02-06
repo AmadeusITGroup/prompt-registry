@@ -39,6 +39,13 @@ In Registry Explorer:
 Command Palette:
 - **Sync All Sources** — `Ctrl+Shift+P` → "Prompt Registry: Sync All Sources"
 
+## Skill Update Detection
+
+- **Remote skills (`anthropic/skills`)**: each skill version is derived from a content hash. If any file in the skill directory (including `assets/`, `references/`, etc.) changes, the Marketplace shows **Update** after you sync the source.
+- **Local skills (`local-skills`)**: installations are symlinked to your filesystem. Running **Sync Source** updates the recorded version automatically—no manual update button—so the UI reflects the latest hash without touching the symlink.
+
+> Tip: if a skill doesnt show the expected update, run **Sync Source** and check the logs for hash calculation warnings.
+
 ## Private Repositories
 
 Authentication tries in order:

@@ -2389,6 +2389,22 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'refresh' });
         });
 
+        // Shorten hash-based versions for compact UI labels.
+        function formatVersionLabel(version) {
+            if (!version) return '';
+            if (version.startsWith('hash:')) {
+                const hash = version.slice('hash:'.length);
+                const suffix = hash.slice(-6);
+                return 'vhash:' + suffix;
+            }
+            return 'v' + version;
+        }
+
+        function formatUpdateLabel(installedVersion, latestVersion) {
+            if (!installedVersion) return '';
+            return ' (' + formatVersionLabel(installedVersion) + ' -> ' + formatVersionLabel(latestVersion) + ')';
+        }
+
         function renderBundles() {
             const marketplace = document.getElementById('marketplace');
             const searchTerm = document.getElementById('searchBox').value;
@@ -2469,7 +2485,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     
                     <div class="bundle-header">
                         <div class="bundle-title">\${bundle.name}</div>
-                        <div class="bundle-author">by \${bundle.author || 'Unknown'} • v\${bundle.version}</div>
+                        <div class="bundle-author">by \${bundle.author || 'Unknown'} • \${formatVersionLabel(bundle.version)}</div>
                     </div>
 
                     <div class="bundle-description">
@@ -2494,7 +2510,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         \${bundle.buttonState === 'update' 
                             ? bundle.availableVersions && bundle.availableVersions.length > 1
                                 ? \`<div class="version-selector-group">
-                                        <button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>
+                                        <button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : ''}</button>
                                         <button class="version-selector-arrow" onclick="toggleVersionDropdown('\${bundle.id}-update', event)">▾</button>
                                         <div class="version-dropdown" id="version-dropdown-\${bundle.id}-update">
                                             <div class="version-item uninstall" onclick="uninstallBundle('\${bundle.id}', event)">
@@ -2509,7 +2525,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                                             \`).join('')}
                                         </div>
                                     </div>\`
-                                : \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>\`
+                                : \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : ''}</button>\`
                             : bundle.buttonState === 'uninstall'
                             ? bundle.availableVersions && bundle.availableVersions.length > 1
                                 ? \`<div class="version-selector-group">

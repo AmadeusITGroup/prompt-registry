@@ -273,6 +273,46 @@ export class RegistryManager {
     }
 
     /**
+     * Local skills installations are symlinked directly to the source directory, so updating files
+     * in the source immediately updates the installed content. After syncing the source, refresh the
+     * recorded installation metadata so the UI reflects the latest hash/version without requiring an
+     * explicit update action.
+     */
+    private async refreshLocalSkillInstallations(sourceId: string, latestBundles: Bundle[]): Promise<void> {
+        const installedBundles = await this.storage.getInstalledBundles();
+        const installsForSource = installedBundles.filter(bundle => bundle.sourceId === sourceId && bundle.scope !== 'repository');
+
+        if (installsForSource.length === 0) {
+            return;
+        }
+
+        const updated: InstalledBundle[] = [];
+
+        for (const installed of installsForSource) {
+            const latest = latestBundles.find(bundle => bundle.id === installed.bundleId);
+            if (!latest || latest.version === installed.version) {
+                continue;
+            }
+
+            const updatedInstallation: InstalledBundle = {
+                ...installed,
+                version: latest.version,
+                installedAt: new Date().toISOString()
+            };
+
+            await this.storage.recordInstallation(updatedInstallation);
+            updated.push(updatedInstallation);
+        }
+
+        if (updated.length > 0) {
+            for (const install of updated) {
+                this._onBundleUpdated.fire(install);
+            }
+            this.logger.info(`[local-skills] Refreshed ${updated.length} installed skill(s) to latest hash`);
+        }
+    }
+
+    /**
      * Get or create adapter for a source
      */
     private getAdapter(source: RegistrySource): IRepositoryAdapter {
@@ -405,6 +445,9 @@ export class RegistryManager {
             // Awesome Copilot sources: Auto-update installed bundles
             this.logger.info(`[${source.type}] Auto-updating installed bundles from source '${sourceId}'`);
             await this.autoUpdateInstalledBundles(sourceId, bundles);
+        } else if (source.type === 'local-skills') {
+            this.logger.info(`[local-skills] Refreshing installed skill metadata for source '${sourceId}'`);
+            await this.refreshLocalSkillInstallations(sourceId, bundles);
         } else if (source.type === 'github') {
             // GitHub sources: Cache-only, no auto-installation
             this.logger.info(`[github] Cache updated for source '${sourceId}'. No auto-installation performed.`);
@@ -1288,7 +1331,13 @@ export class RegistryManager {
         this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
         
         // Update using BundleInstaller
-        const updated = await this.installer.update(current, bundle, bundleBuffer);
+        const updated = await this.installer.update(
+            current,
+            bundle,
+            bundleBuffer,
+            source.type,
+            source.name
+        );
         
         // CRITICAL: Write new installation record first, then remove old record
         // This ordering ensures crash-safety - if removal fails, we have the new record

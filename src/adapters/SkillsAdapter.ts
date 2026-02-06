@@ -14,6 +14,7 @@ import { Bundle, ValidationResult, RegistrySource, SourceMetadata } from '../typ
 import { SkillItem, SkillFrontmatter, ParsedSkillFile, GitHubContentItem } from '../types/skills';
 import { Logger } from '../utils/logger';
 import * as yaml from 'js-yaml';
+import * as crypto from 'crypto';
 
 /**
  * Skills adapter implementation for GitHub repositories
@@ -169,10 +170,12 @@ export class SkillsAdapter extends RepositoryAdapter {
             }
             
             const parsedSkillMd = await this.parseSkillMd(skillMdFile.download_url!);
+            const allFiles = await this.collectSkillFiles(owner, repo, skillContents);
             
-            const files = skillContents
-                .filter(item => item.type === 'file')
-                .map(item => item.name);
+            const files = allFiles.map(item => this.getRelativeSkillPath(item.path, skillPath));
+
+            // Content hash drives hash-based versioning for update detection.
+            const contentHash = this.calculateContentHash(allFiles);
             
             const skillItem: SkillItem = {
                 id: skillId,
@@ -182,6 +185,7 @@ export class SkillsAdapter extends RepositoryAdapter {
                 path: skillPath,
                 skillMdPath: `${skillPath}/SKILL.md`,
                 files,
+                contentHash,
                 parsedSkillMd,
             };
             
@@ -249,7 +253,8 @@ export class SkillsAdapter extends RepositoryAdapter {
         const bundle: Bundle = {
             id: bundleId,
             name: skill.name,
-            version: '1.0.0',
+            // Manifest version must match bundle version for install/update validation.
+            version: this.formatSkillVersion(skill.contentHash),
             description: skill.description,
             author: owner,
             sourceId: this.source.id,
@@ -266,6 +271,71 @@ export class SkillsAdapter extends RepositoryAdapter {
         };
         
         return bundle;
+    }
+
+    /**
+     * Calculate a stable hash from GitHub file metadata in the skill folder.
+     */
+    private calculateContentHash(skillContents: GitHubContentItem[]): string {
+        const hash = crypto.createHash('sha256');
+        const files = skillContents
+            .filter(item => item.type === 'file')
+            .sort((a, b) => a.path.localeCompare(b.path));
+
+        for (const file of files) {
+            hash.update(file.path);
+            hash.update(':');
+            hash.update(file.sha ?? file.download_url ?? '');
+            hash.update('|');
+        }
+
+        return hash.digest('hex');
+    }
+
+    /**
+     * Recursively collect all files within a skill directory for hashing/versioning.
+     */
+    private async collectSkillFiles(owner: string, repo: string, initialEntries: GitHubContentItem[]): Promise<GitHubContentItem[]> {
+        const apiBase = 'https://api.github.com';
+        const files: GitHubContentItem[] = [];
+        const queue: GitHubContentItem[] = [...initialEntries];
+
+        while (queue.length > 0) {
+            const entry = queue.shift()!;
+
+            if (entry.type === 'file') {
+                files.push(entry);
+                continue;
+            }
+
+            if (entry.type === 'dir') {
+                try {
+                    const nestedEntries: GitHubContentItem[] = await this.makeGitHubRequest(`${apiBase}/repos/${owner}/${repo}/contents/${entry.path}`);
+                    queue.push(...nestedEntries);
+                } catch (error) {
+                    this.logger.warn(`[SkillsAdapter] Failed to read nested directory ${entry.path}: ${error}`);
+                }
+            }
+        }
+
+        return files;
+    }
+
+    private getRelativeSkillPath(fullPath: string, skillPath: string): string {
+        if (fullPath.startsWith(`${skillPath}/`)) {
+            return fullPath.slice(skillPath.length + 1);
+        }
+        if (fullPath === skillPath) {
+            return fullPath.split('/').pop() ?? fullPath;
+        }
+        return fullPath;
+    }
+
+    /**
+     * Format skill version from content hash.
+     */
+    private formatSkillVersion(contentHash?: string): string {
+        return contentHash ? `hash:${contentHash}` : '1.0.0';
     }
 
     /**
@@ -454,10 +524,13 @@ export class SkillsAdapter extends RepositoryAdapter {
             }
             
             // Get file list
-            const files = skillContents
-                .filter(item => item.type === 'file')
-                .map(item => item.name);
+            const allFiles = await this.collectSkillFiles(owner, repo, skillContents);
+
+            const files = allFiles.map(item => this.getRelativeSkillPath(item.path, skillPath));
             
+            // Keep download/install versions aligned with listings.
+            const contentHash = this.calculateContentHash(allFiles);
+
             return {
                 id: skillId,
                 name: parsedSkill.frontmatter.name || skillId,
@@ -465,6 +538,7 @@ export class SkillsAdapter extends RepositoryAdapter {
                 path: skillPath,
                 skillMdPath: `${skillPath}/SKILL.md`,
                 files,
+                contentHash,
                 license: parsedSkill.frontmatter.license
             };
             
@@ -555,7 +629,7 @@ export class SkillsAdapter extends RepositoryAdapter {
     private generateDeploymentManifest(skill: SkillItem, owner: string, repo: string): any {
         return {
             id: `skills-${owner}-${repo}-${skill.id}`,
-            version: '1.0.0',
+            version: this.formatSkillVersion(skill.contentHash),
             name: skill.name,
             
             metadata: {
