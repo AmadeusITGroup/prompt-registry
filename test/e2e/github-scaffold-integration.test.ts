@@ -1,10 +1,10 @@
 /**
  * GitHub Scaffold Integration Tests
- * 
+ *
  * End-to-end integration tests for the GitHub scaffolding workflow.
  * Tests complete scaffolding flow with all options and verifies generated
  * project structure matches design.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  * Requirements: 5.3, 5.4, 5.5
  */
@@ -41,7 +41,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             this.timeout(30000);
 
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, {
                 projectName: 'test-project'
             });
@@ -53,11 +53,17 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 'agents',
                 'collections',
                 'scripts',
-                'scripts/lib',
+                'skills',
+                'skills/example-skill',
+                'skills/example-skill/scripts',
+                'skills/example-skill/references',
+                'skills/example-skill/assets',
                 '.github',
                 '.github/workflows',
                 '.github/actions',
                 '.github/actions/publish-common',
+                '.github/actions/pr-comment',
+                '.github/ISSUE_TEMPLATE',
                 '.vscode',
                 '.githooks'
             ];
@@ -77,18 +83,29 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 '.gitignore',
                 '.github/workflows/publish.yml',
                 '.github/actions/publish-common/action.yml',
-                'scripts/validate-collections.js',
-                'scripts/build-collection-bundle.js',
-                'scripts/publish-collections.js',
-                'scripts/lib/collections.js',
-                'scripts/lib/validate.js',
+                '.github/actions/pr-comment/action.yml',
+                '.github/ISSUE_TEMPLATE/bug_report.yml',
+                '.github/ISSUE_TEMPLATE/feature_request.yml',
+                '.github/ISSUE_TEMPLATE/config.yml',
+                '.github/pull_request_template.md',
+                'scripts/README.md',
                 'collections/example.collection.yml',
                 'prompts/example.prompt.md',
                 'instructions/example.instructions.md',
                 'agents/example.agent.md',
+                'skills/example-skill/SKILL.md',
+                'skills/example-skill/scripts/review-helper.sh',
+                'skills/example-skill/references/CHECKLIST.md',
+                'skills/example-skill/references/FEEDBACK.md',
+                'skills/example-skill/assets/comment-templates.md',
                 '.vscode/settings.json',
                 '.vscode/extensions.json',
-                '.githooks/pre-commit'
+                '.githooks/pre-commit',
+                'CONTRIBUTING.md',
+                'COMMUNICATION.md',
+                'CODE_OF_CONDUCT.md',
+                'SECURITY.md',
+                'LICENSE'
             ];
 
             for (const file of requiredFiles) {
@@ -109,7 +126,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
 
             const projectName = 'my-awesome-prompts';
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, { projectName });
 
             // Verify package.json has correct name
@@ -148,7 +165,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
 
             const customRunner = 'macos-latest';
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, {
                 projectName: 'macos-project',
                 githubRunner: customRunner
@@ -175,7 +192,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             this.timeout(30000);
 
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, {
                 projectName: 'design-test-project'
             });
@@ -184,18 +201,29 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             const designStructure = {
                 directories: [
                     '.github/actions/publish-common',
+                    '.github/actions/pr-comment',
                     '.github/workflows',
+                    '.github/ISSUE_TEMPLATE',
                     '.githooks',
                     '.vscode',
                     'agents',
                     'collections',
                     'instructions',
                     'prompts',
-                    'scripts/lib'
+                    'scripts',
+                    'skills/example-skill',
+                    'skills/example-skill/scripts',
+                    'skills/example-skill/references',
+                    'skills/example-skill/assets'
                 ],
                 files: {
                     '.github/actions/publish-common/action.yml': true,
+                    '.github/actions/pr-comment/action.yml': true,
                     '.github/workflows/publish.yml': true,
+                    '.github/ISSUE_TEMPLATE/bug_report.yml': true,
+                    '.github/ISSUE_TEMPLATE/feature_request.yml': true,
+                    '.github/ISSUE_TEMPLATE/config.yml': true,
+                    '.github/pull_request_template.md': true,
                     '.githooks/pre-commit': true,
                     '.vscode/extensions.json': true,
                     '.vscode/settings.json': true,
@@ -203,21 +231,20 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                     'collections/example.collection.yml': true,
                     'instructions/example.instructions.md': true,
                     'prompts/example.prompt.md': true,
-                    'scripts/lib/collections.js': true,
-                    'scripts/lib/validate.js': true,
-                    'scripts/lib/cli.js': true,
-                    'scripts/build-collection-bundle.js': true,
-                    'scripts/compute-collection-version.js': true,
-                    'scripts/detect-affected-collections.js': true,
-                    'scripts/extract-affected-files.js': true,
-                    'scripts/generate-manifest.js': true,
-                    'scripts/list-collections.js': true,
-                    'scripts/publish-collections.js': true,
-                    'scripts/resolve-collection-files.js': true,
-                    'scripts/validate-collections.js': true,
+                    'scripts/README.md': true,
+                    'skills/example-skill/SKILL.md': true,
+                    'skills/example-skill/scripts/review-helper.sh': true,
+                    'skills/example-skill/references/CHECKLIST.md': true,
+                    'skills/example-skill/references/FEEDBACK.md': true,
+                    'skills/example-skill/assets/comment-templates.md': true,
                     '.gitignore': true,
                     'package.json': true,
-                    'README.md': true
+                    'README.md': true,
+                    'CONTRIBUTING.md': true,
+                    'COMMUNICATION.md': true,
+                    'CODE_OF_CONDUCT.md': true,
+                    'SECURITY.md': true,
+                    'LICENSE': true
                 }
             };
 
@@ -248,7 +275,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             this.timeout(30000);
 
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, {
                 projectName: 'agent-test-project'
             });
@@ -290,7 +317,7 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             this.timeout(30000);
 
             const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-            
+
             await scaffoldCommand.execute(testDir, {
                 projectName: 'scripts-test-project'
             });
@@ -335,19 +362,19 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: Validation scripts work in generated projects
+     * Test: Validation scripts work in generated projects via npm package
      * Requirements: 5.5 - Test validation scripts in generated projects
      */
     test('E2E: Validation script validates example collection successfully', async function() {
         this.timeout(60000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
             projectName: 'validation-test-project'
         });
 
-        // Install dependencies first
+        // Install dependencies (includes @prompt-registry/collection-scripts)
         try {
             execSync('npm install', {
                 cwd: testDir,
@@ -355,24 +382,19 @@ suite('E2E: Script Execution Tests', () => {
                 timeout: 30000
             });
         } catch (error) {
-            // npm install may fail in test environment, continue anyway
-            // The scripts should still work with Node.js built-ins
+            // npm install may fail in test environment, skip if so
+            this.skip();
+            return;
         }
 
-        // Run validation script
-        const validateScript = path.join(testDir, 'scripts/validate-collections.js');
-        assert.ok(
-            fs.existsSync(validateScript),
-            'Validation script should exist'
-        );
-
+        // Run validation via npm script (backed by @prompt-registry/collection-scripts)
         try {
-            const result = execSync(`node ${validateScript}`, {
+            const result = execSync('npm run validate --silent', {
                 cwd: testDir,
                 stdio: 'pipe',
                 timeout: 30000
             });
-            
+
             // Validation should succeed for the example collection
             const output = result.toString();
             assert.ok(
@@ -380,13 +402,11 @@ suite('E2E: Script Execution Tests', () => {
                 'Validation should pass for example collection'
             );
         } catch (error: any) {
-            // If validation fails, check if it's a real validation error or missing dependency
             const stderr = error.stderr?.toString() || '';
             const stdout = error.stdout?.toString() || '';
-            
-            // Allow failure due to missing js-yaml (dependency issue, not validation issue)
+
+            // Allow failure due to missing dependencies
             if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
-                // Skip test if dependencies are missing
                 this.skip();
             } else {
                 assert.fail(`Validation script failed: ${stderr || stdout}`);
@@ -395,32 +415,38 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: List collections script works in generated projects
+     * Test: List collections script works in generated projects via npm package
      * Requirements: 5.5 - Test validation scripts in generated projects
      */
     test('E2E: List collections script finds example collection', async function() {
         this.timeout(60000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
             projectName: 'list-test-project'
         });
 
-        // Run list-collections script
-        const listScript = path.join(testDir, 'scripts/list-collections.js');
-        assert.ok(
-            fs.existsSync(listScript),
-            'List collections script should exist'
-        );
-
+        // Install dependencies
         try {
-            const result = execSync(`node ${listScript}`, {
+            execSync('npm install', {
                 cwd: testDir,
                 stdio: 'pipe',
                 timeout: 30000
             });
-            
+        } catch {
+            this.skip();
+            return;
+        }
+
+        // Run list-collections via npm script
+        try {
+            const result = execSync('npm run list-collections --silent', {
+                cwd: testDir,
+                stdio: 'pipe',
+                timeout: 30000
+            });
+
             const output = result.toString();
             // Should list the example collection
             assert.ok(
@@ -430,7 +456,7 @@ suite('E2E: Script Execution Tests', () => {
         } catch (error: any) {
             const stderr = error.stderr?.toString() || '';
             const stdout = error.stdout?.toString() || '';
-            
+
             // Allow failure due to missing dependencies
             if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
                 this.skip();
@@ -441,7 +467,7 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: Build script produces correct output structure
+     * Test: Build script produces correct output structure via npm package
      * Requirements: 5.5 - Test build scripts produce correct output
      */
     test('E2E: Build script creates bundle with correct structure', async function() {
@@ -449,7 +475,7 @@ suite('E2E: Script Execution Tests', () => {
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
         const projectName = 'build-test-project';
-        
+
         await scaffoldCommand.execute(testDir, { projectName });
 
         // Install dependencies
@@ -460,23 +486,17 @@ suite('E2E: Script Execution Tests', () => {
                 timeout: 30000
             });
         } catch {
-            // Continue even if npm install fails
+            this.skip();
+            return;
         }
 
         // Create output directory
         const outputDir = path.join(testDir, 'dist');
         fs.mkdirSync(outputDir, { recursive: true });
 
-        // Run build script for the example collection with correct arguments
-        const buildScript = path.join(testDir, 'scripts/build-collection-bundle.js');
-        assert.ok(
-            fs.existsSync(buildScript),
-            'Build script should exist'
-        );
-
         try {
-            // Build the example collection with required arguments
-            execSync(`node ${buildScript} --collection-file collections/example.collection.yml --version 1.0.0 --repo-slug test-repo --out-dir ${outputDir}`, {
+            // Build the example collection via npm script with required arguments
+            execSync(`npm run build-collection-bundle -- --collection-file collections/example.collection.yml --version 1.0.0 --repo-slug test-repo --out-dir ${outputDir}`, {
                 cwd: testDir,
                 stdio: 'pipe',
                 timeout: 30000
@@ -486,11 +506,11 @@ suite('E2E: Script Execution Tests', () => {
             const collectionOutDir = path.join(outputDir, projectName);
             if (fs.existsSync(collectionOutDir)) {
                 const outputFiles = fs.readdirSync(collectionOutDir);
-                
+
                 // Should have created deployment-manifest.yml and zip file
                 const hasManifest = outputFiles.some(f => f.includes('manifest') || f.endsWith('.yml'));
                 const hasZip = outputFiles.some(f => f.endsWith('.zip'));
-                
+
                 assert.ok(
                     hasManifest || hasZip,
                     'Build script should produce manifest and/or zip files'
@@ -506,7 +526,7 @@ suite('E2E: Script Execution Tests', () => {
         } catch (error: any) {
             const stderr = error.stderr?.toString() || '';
             const stdout = error.stdout?.toString() || '';
-            
+
             // Allow failure due to missing dependencies
             if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
                 this.skip();
@@ -517,32 +537,45 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: Compute version script works correctly
+     * Test: Compute version script works correctly via npm package
      * Requirements: 5.5 - Test build scripts produce correct output
      */
     test('E2E: Compute version script returns valid version', async function() {
         this.timeout(60000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
             projectName: 'version-test-project'
         });
 
-        // Run compute-collection-version script
-        const versionScript = path.join(testDir, 'scripts/compute-collection-version.js');
-        assert.ok(
-            fs.existsSync(versionScript),
-            'Compute version script should exist'
-        );
-
+        // Install dependencies
         try {
-            const result = execSync(`node ${versionScript} collections/example.collection.yml`, {
+            execSync('npm install', {
                 cwd: testDir,
                 stdio: 'pipe',
                 timeout: 30000
             });
-            
+        } catch {
+            this.skip();
+            return;
+        }
+
+        // Initialize git repo (required for version computation from git tags)
+        execSync('git init && git add -A && git commit -m "initial"', {
+            cwd: testDir,
+            stdio: 'pipe',
+            timeout: 10000
+        });
+
+        // Run compute-collection-version via npm script
+        try {
+            const result = execSync('npm run compute-collection-version -- --collection-file collections/example.collection.yml', {
+                cwd: testDir,
+                stdio: 'pipe',
+                timeout: 30000
+            });
+
             const output = result.toString().trim();
             // Should return a valid semver version
             const semverPattern = /\d+\.\d+\.\d+/;
@@ -553,7 +586,7 @@ suite('E2E: Script Execution Tests', () => {
         } catch (error: any) {
             const stderr = error.stderr?.toString() || '';
             const stdout = error.stdout?.toString() || '';
-            
+
             // Allow failure due to missing dependencies
             if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
                 this.skip();
@@ -567,40 +600,44 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: Scripts have correct shebang and are executable
+     * Test: Package.json references @prompt-registry/collection-scripts
      * Requirements: 5.5 - Test validation scripts in generated projects
      */
-    test('E2E: Scripts have correct shebang for Node.js execution', async function() {
+    test('E2E: Package.json references collection-scripts npm package', async function() {
         this.timeout(30000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
-            projectName: 'shebang-test-project'
+            projectName: 'package-dep-test-project'
         });
 
-        const scriptsToCheck = [
-            'scripts/validate-collections.js',
-            'scripts/build-collection-bundle.js',
-            'scripts/publish-collections.js',
-            'scripts/compute-collection-version.js',
-            'scripts/detect-affected-collections.js',
-            'scripts/list-collections.js'
-        ];
+        const packageJson = JSON.parse(
+            fs.readFileSync(path.join(testDir, 'package.json'), 'utf8')
+        );
 
-        for (const script of scriptsToCheck) {
-            const scriptPath = path.join(testDir, script);
-            if (fs.existsSync(scriptPath)) {
-                const content = fs.readFileSync(scriptPath, 'utf8');
-                // Scripts should either have shebang or be valid Node.js modules
-                const hasShebang = content.startsWith('#!/');
-                const isValidJs = content.includes('require(') || content.includes('import ') || content.includes('module.exports');
-                
-                assert.ok(
-                    hasShebang || isValidJs,
-                    `Script ${script} should be a valid Node.js script`
-                );
-            }
+        // Verify @prompt-registry/collection-scripts is a dependency
+        const hasDep = (packageJson.dependencies && packageJson.dependencies['@prompt-registry/collection-scripts']) ||
+                       (packageJson.devDependencies && packageJson.devDependencies['@prompt-registry/collection-scripts']);
+        assert.ok(
+            hasDep,
+            'package.json should depend on @prompt-registry/collection-scripts'
+        );
+
+        // Verify npm scripts reference the package commands
+        const expectedScriptCommands: Record<string, string> = {
+            'validate': 'validate-collections',
+            'build-collection-bundle': 'build-collection-bundle',
+            'publish-collections': 'publish-collections',
+            'list-collections': 'list-collections',
+            'compute-collection-version': 'compute-collection-version'
+        };
+
+        for (const [scriptName, command] of Object.entries(expectedScriptCommands)) {
+            assert.ok(
+                packageJson.scripts && packageJson.scripts[scriptName]?.includes(command),
+                `npm script "${scriptName}" should invoke "${command}"`
+            );
         }
     });
 
@@ -612,7 +649,7 @@ suite('E2E: Script Execution Tests', () => {
         this.timeout(30000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
             projectName: 'hook-test-project'
         });
@@ -624,7 +661,7 @@ suite('E2E: Script Execution Tests', () => {
         );
 
         const hookContent = fs.readFileSync(hookPath, 'utf8');
-        
+
         // Hook should have shebang
         assert.ok(
             hookContent.startsWith('#!/'),
@@ -639,136 +676,170 @@ suite('E2E: Script Execution Tests', () => {
     });
 
     /**
-     * Test: Detect affected collections script works
+     * Test: Skill helper script is valid
      * Requirements: 5.5 - Test validation scripts in generated projects
      */
-    test('E2E: Detect affected collections script is functional', async function() {
-        this.timeout(60000);
+    test('E2E: Skill helper script is properly configured', async function() {
+        this.timeout(30000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
-            projectName: 'detect-test-project'
+            projectName: 'skill-script-test-project'
         });
 
-        const detectScript = path.join(testDir, 'scripts/detect-affected-collections.js');
+        const skillScript = path.join(testDir, 'skills/example-skill/scripts/review-helper.sh');
         assert.ok(
-            fs.existsSync(detectScript),
-            'Detect affected collections script should exist'
+            fs.existsSync(skillScript),
+            'Skill helper script should exist'
         );
 
-        // Verify script is valid JavaScript
-        const content = fs.readFileSync(detectScript, 'utf8');
+        const content = fs.readFileSync(skillScript, 'utf8');
+
+        // Script should have shebang
         assert.ok(
-            content.includes('require(') || content.includes('module.exports'),
-            'Detect script should be valid Node.js module'
+            content.startsWith('#!/'),
+            'Skill helper script should have shebang'
+        );
+
+        // Script should be a valid shell script
+        assert.ok(
+            content.includes('function') || content.includes('echo') || content.includes('if'),
+            'Skill helper script should contain shell commands'
         );
     });
 
     /**
-     * Test: Generate manifest script exists and is valid
+     * Test: Scripts README documents available commands
+     * Requirements: 5.5 - Test validation scripts in generated projects
+     */
+    test('E2E: Scripts README documents available npm commands', async function() {
+        this.timeout(30000);
+
+        const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
+
+        await scaffoldCommand.execute(testDir, {
+            projectName: 'scripts-readme-test-project'
+        });
+
+        const readmePath = path.join(testDir, 'scripts/README.md');
+        assert.ok(
+            fs.existsSync(readmePath),
+            'Scripts README should exist'
+        );
+
+        const content = fs.readFileSync(readmePath, 'utf8');
+
+        // Verify README documents the available commands
+        assert.ok(
+            content.includes('validate-collections'),
+            'Scripts README should document validate-collections command'
+        );
+        assert.ok(
+            content.includes('build-collection-bundle'),
+            'Scripts README should document build-collection-bundle command'
+        );
+        assert.ok(
+            content.includes('publish-collections'),
+            'Scripts README should document publish-collections command'
+        );
+        assert.ok(
+            content.includes('@prompt-registry/collection-scripts'),
+            'Scripts README should reference the npm package'
+        );
+    });
+
+    /**
+     * Test: Skill structure is complete and valid
      * Requirements: 5.5 - Test build scripts produce correct output
      */
-    test('E2E: Generate manifest script is functional', async function() {
-        this.timeout(60000);
+    test('E2E: Example skill has complete structure', async function() {
+        this.timeout(30000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
-            projectName: 'manifest-test-project'
+            projectName: 'skill-structure-test-project'
         });
 
-        const manifestScript = path.join(testDir, 'scripts/generate-manifest.js');
-        assert.ok(
-            fs.existsSync(manifestScript),
-            'Generate manifest script should exist'
-        );
+        // Verify all skill files exist
+        const skillFiles = [
+            'skills/example-skill/SKILL.md',
+            'skills/example-skill/scripts/review-helper.sh',
+            'skills/example-skill/references/CHECKLIST.md',
+            'skills/example-skill/references/FEEDBACK.md',
+            'skills/example-skill/assets/comment-templates.md'
+        ];
 
-        // Verify script is valid JavaScript
-        const content = fs.readFileSync(manifestScript, 'utf8');
-        assert.ok(
-            content.includes('require(') || content.includes('module.exports'),
-            'Generate manifest script should be valid Node.js module'
+        for (const file of skillFiles) {
+            const filePath = path.join(testDir, file);
+            assert.ok(
+                fs.existsSync(filePath) && fs.statSync(filePath).isFile(),
+                `Skill file should exist: ${file}`
+            );
+        }
+
+        // Verify SKILL.md has required sections
+        const skillMd = fs.readFileSync(
+            path.join(testDir, 'skills/example-skill/SKILL.md'),
+            'utf8'
         );
-        
-        // Verify it references deployment-manifest
         assert.ok(
-            content.includes('deployment-manifest') || content.includes('manifest'),
-            'Generate manifest script should handle deployment manifests'
+            skillMd.includes('# ') || skillMd.includes('## '),
+            'SKILL.md should have markdown headings'
         );
     });
 
     /**
-     * Test: Validation library provides consistent validation
-     * Requirements: 5.5 - Test validation scripts in generated projects
+     * Test: Community docs are scaffolded correctly
+     * Requirements: 5.5 - Test build scripts produce correct output
      */
-    test('E2E: Validation library is properly configured', async function() {
+    test('E2E: Community documentation files are properly configured', async function() {
         this.timeout(30000);
 
         const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
+
         await scaffoldCommand.execute(testDir, {
-            projectName: 'validate-lib-test-project'
+            projectName: 'community-docs-test-project'
         });
 
-        const validateLib = path.join(testDir, 'scripts/lib/validate.js');
-        assert.ok(
-            fs.existsSync(validateLib),
-            'Validation library should exist'
-        );
+        // Verify community documentation files exist and have content
+        const communityFiles = [
+            'CONTRIBUTING.md',
+            'COMMUNICATION.md',
+            'CODE_OF_CONDUCT.md',
+            'SECURITY.md',
+            'LICENSE'
+        ];
 
-        const content = fs.readFileSync(validateLib, 'utf8');
-        
-        // Verify validation library has key validation functions
-        assert.ok(
-            content.includes('validateCollectionId') || content.includes('collectionId'),
-            'Validation library should validate collection IDs'
-        );
-        
-        // Verify it handles item kinds
-        assert.ok(
-            content.includes('agent') && content.includes('prompt') && content.includes('instruction'),
-            'Validation library should validate item kinds'
-        );
-        
-        // Verify chatmode rejection
-        assert.ok(
-            content.includes('chatmode'),
-            'Validation library should handle chatmode rejection'
-        );
-    });
+        for (const file of communityFiles) {
+            const filePath = path.join(testDir, file);
+            assert.ok(
+                fs.existsSync(filePath) && fs.statSync(filePath).isFile(),
+                `Community doc should exist: ${file}`
+            );
 
-    /**
-     * Test: Collections library provides file utilities
-     * Requirements: 5.5 - Test validation scripts in generated projects
-     */
-    test('E2E: Collections library is properly configured', async function() {
-        this.timeout(30000);
+            const content = fs.readFileSync(filePath, 'utf8');
+            assert.ok(
+                content.length > 0,
+                `Community doc should not be empty: ${file}`
+            );
+        }
 
-        const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-        
-        await scaffoldCommand.execute(testDir, {
-            projectName: 'collections-lib-test-project'
-        });
+        // Verify GitHub issue templates exist
+        const issueTemplates = [
+            '.github/ISSUE_TEMPLATE/bug_report.yml',
+            '.github/ISSUE_TEMPLATE/feature_request.yml',
+            '.github/ISSUE_TEMPLATE/config.yml',
+            '.github/pull_request_template.md'
+        ];
 
-        const collectionsLib = path.join(testDir, 'scripts/lib/collections.js');
-        assert.ok(
-            fs.existsSync(collectionsLib),
-            'Collections library should exist'
-        );
-
-        const content = fs.readFileSync(collectionsLib, 'utf8');
-        
-        // Verify collections library has key functions
-        assert.ok(
-            content.includes('readCollection') || content.includes('loadCollection'),
-            'Collections library should read collection files'
-        );
-        
-        // Verify it handles YAML
-        assert.ok(
-            content.includes('yaml') || content.includes('yml'),
-            'Collections library should handle YAML files'
-        );
+        for (const file of issueTemplates) {
+            const filePath = path.join(testDir, file);
+            assert.ok(
+                fs.existsSync(filePath) && fs.statSync(filePath).isFile(),
+                `GitHub template should exist: ${file}`
+            );
+        }
     });
 });
