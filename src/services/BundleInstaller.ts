@@ -231,16 +231,20 @@ export class BundleInstaller {
             const manifest = await this.validateBundle(extractDir, bundle);
             this.logger.debug('Bundle validation passed');
 
-            // Check if this is a skills bundle (installs directly to ~/.copilot/skills/)
+            // Check if this is a skills bundle (Anthropic-style skills source)
             const isSkillsBundle = sourceType === 'skills' || sourceType === 'local-skills';
+            // For repository scope we must still run through the standard sync/lockfile flow; only
+            // user/workspace scopes should install directly into the Copilot skills directory.
+            const installSkillsToCopilotDir = isSkillsBundle && options.scope !== 'repository';
             
             let installDir: string;
             
-            if (isSkillsBundle) {
-                // Skills bundles install directly to ~/.copilot/skills/{skill-name}
+            if (installSkillsToCopilotDir) {
+                // Skills bundles install directly to Copilot skills directory for user/workspace scopes
                 // Extract skill name from the bundle - look in skills/ directory
                 const skillName = await this.extractSkillNameFromBundle(extractDir);
-                installDir = this.copilotSync.getCopilotSkillsDirectory('user');
+                const copilotScope = options.scope === 'workspace' ? 'workspace' : 'user';
+                installDir = this.copilotSync.getCopilotSkillsDirectory(copilotScope);
                 await ensureDirectory(installDir);
                 installDir = path.join(installDir, skillName);
                 
@@ -309,11 +313,14 @@ export class BundleInstaller {
             };
 
             // Step 9: Install MCP servers if defined (skip for skills bundles)
-            if (!isSkillsBundle) {
-                await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
-                this.logger.debug('MCP servers installation completed');
+            if (!installSkillsToCopilotDir) {
+                // Skills bundles going through repository scope should still skip MCP servers
+                if (!isSkillsBundle) {
+                    await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
+                    this.logger.debug('MCP servers installation completed');
+                }
                 
-                // Step 10: Sync to appropriate scope directory (skip for skills - already installed there)
+                // Step 10: Sync to appropriate scope directory (skills for repository scope must run through this)
                 const scopeService = this.getScopeService(options.scope);
                 // Pass commitMode explicitly to syncBundle to avoid timing issues:
                 // The installation record hasn't been saved to RegistryStorage yet at this point,
@@ -321,10 +328,10 @@ export class BundleInstaller {
                 await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
                 this.logger.debug(`Synced to ${options.scope} scope`);
 
-            // Step 11: Update lockfile for repository scope
-            if (options.scope === 'repository') {
-                await this.updateLockfileOnInstall(bundle, installed, options, sourceType);
-            }
+                // Step 11: Update lockfile for repository scope
+                if (options.scope === 'repository') {
+                    await this.updateLockfileOnInstall(bundle, installed, options, sourceType);
+                }
             } else {
                 this.logger.debug('Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)');
             }
