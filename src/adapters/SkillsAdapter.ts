@@ -667,7 +667,8 @@ export class SkillsAdapter extends RepositoryAdapter {
                     id: skill.id,
                     name: skill.name,
                     description: skill.description,
-                    file: `SKILL.md`,
+                    // Use skills/<skill-id>/SKILL.md so repository scope can map and install
+                    file: `skills/${skill.id}/SKILL.md`,
                     type: 'skill',
                     tags: ['skill', 'anthropic']
                 }
