@@ -42,6 +42,8 @@ import {
 import { ApmRuntimeManager } from './services/ApmRuntimeManager';
 import { OlafRuntimeManager } from './services/OlafRuntimeManager';
 import { SetupStateManager, SetupState } from './services/SetupStateManager';
+import { MigrationRegistry } from './services/MigrationRegistry';
+import { runSourceIdNormalizationMigration } from './migrations/sourceIdNormalizationMigration';
 
 // Module-level variable to store the extension instance for deactivation
 let extensionInstance: PromptRegistryExtension | undefined;
@@ -137,6 +139,9 @@ export class PromptRegistryExtension {
             // Initialize Registry Manager
             await this.registryManager.initialize();
 
+            // Run data migrations (idempotent, skips if already completed)
+            await this.runMigrations();
+
             // Register commands
             this.registerCommands();
 
@@ -218,6 +223,21 @@ export class PromptRegistryExtension {
 
         } catch (error) {
             console.error('Error during Prompt Registry extension deactivation:', error);
+        }
+    }
+
+    /**
+     * Run data migrations (idempotent).
+     * Migrations use MigrationRegistry (globalState) to track completion.
+     */
+    private async runMigrations(): Promise<void> {
+        try {
+            const migrationRegistry = MigrationRegistry.getInstance(this.context);
+            const registryStorage = this.registryManager.getStorage();
+            await runSourceIdNormalizationMigration(registryStorage, migrationRegistry);
+        } catch (error) {
+            this.logger.warn('Migration failed (non-fatal)', error as Error);
+            // Don't fail activation if migrations fail
         }
     }
 

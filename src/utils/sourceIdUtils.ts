@@ -22,27 +22,27 @@ export interface SourceIdConfig {
 
 /**
  * Normalize URL for consistent hashing.
- * Normalizes the protocol and host (case-insensitive), but preserves path case.
- * This prevents collisions on case-sensitive servers while maintaining consistency
- * for domains (which are case-insensitive).
- * 
+ * Lowercases the entire URL (protocol, host, and path) for case-insensitive
+ * comparison. This is appropriate because the primary sources (GitHub, GitLab)
+ * treat repository paths as case-insensitive.
+ *
  * @param url - URL to normalize
- * @returns Normalized URL string with lowercase protocol/host, original path case
- * 
+ * @returns Normalized URL string with lowercase host and path, no protocol or trailing slashes
+ *
  * @example
- * normalizeUrl("HTTPS://GitHub.com/Owner/Repo/") // "github.com/Owner/Repo"
+ * normalizeUrl("HTTPS://GitHub.com/Owner/Repo/") // "github.com/owner/repo"
  * normalizeUrl("http://example.com") // "example.com"
- * normalizeUrl("https://GitHub.COM/owner/repo") // "github.com/owner/repo"
+ * normalizeUrl("https://GitHub.COM/OWNER/REPO") // "github.com/owner/repo"
  */
-function normalizeUrl(url: string): string {
+export function normalizeUrl(url: string): string {
     try {
         // Parse the URL to separate components
         const parsedUrl = new URL(url);
-        
-        // Normalize: lowercase hostname, preserve pathname case
+
+        // Normalize: lowercase hostname and pathname for case-insensitive comparison
         const normalizedHost = parsedUrl.hostname.toLowerCase();
-        const normalizedPath = parsedUrl.pathname.replace(/\/+$/, ''); // Remove trailing slashes
-        
+        const normalizedPath = parsedUrl.pathname.toLowerCase().replace(/\/+$/, ''); // Remove trailing slashes
+
         return normalizedHost + normalizedPath;
     } catch (error) {
         // Fallback for invalid URLs - use the original logic
@@ -50,6 +50,30 @@ function normalizeUrl(url: string): string {
             .toLowerCase()
             .replace(/^https?:\/\//, '')
             .replace(/\/+$/, '');
+    }
+}
+
+/**
+ * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
+ *
+ * Legacy URL normalization (pre-v2): lowercase host only, preserve path case.
+ * Used for computing old-format source IDs to support migration and dual-read.
+ *
+ * @param url - URL to normalize
+ * @returns Normalized URL string with lowercase host, original-case path, no protocol or trailing slashes
+ */
+export function normalizeUrlLegacy(url: string): string {
+    try {
+        const parsedUrl = new URL(url);
+        const normalizedHost = parsedUrl.hostname.toLowerCase();
+        const normalizedPath = parsedUrl.pathname.replace(/\/+$/, ''); // preserve path case
+        return normalizedHost + normalizedPath;
+    } catch (error) {
+        // Fallback: only lowercase the host portion
+        return url
+            .replace(/^https?:\/\//, '')
+            .replace(/\/+$/, '')
+            .replace(/^([^/]+)/, (host) => host.toLowerCase());
     }
 }
 
@@ -163,6 +187,73 @@ export function generateHubKey(url: string, branch?: string): string {
     const normalizedUrl = normalizeUrl(url);
     const hash = crypto.createHash('sha256')
         .update(normalizedUrl)
+        .digest('hex')
+        .substring(0, 12);
+
+    if (branch && branch !== 'main' && branch !== 'master') {
+        return `${hash}-${branch}`;
+    }
+    return hash;
+}
+
+/**
+ * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
+ *
+ * Generate a legacy sourceId using pre-v2 normalization (host-only lowercase).
+ * Returns undefined if the legacy ID is identical to the current ID (no migration needed).
+ *
+ * @param sourceType - The type of source (e.g., 'github', 'gitlab')
+ * @param url - The source URL
+ * @param config - Optional configuration (branch, collectionsPath)
+ * @returns Legacy sourceId, or undefined if identical to current format
+ */
+export function generateLegacyHubSourceId(
+    sourceType: string,
+    url: string,
+    config?: SourceIdConfig
+): string | undefined {
+    const legacyNormalized = normalizeUrlLegacy(url);
+    const currentNormalized = normalizeUrl(url);
+
+    // If normalization produces the same result, no legacy ID exists
+    if (legacyNormalized === currentNormalized) {
+        return undefined;
+    }
+
+    const branch = normalizeBranch(config?.branch);
+    const collectionsPath = config?.collectionsPath || 'collections';
+
+    const hash = crypto.createHash('sha256')
+        .update(`${sourceType}:${legacyNormalized}:${branch}:${collectionsPath}`)
+        .digest('hex')
+        .substring(0, 12);
+
+    return `${sourceType}-${hash}`;
+}
+
+/**
+ * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
+ *
+ * Generate a legacy hub key using pre-v2 normalization (host-only lowercase).
+ * Returns undefined if the legacy key is identical to the current key.
+ *
+ * @param url - The hub URL
+ * @param branch - Optional branch name
+ * @returns Legacy hub key, or undefined if identical to current format
+ */
+export function generateLegacyHubKey(
+    url: string,
+    branch?: string
+): string | undefined {
+    const legacyNormalized = normalizeUrlLegacy(url);
+    const currentNormalized = normalizeUrl(url);
+
+    if (legacyNormalized === currentNormalized) {
+        return undefined;
+    }
+
+    const hash = crypto.createHash('sha256')
+        .update(legacyNormalized)
         .digest('hex')
         .substring(0, 12);
 

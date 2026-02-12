@@ -9,7 +9,11 @@ import * as assert from 'assert';
 import {
     generateHubSourceId,
     isLegacyHubSourceId,
-    generateHubKey
+    generateHubKey,
+    normalizeUrl,
+    normalizeUrlLegacy,
+    generateLegacyHubSourceId,
+    generateLegacyHubKey
 } from '../../src/utils/sourceIdUtils';
 
 suite('sourceIdUtils', () => {
@@ -42,24 +46,24 @@ suite('sourceIdUtils', () => {
             assert.strictEqual(result1, result2, 'Host case should be normalized');
         });
 
-        test('should preserve path case (case-sensitive paths)', () => {
+        test('should normalize path case (case-insensitive)', () => {
             const result1 = generateHubSourceId('github', 'https://github.com/Owner/Repo');
             const result2 = generateHubSourceId('github', 'https://github.com/owner/repo');
-            
-            // Different path case should produce different IDs
-            assert.notStrictEqual(result1, result2, 'Path case should be preserved (case-sensitive)');
+
+            // Different path case should produce same IDs (case-insensitive)
+            assert.strictEqual(result1, result2, 'Path case should be normalized (case-insensitive)');
         });
 
-        test('should normalize host case but preserve path case', () => {
+        test('should normalize full URL case', () => {
             const resultMixedHost = generateHubSourceId('github', 'https://GitHub.COM/Owner/Repo');
             const resultLowerHost = generateHubSourceId('github', 'https://github.com/Owner/Repo');
             const resultDiffPath = generateHubSourceId('github', 'https://github.com/owner/repo');
-            
+
             // Same path, different host case -> should be equal
             assert.strictEqual(resultMixedHost, resultLowerHost, 'Host case should be normalized');
-            
-            // Different path case -> should be different
-            assert.notStrictEqual(resultLowerHost, resultDiffPath, 'Path with different case should produce different ID');
+
+            // Different path case -> should also be equal (full case-insensitive normalization)
+            assert.strictEqual(resultLowerHost, resultDiffPath, 'Path case should be normalized');
         });
 
         test('should normalize URL protocol', () => {
@@ -254,15 +258,15 @@ suite('sourceIdUtils', () => {
             assert.strictEqual(hashMain, hashDevelop);
         });
 
-        test('should normalize host case but preserve path case', () => {
+        test('should normalize full URL case', () => {
             // Same path, different host case -> should be equal
             const result1 = generateHubKey('https://Example.COM/hub.json');
             const result2 = generateHubKey('https://example.com/hub.json');
             assert.strictEqual(result1, result2, 'Host case should be normalized');
-            
-            // Different path case -> should be different
+
+            // Different path case -> should also be equal (full case-insensitive normalization)
             const result3 = generateHubKey('https://example.com/Hub.json');
-            assert.notStrictEqual(result2, result3, 'Path case should be preserved');
+            assert.strictEqual(result2, result3, 'Path case should be normalized');
         });
 
         test('should normalize URL protocol', () => {
@@ -295,9 +299,102 @@ suite('sourceIdUtils', () => {
 
         test('should handle empty string branch', () => {
             const result = generateHubKey('https://example.com/hub.json', '');
-            
+
             // Empty string is falsy, should be just the hash
             assert.match(result, /^[a-f0-9]{12}$/);
+        });
+    });
+
+    suite('normalizeUrlLegacy()', () => {
+        test('should lowercase host only, preserve path case', () => {
+            const result = normalizeUrlLegacy('https://GitHub.COM/Owner/Repo');
+            assert.strictEqual(result, 'github.com/Owner/Repo');
+        });
+
+        test('should match normalizeUrl when path is already lowercase', () => {
+            const url = 'https://github.com/owner/repo';
+            assert.strictEqual(normalizeUrlLegacy(url), normalizeUrl(url));
+        });
+
+        test('should differ from normalizeUrl when path has uppercase', () => {
+            const url = 'https://github.com/Owner/Repo';
+            assert.notStrictEqual(normalizeUrlLegacy(url), normalizeUrl(url));
+        });
+
+        test('should remove trailing slashes', () => {
+            const result = normalizeUrlLegacy('https://github.com/Owner/Repo/');
+            assert.strictEqual(result, 'github.com/Owner/Repo');
+        });
+
+        test('should remove protocol', () => {
+            const result = normalizeUrlLegacy('https://github.com/Path');
+            assert.ok(!result.startsWith('https://'));
+        });
+    });
+
+    suite('generateLegacyHubSourceId()', () => {
+        test('should return undefined when URL path is all lowercase', () => {
+            const result = generateLegacyHubSourceId('github', 'https://github.com/owner/repo');
+            assert.strictEqual(result, undefined);
+        });
+
+        test('should return a legacy ID when URL path has uppercase', () => {
+            const result = generateLegacyHubSourceId('github', 'https://github.com/Owner/Repo');
+            assert.ok(result, 'Should return a legacy ID');
+            assert.match(result!, /^github-[a-f0-9]{12}$/);
+        });
+
+        test('legacy ID should differ from current ID for mixed-case URL', () => {
+            const url = 'https://github.com/Owner/Repo';
+            const legacyId = generateLegacyHubSourceId('github', url);
+            const currentId = generateHubSourceId('github', url);
+
+            assert.ok(legacyId);
+            assert.notStrictEqual(legacyId, currentId);
+        });
+
+        test('should respect branch and collectionsPath config', () => {
+            const url = 'https://github.com/Owner/Repo';
+            const id1 = generateLegacyHubSourceId('github', url, { branch: 'main' });
+            const id2 = generateLegacyHubSourceId('github', url, { branch: 'develop' });
+
+            assert.ok(id1);
+            assert.ok(id2);
+            assert.notStrictEqual(id1, id2, 'Different branches should produce different legacy IDs');
+        });
+    });
+
+    suite('generateLegacyHubKey()', () => {
+        test('should return undefined when URL path is all lowercase', () => {
+            const result = generateLegacyHubKey('https://example.com/hub.json');
+            assert.strictEqual(result, undefined);
+        });
+
+        test('should return a legacy key when URL path has uppercase', () => {
+            const result = generateLegacyHubKey('https://example.com/Hub.json');
+            assert.ok(result);
+            assert.match(result!, /^[a-f0-9]{12}$/);
+        });
+
+        test('legacy key should differ from current key for mixed-case URL', () => {
+            const url = 'https://example.com/Hub.json';
+            const legacyKey = generateLegacyHubKey(url);
+            const currentKey = generateHubKey(url);
+
+            assert.ok(legacyKey);
+            assert.notStrictEqual(legacyKey, currentKey);
+        });
+
+        test('should append branch for non-main branches', () => {
+            const result = generateLegacyHubKey('https://example.com/Hub.json', 'develop');
+            assert.ok(result);
+            assert.match(result!, /^[a-f0-9]{12}-develop$/);
+        });
+
+        test('should not append branch for main', () => {
+            const result = generateLegacyHubKey('https://example.com/Hub.json', 'main');
+            assert.ok(result);
+            assert.match(result!, /^[a-f0-9]{12}$/);
         });
     });
 });

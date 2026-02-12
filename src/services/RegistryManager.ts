@@ -49,6 +49,7 @@ import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/setting
 import { Logger } from '../utils/logger';
 import { CONCURRENCY_CONSTANTS, WARNING_RESULTS } from '../utils/constants';
 import { UpdateCancelledError } from '../utils/errorHandler';
+import { generateLegacyHubSourceId } from '../utils/sourceIdUtils';
 
 /**
  * Results from auto-update operations
@@ -553,20 +554,36 @@ export class RegistryManager {
      * Check if an installed bundle belongs to a specific source
      */
     private belongsToSource(
-        bundle: InstalledBundle, 
-        sourceId: string, 
+        bundle: InstalledBundle,
+        sourceId: string,
         latestBundles: Bundle[]
     ): boolean {
         // Direct source ID match
         if (bundle.sourceId === sourceId) {
             return true;
         }
-        
+
+        // @migration-cleanup(sourceId-normalization-v2): Remove legacy ID check once all lockfiles are migrated
+        // Legacy source ID match: bundle may have been installed with old-format ID.
+        // Compute the legacy ID for this source and check against the bundle's sourceId.
+        if (bundle.sourceId) {
+            const source = this.getSourceById(sourceId);
+            if (source) {
+                const legacyId = generateLegacyHubSourceId(source.type, source.url, {
+                    branch: source.config?.branch,
+                    collectionsPath: source.config?.collectionsPath
+                });
+                if (legacyId && bundle.sourceId === legacyId) {
+                    return true;
+                }
+            }
+        }
+
         // Manifest URL match
         if (bundle.manifest?.metadata?.repository?.url?.includes(sourceId)) {
             return true;
         }
-        
+
         // Identity-based match
         return latestBundles.some(lb => this.bundlesMatch(bundle, lb, sourceId));
     }
@@ -2194,6 +2211,13 @@ export class RegistryManager {
     private getSourceType(sourceId: string): SourceType {
         const source = this.sourcesCache.find(s => s.id === sourceId);
         return source?.type ?? 'local';
+    }
+
+    /**
+     * Get a source by its ID from the cache
+     */
+    private getSourceById(sourceId: string): RegistrySource | undefined {
+        return this.sourcesCache.find(s => s.id === sourceId);
     }
 
     /**

@@ -48,7 +48,11 @@ jobs:
       - name: Fail if validation failed
         if: steps.validate.outputs.status == 'failure'
         run: exit 1
-      
+
+      - name: Save PR number
+        if: github.event_name == 'pull_request'
+        run: echo "${{ github.event.pull_request.number }}" > pr-number.txt
+
       - name: Upload validation results
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,5 +60,6 @@ jobs:
           name: validation-results
           path: |
             validation-comment.md
+            pr-number.txt
             collections/
           if-no-files-found: ignore
