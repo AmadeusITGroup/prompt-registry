@@ -42,24 +42,24 @@ suite('sourceIdUtils', () => {
             assert.strictEqual(result1, result2, 'Host case should be normalized');
         });
 
-        test('should preserve path case (case-sensitive paths)', () => {
+        test('should normalize path case (case-insensitive)', () => {
             const result1 = generateHubSourceId('github', 'https://github.com/Owner/Repo');
             const result2 = generateHubSourceId('github', 'https://github.com/owner/repo');
-            
-            // Different path case should produce different IDs
-            assert.notStrictEqual(result1, result2, 'Path case should be preserved (case-sensitive)');
+
+            // Different path case should produce same IDs (case-insensitive)
+            assert.strictEqual(result1, result2, 'Path case should be normalized (case-insensitive)');
         });
 
-        test('should normalize host case but preserve path case', () => {
+        test('should normalize full URL case', () => {
             const resultMixedHost = generateHubSourceId('github', 'https://GitHub.COM/Owner/Repo');
             const resultLowerHost = generateHubSourceId('github', 'https://github.com/Owner/Repo');
             const resultDiffPath = generateHubSourceId('github', 'https://github.com/owner/repo');
-            
+
             // Same path, different host case -> should be equal
             assert.strictEqual(resultMixedHost, resultLowerHost, 'Host case should be normalized');
-            
-            // Different path case -> should be different
-            assert.notStrictEqual(resultLowerHost, resultDiffPath, 'Path with different case should produce different ID');
+
+            // Different path case -> should also be equal (full case-insensitive normalization)
+            assert.strictEqual(resultLowerHost, resultDiffPath, 'Path case should be normalized');
         });
 
         test('should normalize URL protocol', () => {
@@ -254,15 +254,15 @@ suite('sourceIdUtils', () => {
             assert.strictEqual(hashMain, hashDevelop);
         });
 
-        test('should normalize host case but preserve path case', () => {
+        test('should normalize full URL case', () => {
             // Same path, different host case -> should be equal
             const result1 = generateHubKey('https://Example.COM/hub.json');
             const result2 = generateHubKey('https://example.com/hub.json');
             assert.strictEqual(result1, result2, 'Host case should be normalized');
-            
-            // Different path case -> should be different
+
+            // Different path case -> should also be equal (full case-insensitive normalization)
             const result3 = generateHubKey('https://example.com/Hub.json');
-            assert.notStrictEqual(result2, result3, 'Path case should be preserved');
+            assert.strictEqual(result2, result3, 'Path case should be normalized');
         });
 
         test('should normalize URL protocol', () => {
