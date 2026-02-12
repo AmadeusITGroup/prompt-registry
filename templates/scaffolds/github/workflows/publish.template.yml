@@ -58,6 +58,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Save PR number
+        run: echo "${{ github.event.pull_request.number }}" > pr-number.txt
+
       - name: Common setup
         id: setup
         uses: ./.github/actions/publish-common
