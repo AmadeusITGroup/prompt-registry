@@ -155,3 +155,6 @@ post-compile-fixes-cross-platform.js
 
 # Cache directories
 .cache/
+
+# Claude local settings file
+.claude/settings.local.json

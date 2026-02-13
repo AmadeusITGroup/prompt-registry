@@ -46,5 +46,6 @@ runs:
         path: |
           validation-comment.md
           validation.log
+          pr-number.txt
           collections/
         if-no-files-found: ignore

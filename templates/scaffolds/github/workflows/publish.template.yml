@@ -62,6 +62,9 @@ jobs:
         id: setup
         uses: ./.github/actions/publish-common
 
+      - name: Save PR number
+        run: echo "${{ github.event.pull_request.number }}" > pr-number.txt
+
       - name: Post validation results to PR
         uses: ./.github/actions/pr-comment
         with:

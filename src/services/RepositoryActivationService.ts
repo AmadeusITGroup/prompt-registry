@@ -20,6 +20,7 @@ import { Lockfile } from '../types/lockfile';
 import { Logger } from '../utils/logger';
 import { InstallOptions } from '../types/registry';
 import { IBundleInstaller } from '../types/bundleInstaller';
+import { generateLegacyHubSourceId } from '../utils/sourceIdUtils';
 
 /**
  * Result of missing source/hub detection
@@ -300,9 +301,23 @@ export class RepositoryActivationService {
             const configuredSources = await this.storage.getSources();
             const configuredSourceIds = new Set(configuredSources.map(s => s.id));
 
-            // Check for missing sources
+            // @migration-cleanup(sourceId-normalization-v2): Remove legacy ID set once all lockfiles are migrated
+            // Build a set that also includes legacy IDs for each configured source,
+            // so lockfile entries written with old-format IDs are still recognized.
+            const allKnownSourceIds = new Set(configuredSourceIds);
+            for (const source of configuredSources) {
+                const legacyId = generateLegacyHubSourceId(source.type, source.url, {
+                    branch: source.config?.branch,
+                    collectionsPath: source.config?.collectionsPath
+                });
+                if (legacyId) {
+                    allKnownSourceIds.add(legacyId);
+                }
+            }
+
+            // Check for missing sources (check both current and legacy IDs)
             const lockfileSourceIds = Object.keys(lockfile.sources);
-            result.missingSources = lockfileSourceIds.filter(id => !configuredSourceIds.has(id));
+            result.missingSources = lockfileSourceIds.filter(id => !allKnownSourceIds.has(id));
 
             // Check for missing hubs
             if (lockfile.hubs) {
