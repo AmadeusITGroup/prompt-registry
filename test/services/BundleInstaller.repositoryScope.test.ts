@@ -227,6 +227,38 @@ prompts: []
             // assert.ok(factoryStub.calledWith('repository'), 'Should use ScopeServiceFactory for repository scope');
         });
 
+        test('should route skills bundle at repository scope through RepositoryScopeService', async () => {
+            const options: InstallOptions = {
+                scope: 'repository',
+                commitMode: 'commit'
+            };
+
+            // Build a minimal skills bundle zip with deployment-manifest and SKILL.md
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip();
+            zip.addFile('deployment-manifest.yml', Buffer.from(`
+id: ${testBundle.id}
+version: ${testBundle.version}
+name: ${testBundle.name}
+description: Test skill bundle
+author: test
+prompts:
+  - id: my-skill
+    file: skills/my-skill/SKILL.md
+    type: skill
+`));
+            zip.addFile('skills/my-skill/SKILL.md', Buffer.from('# My Skill'));
+
+            // Reset call history to ensure clean assertions
+            mockRepositoryScopeService.syncBundle.resetHistory();
+            mockUserScopeService.syncBundle.resetHistory();
+
+            await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'skills', 'test-skills-source');
+
+            assert.ok(mockRepositoryScopeService.syncBundle.calledOnce, 'Repository scope should sync via RepositoryScopeService for skills');
+            assert.ok(!mockUserScopeService.syncBundle.called, 'User scope sync should not be used for repository-scoped skills');
+        });
+
         test('should call LockfileManager.createOrUpdate for repository scope installation', async () => {
             // Requirements: 4.1
             // Verify lockfile is updated when installing at repository scope
