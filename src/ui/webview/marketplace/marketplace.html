@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="{{cspSource}}">
+    <title>Prompt Marketplace</title>
+    <link rel="stylesheet" href="{{cssUri}}">
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 Prompt Marketplace</h1>
+        <p>Discover and install curated prompt bundles for GitHub Copilot</p>
+    </div>
+
+    <div class="controls">
+        <input type="text" class="search-box" id="searchBox" placeholder="Search bundles...">
+        
+        <div class="filter-group">
+            <label class="filter-label">Source:</label>
+            <div class="source-selector">
+                <button class="source-selector-btn" id="sourceSelectorBtn">
+                    <span id="sourceSelectorText">All Sources</span>
+                    <span class="dropdown-arrow">▾</span>
+                </button>
+                <div class="source-dropdown" id="sourceDropdown" style="display: none;">
+                    <div class="source-search-container">
+                        <input type="text" class="source-search" id="sourceSearch" placeholder="Search sources...">
+                    </div>
+                    <div class="source-list" id="sourceList">
+                        <div class="source-item active" data-source="all">
+                            <input type="radio" name="source" id="source-all" value="all" checked>
+                            <label for="source-all">All Sources</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="filter-group">
+            <label class="filter-label">Tags:</label>
+            <div class="tag-selector">
+                <button class="tag-selector-btn" id="tagSelectorBtn">
+                    <span id="tagSelectorText">All Tags</span>
+                    <span class="dropdown-arrow">▾</span>
+                </button>
+                <div class="tag-dropdown" id="tagDropdown" style="display: none;">
+                    <div class="tag-search-container">
+                        <input type="text" class="tag-search" id="tagSearch" placeholder="Search tags...">
+                    </div>
+                    <div class="tag-list" id="tagList">
+                        <!-- Tags will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="installed-filter" id="installedFilter">
+            <input type="checkbox" id="installedCheckbox">
+            <label for="installedCheckbox">Installed</label>
+        </div>
+        
+        <button class="filter-btn" id="clearFiltersBtn">Clear</button>
+        <button class="refresh-btn" id="refreshBtn">Refresh</button>
+    </div>
+
+    <div id="marketplace" class="marketplace-grid">
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading bundles...</p>
+        </div>
+    </div>
+
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

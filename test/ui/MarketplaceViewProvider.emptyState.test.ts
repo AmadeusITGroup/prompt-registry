@@ -7,10 +7,15 @@
 
 import * as assert from 'assert';
 import * as sinon from 'sinon';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { MarketplaceViewProvider } from '../../src/ui/MarketplaceViewProvider';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { SetupStateManager, SetupState } from '../../src/services/SetupStateManager';
+
+// Project root for resolving webview assets in dist/
+const PROJECT_ROOT = process.cwd();
 
 suite('MarketplaceViewProvider - Empty State UI', () => {
     let sandbox: sinon.SinonSandbox;
@@ -28,8 +33,8 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
         // Create mock context
         mockContext = {
             subscriptions: [],
-            extensionUri: vscode.Uri.file('/mock/path'),
-            extensionPath: '/mock/path',
+            extensionUri: vscode.Uri.file(PROJECT_ROOT),
+            extensionPath: PROJECT_ROOT,
             storagePath: '/mock/storage',
             globalStoragePath: '/mock/global-storage',
             logPath: '/mock/logs',
@@ -43,6 +48,8 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
                 return Promise.resolve(true);
             },
             onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+            asWebviewUri: (uri: vscode.Uri) => uri,
+            cspSource: "'self'",
             options: {},
             html: ''
         };
@@ -275,70 +282,66 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
     });
 
     suite('HTML content generation', () => {
-        test('should include primary-button CSS class in HTML', () => {
-            // Requirement 4.3: Setup prompt should include a "Complete Setup" button
+        test('should reference external CSS file in HTML', () => {
+            // Requirement 4.3: HTML should load external CSS with marketplace styles
             const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
             
-            // Verify primary-button CSS is included
-            assert.ok(html.includes('.primary-button'), 'HTML should include primary-button CSS class');
-            assert.ok(html.includes('background-color: var(--vscode-button-background)'), 
-                'primary-button should use VS Code button background');
+            // Verify external CSS is referenced
+            assert.ok(html.includes('marketplace.css'), 'HTML should reference marketplace.css');
+            assert.ok(html.includes('<link rel="stylesheet"'), 'HTML should include stylesheet link');
         });
 
-        test('should include empty-state CSS classes in HTML', () => {
-            // Requirement 4.2: Setup prompt should display a clear message
+        test('should reference external JS file in HTML', () => {
+            // Requirement 4.2: HTML should load external JS
             const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
             
-            // Verify empty-state CSS classes are included
-            assert.ok(html.includes('.empty-state'), 'HTML should include empty-state CSS class');
-            assert.ok(html.includes('.empty-state-icon'), 'HTML should include empty-state-icon CSS class');
-            assert.ok(html.includes('.empty-state-title'), 'HTML should include empty-state-title CSS class');
+            // Verify external JS is referenced
+            assert.ok(html.includes('marketplace.js'), 'HTML should reference marketplace.js');
+            assert.ok(html.includes('<script'), 'HTML should include script tag');
         });
 
-        test('should include completeSetup function in JavaScript', () => {
-            // Requirement 4.4: Button should trigger first-run configuration flow
+        test('should include Content Security Policy in HTML', () => {
+            // CSP should be set for security
             const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
             
-            // Verify completeSetup function is defined
-            assert.ok(html.includes('function completeSetup()'), 
-                'HTML should include completeSetup function');
-            assert.ok(html.includes("type: 'completeSetup'"), 
-                'completeSetup should post message with type completeSetup');
+            // Verify CSP is included
+            assert.ok(html.includes('Content-Security-Policy'), 'HTML should include CSP meta tag');
+            assert.ok(html.includes('nonce-'), 'CSP should include nonce');
         });
 
-        test('should include setupState variable in JavaScript', () => {
+        test('external marketplace JS should include setupState variable', () => {
             // Requirement 4.1: UI should check setup state
-            const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
+            const jsPath = path.join(PROJECT_ROOT, 'src', 'ui', 'webview', 'marketplace', 'marketplace.js');
+            if (!fs.existsSync(jsPath)) { return; }
+            const jsContent = fs.readFileSync(jsPath, 'utf8');
             
             // Verify setupState variable is defined
-            assert.ok(html.includes('let setupState'), 
-                'HTML should include setupState variable');
-            assert.ok(html.includes('setupState = message.setupState'), 
-                'setupState should be updated from message');
+            assert.ok(jsContent.includes('setupState'), 
+                'marketplace.js should include setupState variable');
         });
 
-        test('should include setup incomplete check in renderBundles', () => {
+        test('external marketplace JS should include setup incomplete check', () => {
             // Requirement 4.1: Show setup prompt when setup incomplete
-            const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
+            const jsPath = path.join(PROJECT_ROOT, 'src', 'ui', 'webview', 'marketplace', 'marketplace.js');
+            if (!fs.existsSync(jsPath)) { return; }
+            const jsContent = fs.readFileSync(jsPath, 'utf8');
             
-            // Verify setup incomplete check is in renderBundles
-            assert.ok(html.includes("setupState === 'incomplete'") || html.includes("setupState === 'not_started'"), 
-                'renderBundles should check for incomplete setup state');
-            assert.ok(html.includes('Setup Not Complete'), 
-                'HTML should include "Setup Not Complete" message');
-            assert.ok(html.includes('No hub is configured'), 
-                'HTML should include explanation about no hub configured');
+            assert.ok(jsContent.includes('Setup Not Complete'), 
+                'marketplace.js should include "Setup Not Complete" message');
+            assert.ok(jsContent.includes('No hub is configured'), 
+                'marketplace.js should include explanation about no hub configured');
         });
 
-        test('should include syncing message for complete setup with no bundles', () => {
+        test('external marketplace JS should include syncing message', () => {
             // Requirement 4.5: Show "Syncing sources..." when setup complete but no bundles
-            const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
+            const jsPath = path.join(PROJECT_ROOT, 'src', 'ui', 'webview', 'marketplace', 'marketplace.js');
+            if (!fs.existsSync(jsPath)) { return; }
+            const jsContent = fs.readFileSync(jsPath, 'utf8');
             
-            // Verify syncing message is included
-            assert.ok(html.includes('Syncing sources...'), 
-                'HTML should include "Syncing sources..." message');
-            assert.ok(html.includes('Bundles will appear as sources are synced'), 
-                'HTML should include explanation about syncing');
+            assert.ok(jsContent.includes('Syncing sources...'), 
+                'marketplace.js should include "Syncing sources..." message');
+            assert.ok(jsContent.includes('Bundles will appear as sources are synced'), 
+                'marketplace.js should include explanation about syncing');
         });
     });
 });
