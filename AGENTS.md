@@ -188,6 +188,8 @@ src/
 | `src/services/RepositoryScopeService.ts` | Repository scope file placement |
 | `src/adapters/*` | Source implementations (github, gitlab, http, local, awesome-copilot) |
 | `src/storage/RegistryStorage.ts` | Persistent paths and JSON layout |
+| `src/services/MigrationRegistry.ts` | globalState-based migration tracker |
+| `src/migrations/` | Migration scripts (one file per migration) |
 | `src/commands/*` | Command handlers wiring UI to services |
 
 ---
@@ -241,6 +243,16 @@ Installs support `user`, `workspace`, and `repository` scopes. Repository scope 
 
 ### Error Handling
 Use `Logger.getInstance()`. Throw errors with clear messages. Commands catch and show via VS Code notifications.
+
+### Migrations
+Use `MigrationRegistry` (globalState-backed) for tracking data migrations. Each migration is a named entry with `pending`/`completed`/`skipped` status. Define migration logic in `src/migrations/`. Wire migrations into `extension.ts` activation via `runMigrations()`. Lockfile migrations use dual-read (try new + legacy ID) since lockfiles are Git-shared. Mark all migration-related code with `@migration-cleanup(migration-name)` comments so cleanup sites can be found with `grep -r "@migration-cleanup"`.
+
+### Migration Cleanup
+When a migration is no longer needed, search for all related code with:
+```bash
+grep -r "@migration-cleanup(migration-name)" src/ test/
+```
+This finds every file with dual-read fallback, legacy functions, and migration logic that can be removed.
 
 ---
 

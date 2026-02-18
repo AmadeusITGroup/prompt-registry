@@ -87,6 +87,7 @@ suite('GitHub Scaffold Property-Based Tests', () => {
         const requiredFiles = [
             // GitHub workflows (Requirements 2.1)
             '.github/workflows/publish.yml',
+            '.github/workflows/post-pr-comment.yml',
             '.github/actions/publish-common/action.yml',
             
             // Scripts directory documentation (npm package provides CLI commands)
@@ -346,6 +347,7 @@ suite('GitHub Scaffold Property-Based Tests', () => {
                     // Check all workflow files for the runner value
                     const workflowFiles = [
                         '.github/workflows/publish.yml',
+                        '.github/workflows/post-pr-comment.yml',
                     ];
 
                     for (const workflowFile of workflowFiles) {

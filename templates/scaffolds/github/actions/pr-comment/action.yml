@@ -12,10 +12,16 @@ inputs:
     description: Hidden tag to identify comment for updates
     required: true
 
+outputs:
+  comment-posted:
+    description: Whether the comment was successfully posted (true/false)
+    value: ${{ steps.comment.outputs.comment-posted }}
+
 runs:
   using: composite
   steps:
     - name: Create or update comment
+      id: comment
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -26,25 +32,41 @@ runs:
         # Read comment body and append hidden tag
         BODY=$(cat "$BODY_PATH")
         BODY="$BODY"$'\n\n'"<!-- $COMMENT_TAG -->"
-        
+
         # Find existing comment with tag
         COMMENT_ID=$(gh api \
           "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
           --jq ".[] | select(.body | contains(\"<!-- $COMMENT_TAG -->\")) | .id" \
-          2>/dev/null | head -1)
-        
-        if [ -n "$COMMENT_ID" ]; then
-          # Update existing comment
-          gh api \
-            --method PATCH \
-            "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
-            -f body="$BODY"
-          echo "Updated comment $COMMENT_ID"
+          2>/dev/null | head -1) || true
+
+        post_comment() {
+          if [ -n "$COMMENT_ID" ]; then
+            # Update existing comment
+            gh api \
+              --method PATCH \
+              "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+              -f body="$BODY" || return $?
+            echo "Updated comment $COMMENT_ID"
+          else
+            # Create new comment
+            gh api \
+              --method POST \
+              "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
+              -f body="$BODY" || return $?
+            echo "Created new comment"
+          fi
+        }
+
+        if post_comment 2>gh_error.tmp; then
+          echo "comment-posted=true" >> "$GITHUB_OUTPUT"
         else
-          # Create new comment
-          gh api \
-            --method POST \
-            "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
-            -f body="$BODY"
-          echo "Created new comment"
+          ERROR=$(cat gh_error.tmp)
+          if echo "$ERROR" | grep -q "403"; then
+            echo "::warning::Could not post PR comment (403 Forbidden). This is expected for fork PRs. Writing results to job summary instead."
+            cat "$BODY_PATH" >> "$GITHUB_STEP_SUMMARY"
+            echo "comment-posted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Failed to post PR comment: $ERROR"
+            exit 1
+          fi
         fi

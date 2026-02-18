@@ -26,6 +26,12 @@
             "required": true,
             "variables": ["githubRunner"]
         },
+        "post-pr-comment-workflow": {
+            "path": "workflows/post-pr-comment.template.yml",
+            "description": "GitHub Actions workflow to post PR comments (supports fork PRs)",
+            "required": true,
+            "variables": ["githubRunner"]
+        },
         "publish-common-action": {
             "path": "actions/publish-common/action.yml",
             "description": "Composite action for common publish setup",

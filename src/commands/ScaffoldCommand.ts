@@ -5,6 +5,7 @@ import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 import { FileUtils } from '../utils/fileUtils';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
+import { NpmCliWrapper } from '../utils/NpmCliWrapper';
 
 
 export enum ScaffoldType {
@@ -546,13 +547,14 @@ export class ScaffoldCommand {
      * Handle post-scaffold actions: npm install and folder opening
      */
     private static async handlePostScaffoldActions(typeLabel: string, targetPath: vscode.Uri): Promise<void> {
+        const npmWrapper = NpmCliWrapper.getInstance();
+        await npmWrapper.installWithProgress(targetPath.fsPath);
         // The @prompt-registry/collection-scripts package is now available on npmjs
         const setupChoice = await vscode.window.showInformationMessage(
-            `${typeLabel} scaffolded successfully! You can now run npm install to install dependencies.`,
+            `${typeLabel} scaffolded successfully!`,
             'Open Folder',
             'Skip'
         );
-
         if (setupChoice === 'Open Folder') {
             await vscode.commands.executeCommand('vscode.openFolder', targetPath);
         }
