@@ -211,7 +211,7 @@ LOG_LEVEL=ERROR npm test
 # Capture test output for analysis
 LOG_LEVEL=ERROR npm test 2>&1 | tee test.log | tail -20
 
-npm run lint                   # ESLint
+npm run lint                   # ESLint (v9 flat config: eslint.config.mjs)
 npm run package:vsix           # Create .vsix package
 ```
 
@@ -240,6 +240,12 @@ Register via `RepositoryAdapterFactory.register('type', AdapterClass)`. Implemen
 
 ### Scopes
 Installs support `user`, `workspace`, and `repository` scopes. Repository scope uses the lockfile (`prompt-registry.lock.json`) as the single source of truth.
+
+### Linting
+ESLint v9 with flat config (`eslint.config.mjs`). The `lib/` directory is excluded from root linting (it has its own ESLint setup). The `@typescript-eslint/semi` rule was removed in v8 — formatting is handled by Prettier (`eslint-config-prettier`).
+
+### lib/ workspace
+`lib/` is a separate npm workspace (`@prompt-registry/collection-scripts`). Tests compile to `lib/dist-test/` via `lib/tsconfig.test.json` before running with mocha. Run `cd lib && npm test` to build and test.
 
 ### Error Handling
 Use `Logger.getInstance()`. Throw errors with clear messages. Commands catch and show via VS Code notifications.

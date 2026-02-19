@@ -38,6 +38,7 @@ build/
 # Test outputs
 test-out/
 test-dist/
+lib/dist-test/
 coverage/
 .nyc_output/
 

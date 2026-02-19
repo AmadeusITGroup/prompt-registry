@@ -81,7 +81,7 @@ export class FileIntegrityService {
             
             const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
             
-            stream.on('data', (chunk: Buffer) => {
+            stream.on('data', (chunk: string | Buffer) => {
                 sha256Hash.update(chunk);
                 secondaryHash.update(chunk);
             });

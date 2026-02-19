@@ -129,7 +129,8 @@ suite('GitHubAdapter Authentication Tests', () => {
         const mockToken = 'ghp_cliToken123';
         const { exec } = require('child_process');
         const execStub = sandbox.stub(require('child_process'), 'exec');
-        execStub.callsFake((cmd: string, callback: Function) => {
+        execStub.callsFake((...args: any[]) => {
+            const [cmd, callback] = args;
             if (cmd === 'gh auth token') {
                 callback(null, { stdout: mockToken + '\n', stderr: '' });
             }
@@ -148,8 +149,8 @@ suite('GitHubAdapter Authentication Tests', () => {
         sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('Not authenticated'));
 
         // Mock gh CLI failure
-        sandbox.stub(require('child_process'), 'exec').callsFake((cmd: string, callback: Function) => {
-            callback(new Error('gh not found'), null);
+        sandbox.stub(require('child_process'), 'exec').callsFake((...args: any[]) => {
+            args[1](new Error('gh not found'), null);
         });
 
         // Create source with explicit token
@@ -170,8 +171,8 @@ suite('GitHubAdapter Authentication Tests', () => {
     test.skip('should return undefined when no authentication is available', async () => {
         // Mock all auth methods failing
         sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('Not authenticated'));
-        sandbox.stub(require('child_process'), 'exec').callsFake((cmd: string, callback: Function) => {
-            callback(new Error('gh not found'), null);
+        sandbox.stub(require('child_process'), 'exec').callsFake((...args: any[]) => {
+            args[1](new Error('gh not found'), null);
         });
 
         const adapter = new GitHubAdapter(source);
