@@ -4,6 +4,7 @@
 
 - Node.js 18.x or 20.x
 - npm 8.x+
+- TypeScript 5.3+
 - VS Code (latest)
 - Git
 
@@ -25,8 +26,8 @@ Press `F5` in VS Code to launch Extension Development Host.
 # Development
 npm run watch          # Dev mode with auto-compile
 npm run compile        # Production build
-npm run lint           # Check code style
-npm run lint -- --fix  # Auto-fix lint issues
+npm run lint           # Check code style (ESLint v9 flat config)
+npm run lint:fix       # Auto-fix lint issues
 
 # Testing
 npm test               # Run all tests (unit + integration)

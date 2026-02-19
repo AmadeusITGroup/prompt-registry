@@ -132,7 +132,8 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     const execStub = iterationSandbox.stub(childProcess, 'exec');
                     
                     if (config.hasGhCli) {
-                        execStub.callsFake((cmd: string, callback: Function) => {
+                        execStub.callsFake((...args: any[]) => {
+                            const [cmd, callback] = args;
                             if (cmd === 'gh auth token') {
                                 callback(null, { stdout: config.ghCliToken + '\n', stderr: '' });
                             } else {
@@ -140,8 +141,8 @@ suite('GitHubAdapter Property-Based Tests', () => {
                             }
                         });
                     } else {
-                        execStub.callsFake((cmd: string, callback: Function) => {
-                            callback(new Error('gh not found'), null);
+                        execStub.callsFake((...args: any[]) => {
+                            args[1](new Error('gh not found'), null);
                         });
                     }
 
@@ -906,8 +907,8 @@ suite('GitHubAdapter Property-Based Tests', () => {
                         
                         const childProcess = require('child_process');
                         iterationSandbox.stub(childProcess, 'exec')
-                            .callsFake((_cmd: unknown, callback: Function) => {
-                                callback(new Error('gh not found'), null);
+                            .callsFake((...args: any[]) => {
+                                args[1](new Error('gh not found'), null);
                             });
 
                         const adapter = new GitHubAdapter(source);

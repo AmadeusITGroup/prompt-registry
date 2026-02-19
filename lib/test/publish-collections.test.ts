@@ -10,7 +10,9 @@ import * as path from 'path';
 import * as os from 'os';
 
 // Import the publish-collections module - use require for CommonJS
-const publishModule = require('../bin/publish-collections.js');
+// When compiled to dist-test/test/, need to resolve back to lib/bin/
+const libRoot = path.resolve(__dirname, '..', '..');
+const publishModule = require(path.join(libRoot, 'bin', 'publish-collections.js'));
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

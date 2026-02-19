@@ -110,7 +110,7 @@ suite('E2E: Npm Install Integration Tests', () => {
 
             // Mock child_process.spawn to prevent actual npm execution
             const childProcess = require('child_process');
-            const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((command: string, args: string[], options: any) => {
+            const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((...spawnArgs: any[]) => {
                 const mockProcess = {
                     on: (event: string, callback: Function) => {
                         if (event === 'close') {

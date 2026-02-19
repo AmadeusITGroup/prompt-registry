@@ -27,7 +27,9 @@ function cleanup(dir: string): void {
 
 describe('Generate Manifest Script', () => {
   let tempDir: string;
-  const scriptPath = path.join(__dirname, '../bin/generate-manifest.js');
+  // When compiled to dist-test/test/, resolve back to lib/bin/
+  const libRoot = path.resolve(__dirname, '..', '..');
+  const scriptPath = path.join(libRoot, 'bin', 'generate-manifest.js');
 
   beforeEach(() => {
     tempDir = createTempDir('generate-manifest-test-');

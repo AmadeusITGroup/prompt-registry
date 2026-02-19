@@ -786,8 +786,8 @@
     "compile-tests": "tsc -p tsconfig.test.json && node scripts/copy-test-fixtures.js",
     "watch-tests": "tsc -p tsconfig.test.json -w",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "lint:fix": "eslint src --ext ts --fix",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "npm run test:all",
     "test:one": "node scripts/run-single-test.js",
     "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/**/*.test.js' --ignore 'test-dist/test/suite/**/*.test.js' --timeout 5000",
@@ -814,23 +814,25 @@
     "version:bump:patch": "npm version patch --no-git-tag-version && npm run version:update"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@istanbuljs/nyc-config-typescript": "^1.0.0",
     "@playwright/test": "^1.56.1",
     "@types/adm-zip": "^0.5.7",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^16.18.126",
+    "@types/node": "^20.11.0",
+    "@types/semver": "^7.5.6",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.99.3",
     "@types/yauzl": "^2.10.3",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^2.15.0",
     "adm-zip": "^0.5.16",
     "c8": "^10.1.3",
-    "eslint": "^8.28.0",
+    "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^3.23.2",
     "fs-extra": "^11.3.2",
@@ -842,7 +844,8 @@
     "rimraf": "^6.0.1",
     "sinon": "^21.0.0",
     "ts-loader": "^9.4.1",
-    "typescript": "^4.9.4",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.56.0",
     "webpack": "^5.76.0",
     "webpack-cli": "^5.0.1"
   },
@@ -860,7 +863,13 @@
   },
   "extensionDependencies": [],
   "overrides": {
-    "undici": "^7.18.2"
+    "undici": "^7.18.2",
+    "archiver-utils": {
+      "glob": "^11.1.0"
+    },
+    "readdir-glob": {
+      "minimatch": "^10.2.1"
+    }
   },
   "nyc": {
     "extends": "@istanbuljs/nyc-config-typescript",
