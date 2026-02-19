@@ -28,30 +28,39 @@ graph TD
     C["package.template.json<br/># Project package (with variables)"]
     D["README.template.md"]
     E[".gitignore"]
-    F["validate-collections.js"]
     G[".vscode/"]
     H["agents/"]
     I["collections/"]
     J["instructions/"]
     K["mcp-server/"]
     L["prompts/"]
-    M["schemas/"]
     N["workflows/"]
     
     A --> B
     A --> C
     A --> D
     A --> E
-    A --> F
     A --> G
     A --> H
     A --> I
     A --> J
     A --> K
     A --> L
-    A --> M
     A --> N
 ```
+
+The `workflows/` templates are thin callers that delegate to reusable workflows published in this repository:
+
+| Scaffold template | Reusable workflow |
+|---|---|
+| `workflows/publish.template.yml` | `AmadeusITGroup/prompt-registry/.github/workflows/collection-publish.yml@v1` |
+| `workflows/post-pr-comment.template.yml` | `AmadeusITGroup/prompt-registry/.github/workflows/collection-post-pr-comment.yml@v1` |
+
+This means CI improvements in the reusable workflows propagate to all scaffolded projects automatically on the next workflow run, without requiring projects to update their scaffolding.
+
+### Reusable Workflow Releases
+
+Reusable workflows are versioned using semver (`v1.0.0`) and a floating major tag (`v1`). Use the **Release Reusable Workflows** GitHub Actions workflow (`release-reusable-workflows.yml`) to create a new release — it creates the versioned tag and moves the `v1` pointer.
 
 **APM Template:**
 ```mermaid

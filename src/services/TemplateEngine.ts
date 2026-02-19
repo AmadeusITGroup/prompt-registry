@@ -192,12 +192,6 @@ export class TemplateEngine {
             return path.join('.github', 'workflows', filename);
         }
         
-        // Handle actions -> .github/actions
-        if (relativePath.startsWith('actions/')) {
-            // Preserve the full path under actions (e.g., actions/publish-common/action.yml)
-            return path.join('.github', relativePath);
-        }
-        
         // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
         if (name === 'validation-script' && relativePath.includes('validate-collections.js')) {
             const filename = path.basename(relativePath);

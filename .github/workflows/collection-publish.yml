@@ -1,0 +1,161 @@
+name: Collection Publish (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      githubRunner:
+        description: GitHub Actions runner label to use
+        required: false
+        type: string
+        default: ubuntu-latest
+      node-version:
+        description: Node.js version
+        required: false
+        type: string
+        default: '20.x'
+
+jobs:
+  publish-collections:
+    name: Publish Collection Releases
+    runs-on: ${{ inputs.githubRunner }}
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+
+      - name: Validate collections
+        id: validate
+        run: |
+          if npm run validate -- --output-markdown validation-comment.md; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            validation-comment.md
+            validation.log
+            pr-number.txt
+            collections/
+          if-no-files-found: ignore
+
+      - name: Fail if validation failed
+        if: steps.validate.outputs.status == 'failure'
+        run: exit 1
+
+      - name: Publish affected collections
+        # NOTE: github.event.before may be all zeros (0000000...) on the first push to a
+        # branch or after a force-push. The publish script handles this by falling back
+        # to HEAD~1 if it exists, or returning no changed paths for an initial commit
+        # (which skips publishing).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_BASE_SHA: ${{ github.event.before }}
+          GITHUB_HEAD_SHA: ${{ github.sha }}
+        run: |
+          npx publish-collections
+
+  publish-preview:
+    name: Preview Collection Releases (PR)
+    runs-on: ${{ inputs.githubRunner }}
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Save PR number
+        run: echo "${{ github.event.pull_request.number }}" > pr-number.txt
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+
+      - name: Validate collections
+        id: validate
+        run: |
+          if npm run validate -- --output-markdown validation-comment.md; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            validation-comment.md
+            validation.log
+            pr-number.txt
+            collections/
+          if-no-files-found: ignore
+
+      - name: Post validation results to PR
+        id: post-comment
+        uses: ./.github/actions/post-validation-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+
+      - name: Fail if validation failed
+        if: steps.validate.outputs.status == 'failure'
+        run: exit 1
+
+      - name: Preview affected collections (dry-run)
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          npx publish-collections --dry-run
+
+      - name: Upload preview artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview-dist
+          path: |
+            dist/
+          if-no-files-found: ignore
