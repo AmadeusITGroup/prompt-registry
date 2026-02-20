@@ -13,6 +13,7 @@
 import * as vscode from 'vscode';
 import { RatingService, BundleRating, RatingsData } from './RatingService';
 import { Logger } from '../../utils/logger';
+import { RatingScore } from '../../types/engagement';
 
 /**
  * Cached rating entry with metadata
@@ -246,6 +247,40 @@ export class RatingCache {
     setRating(rating: CachedRating): void {
         const key = this.makeKey(rating.sourceId, rating.bundleId);
         this.cache.set(key, rating);
+    }
+
+    /**
+     * Apply an optimistic rating update after user submits feedback.
+     * Recalculates the displayed rating client-side.
+     * Will be silently overwritten on next ratings.json fetch.
+     */
+    applyOptimisticRating(sourceId: string, bundleId: string, userRating: RatingScore): void {
+        const key = this.makeKey(sourceId, bundleId);
+        const existing = this.cache.get(key);
+
+        if (existing) {
+            const newVoteCount = existing.voteCount + 1;
+            const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
+
+            this.cache.set(key, {
+                ...existing,
+                starRating: Math.round(newStarRating * 10) / 10,
+                voteCount: newVoteCount,
+                cachedAt: Date.now(),
+            });
+        } else {
+            this.cache.set(key, {
+                sourceId,
+                bundleId,
+                starRating: userRating,
+                wilsonScore: 0,
+                voteCount: 1,
+                confidence: 'low',
+                cachedAt: Date.now(),
+            });
+        }
+
+        this._onCacheUpdated.fire();
     }
 
     /**

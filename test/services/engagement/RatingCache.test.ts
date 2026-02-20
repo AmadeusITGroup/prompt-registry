@@ -255,6 +255,41 @@ suite('RatingCache', () => {
         });
     });
 
+    suite('Optimistic Updates', () => {
+        test('should apply optimistic rating and update cache', () => {
+            cache.setRating({
+                sourceId: 'src-1', bundleId: 'bundle-1',
+                starRating: 4.0, wilsonScore: 0.8, voteCount: 10,
+                confidence: 'medium', cachedAt: Date.now()
+            });
+
+            cache.applyOptimisticRating('src-1', 'bundle-1', 5);
+
+            const rating = cache.getRating('src-1', 'bundle-1');
+            assert.ok(rating);
+            // (4.0 * 10 + 5) / 11 ≈ 4.09
+            assert.ok(Math.abs(rating!.starRating - 4.1) < 0.1);
+            assert.strictEqual(rating!.voteCount, 11);
+        });
+
+        test('should create new rating entry for unrated bundle', () => {
+            cache.applyOptimisticRating('src-1', 'new-bundle', 4);
+
+            const rating = cache.getRating('src-1', 'new-bundle');
+            assert.ok(rating);
+            assert.strictEqual(rating!.starRating, 4);
+            assert.strictEqual(rating!.voteCount, 1);
+        });
+
+        test('should fire onCacheUpdated event after optimistic update', () => {
+            let fired = false;
+            cache.onCacheUpdated(() => { fired = true; });
+
+            cache.applyOptimisticRating('src-1', 'bundle-1', 3);
+            assert.ok(fired);
+        });
+    });
+
     suite('Confidence Level Calculation', () => {
         test('should assign low confidence for < 5 votes', async () => {
             const mockRatingsData: RatingsData = {
