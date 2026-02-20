@@ -1,5 +1,5 @@
-name: Create or Update PR Comment
-description: Create or update a comment on a pull request
+name: Post Validation Comment
+description: Create or update a validation comment on a pull request
 
 inputs:
   issue-number:
@@ -7,51 +7,58 @@ inputs:
     required: true
   body-path:
     description: Path to file containing comment body
-    required: true
+    required: false
+    default: validation-comment.md
   comment-tag:
-    description: Hidden tag to identify comment for updates
-    required: true
+    description: Hidden tag used to identify and update the comment
+    required: false
+    default: collection-validation
+  github-token:
+    description: GitHub token for API authentication
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   comment-posted:
     description: Whether the comment was successfully posted (true/false)
-    value: ${{ steps.comment.outputs.comment-posted }}
+    value: ${{ steps.post.outputs.comment-posted }}
 
 runs:
   using: composite
   steps:
-    - name: Create or update comment
-      id: comment
+    - name: Post comment
+      id: post
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.github-token }}
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         BODY_PATH: ${{ inputs.body-path }}
         COMMENT_TAG: ${{ inputs.comment-tag }}
       run: |
-        # Read comment body and append hidden tag
+        if [ ! -f "$BODY_PATH" ]; then
+          echo "::warning::No $BODY_PATH found, skipping PR comment"
+          exit 0
+        fi
+
         BODY=$(cat "$BODY_PATH")
         BODY="$BODY"$'\n\n'"<!-- $COMMENT_TAG -->"
 
-        # Find existing comment with tag
         COMMENT_ID=$(gh api \
-          "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
+          "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" \
           --jq ".[] | select(.body | contains(\"<!-- $COMMENT_TAG -->\")) | .id" \
           2>/dev/null | head -1) || true
 
         post_comment() {
           if [ -n "$COMMENT_ID" ]; then
-            # Update existing comment
             gh api \
               --method PATCH \
-              "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
               -f body="$BODY" || return $?
             echo "Updated comment $COMMENT_ID"
           else
-            # Create new comment
             gh api \
               --method POST \
-              "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" \
               -f body="$BODY" || return $?
             echo "Created new comment"
           fi
@@ -62,7 +69,7 @@ runs:
         else
           ERROR=$(cat gh_error.tmp)
           if echo "$ERROR" | grep -q "403"; then
-            echo "::warning::Could not post PR comment (403 Forbidden). This is expected for fork PRs. Writing results to job summary instead."
+            echo "::warning::Could not post PR comment (403 Forbidden). This may be expected for fork PRs. Writing results to job summary instead."
             cat "$BODY_PATH" >> "$GITHUB_STEP_SUMMARY"
             echo "comment-posted=false" >> "$GITHUB_OUTPUT"
           else

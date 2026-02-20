@@ -32,18 +32,6 @@
             "required": true,
             "variables": ["githubRunner"]
         },
-        "publish-common-action": {
-            "path": "actions/publish-common/action.yml",
-            "description": "Composite action for common publish setup",
-            "required": true,
-            "variables": []
-        },
-        "pr-comment-action": {
-            "path": "actions/pr-comment/action.yml",
-            "description": "Composite action to create or update PR comments",
-            "required": true,
-            "variables": []
-        },
         "scripts-readme": {
             "path": "scripts/README.md",
             "description": "Documentation for scripts directory",
