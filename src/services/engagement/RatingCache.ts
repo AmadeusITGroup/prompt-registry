@@ -111,7 +111,7 @@ export class RatingCache {
      */
     getRatingDisplay(sourceId: string, bundleId: string): RatingDisplay | undefined {
         const rating = this.getRating(sourceId, bundleId);
-        if (!rating || rating.voteCount === 0) {
+        if (!rating || rating.voteCount === 0 || rating.starRating === 0) {
             return undefined;
         }
 

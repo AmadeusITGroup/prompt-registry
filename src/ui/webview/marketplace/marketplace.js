@@ -423,7 +423,7 @@ function renderBundles() {
             <div class="bundle-header">
                 <div class="bundle-title-row">
                     <div class="bundle-title">${bundle.name}</div>
-                    ${bundle.rating ? `
+                    ${bundle.rating && bundle.rating.voteCount > 0 && bundle.rating.starRating > 0 ? `
                         <button class="rating-badge clickable"
                                 data-action="showFeedbacks" data-bundle-id="${bundle.id}"
                                 title="${bundle.rating.voteCount} votes">
