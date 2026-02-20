@@ -19,6 +19,7 @@ import {
     Feedback,
     EngagementResourceType,
 } from '../types/engagement';
+import { PendingFeedback } from '../types/pendingFeedback';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -32,6 +33,7 @@ interface EngagementStoragePaths {
     telemetry: string;
     ratings: string;
     feedback: string;
+    pendingFeedback: string;
 }
 
 /**
@@ -59,6 +61,14 @@ interface FeedbackStore {
 }
 
 /**
+ * Internal storage format for pending feedback
+ */
+interface PendingFeedbackStore {
+    version: string;
+    entries: PendingFeedback[];
+}
+
+/**
  * EngagementStorage manages file-based persistence for engagement data
  */
 export class EngagementStorage {
@@ -66,6 +76,7 @@ export class EngagementStorage {
     private telemetryCache?: TelemetryStore;
     private ratingsCache?: RatingsStore;
     private feedbackCache?: FeedbackStore;
+    private pendingFeedbackCache?: PendingFeedbackStore;
 
     private static readonly STORAGE_VERSION = '1.0.0';
     private static readonly MAX_TELEMETRY_EVENTS = 10000;
@@ -82,6 +93,7 @@ export class EngagementStorage {
             telemetry: path.join(engagementDir, 'telemetry.json'),
             ratings: path.join(engagementDir, 'ratings.json'),
             feedback: path.join(engagementDir, 'feedback.json'),
+            pendingFeedback: path.join(engagementDir, 'pending-feedback.json'),
         };
     }
 
@@ -378,6 +390,65 @@ export class EngagementStorage {
     }
 
     // ========================================================================
+    // Pending Feedback Operations
+    // ========================================================================
+
+    async savePendingFeedback(entry: PendingFeedback): Promise<void> {
+        const store = await this.loadPendingFeedbackStore();
+        const existingIndex = store.entries.findIndex(e => e.id === entry.id);
+        if (existingIndex >= 0) {
+            store.entries[existingIndex] = entry;
+        } else {
+            store.entries.push(entry);
+        }
+        await this.savePendingFeedbackStore(store);
+    }
+
+    async getPendingFeedback(): Promise<PendingFeedback[]> {
+        const store = await this.loadPendingFeedbackStore();
+        return store.entries;
+    }
+
+    async getUnsyncedFeedback(): Promise<PendingFeedback[]> {
+        const store = await this.loadPendingFeedbackStore();
+        return store.entries.filter(e => !e.synced);
+    }
+
+    async markFeedbackSynced(id: string): Promise<void> {
+        const store = await this.loadPendingFeedbackStore();
+        const entry = store.entries.find(e => e.id === id);
+        if (entry) {
+            entry.synced = true;
+            await this.savePendingFeedbackStore(store);
+        }
+    }
+
+    async deletePendingFeedback(id: string): Promise<void> {
+        const store = await this.loadPendingFeedbackStore();
+        store.entries = store.entries.filter(e => e.id !== id);
+        await this.savePendingFeedbackStore(store);
+    }
+
+    private async loadPendingFeedbackStore(): Promise<PendingFeedbackStore> {
+        if (this.pendingFeedbackCache) {
+            return this.pendingFeedbackCache;
+        }
+        try {
+            const data = await readFile(this.paths.pendingFeedback, 'utf-8');
+            this.pendingFeedbackCache = JSON.parse(data) as PendingFeedbackStore;
+            return this.pendingFeedbackCache;
+        } catch {
+            return { version: EngagementStorage.STORAGE_VERSION, entries: [] };
+        }
+    }
+
+    private async savePendingFeedbackStore(store: PendingFeedbackStore): Promise<void> {
+        await this.initialize();
+        await writeFile(this.paths.pendingFeedback, JSON.stringify(store, null, 2), 'utf-8');
+        this.pendingFeedbackCache = store;
+    }
+
+    // ========================================================================
     // Cache Management
     // ========================================================================
 
@@ -388,6 +459,7 @@ export class EngagementStorage {
         this.telemetryCache = undefined;
         this.ratingsCache = undefined;
         this.feedbackCache = undefined;
+        this.pendingFeedbackCache = undefined;
     }
 
     /**
@@ -407,5 +479,11 @@ export class EngagementStorage {
             feedback: [],
         };
         await this.saveFeedbackStore(emptyFeedback);
+
+        const emptyPending: PendingFeedbackStore = {
+            version: EngagementStorage.STORAGE_VERSION,
+            entries: [],
+        };
+        await this.savePendingFeedbackStore(emptyPending);
     }
 }

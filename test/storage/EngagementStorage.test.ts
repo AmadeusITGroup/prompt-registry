@@ -14,6 +14,7 @@ import {
     Feedback,
     RatingScore,
 } from '../../src/types/engagement';
+import { PendingFeedback } from '../../src/types/pendingFeedback';
 
 suite('EngagementStorage', () => {
     let storage: EngagementStorage;
@@ -380,6 +381,91 @@ suite('EngagementStorage', () => {
                 assert.strictEqual(feedback.length, 1);
                 assert.strictEqual(feedback[0].id, 'f2');
             });
+        });
+    });
+
+    // ========================================================================
+    // Pending Feedback Tests
+    // ========================================================================
+
+    suite('Pending Feedback Operations', () => {
+        test('should save and retrieve pending feedback', async () => {
+            const pending: PendingFeedback = {
+                id: 'pf-1',
+                bundleId: 'test-bundle',
+                sourceId: 'test-source',
+                hubId: 'test-hub',
+                resourceType: 'bundle',
+                rating: 4 as RatingScore,
+                comment: 'Great bundle!',
+                timestamp: new Date().toISOString(),
+                synced: false,
+            };
+
+            await storage.savePendingFeedback(pending);
+            const result = await storage.getPendingFeedback();
+            assert.strictEqual(result.length, 1);
+            assert.strictEqual(result[0].id, 'pf-1');
+            assert.strictEqual(result[0].synced, false);
+        });
+
+        test('should retrieve only unsynced pending feedback', async () => {
+            const synced: PendingFeedback = {
+                id: 'pf-synced', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
+                resourceType: 'bundle', rating: 5 as RatingScore,
+                timestamp: new Date().toISOString(), synced: true,
+            };
+            const unsynced: PendingFeedback = {
+                id: 'pf-unsynced', bundleId: 'b2', sourceId: 's2', hubId: 'h2',
+                resourceType: 'bundle', rating: 3 as RatingScore,
+                timestamp: new Date().toISOString(), synced: false,
+            };
+
+            await storage.savePendingFeedback(synced);
+            await storage.savePendingFeedback(unsynced);
+            const result = await storage.getUnsyncedFeedback();
+            assert.strictEqual(result.length, 1);
+            assert.strictEqual(result[0].id, 'pf-unsynced');
+        });
+
+        test('should update synced status', async () => {
+            const pending: PendingFeedback = {
+                id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
+                resourceType: 'bundle', rating: 4 as RatingScore,
+                timestamp: new Date().toISOString(), synced: false,
+            };
+
+            await storage.savePendingFeedback(pending);
+            await storage.markFeedbackSynced('pf-1');
+            const result = await storage.getPendingFeedback();
+            assert.strictEqual(result[0].synced, true);
+        });
+
+        test('should delete pending feedback by id', async () => {
+            const pending: PendingFeedback = {
+                id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
+                resourceType: 'bundle', rating: 4 as RatingScore,
+                timestamp: new Date().toISOString(), synced: false,
+            };
+
+            await storage.savePendingFeedback(pending);
+            await storage.deletePendingFeedback('pf-1');
+            const result = await storage.getPendingFeedback();
+            assert.strictEqual(result.length, 0);
+        });
+
+        test('should update existing entry when saving with same id', async () => {
+            const pending: PendingFeedback = {
+                id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
+                resourceType: 'bundle', rating: 3 as RatingScore,
+                timestamp: new Date().toISOString(), synced: false,
+            };
+
+            await storage.savePendingFeedback(pending);
+            await storage.savePendingFeedback({ ...pending, rating: 5 as RatingScore });
+            const result = await storage.getPendingFeedback();
+            assert.strictEqual(result.length, 1);
+            assert.strictEqual(result[0].rating, 5);
         });
     });
 
