@@ -424,13 +424,11 @@ function renderBundles() {
                 <div class="bundle-title-row">
                     <div class="bundle-title">${bundle.name}</div>
                     ${bundle.rating && bundle.rating.voteCount > 0 && bundle.rating.starRating > 0 ? `
-                        <button class="rating-badge clickable"
-                                data-action="showFeedbacks" data-bundle-id="${bundle.id}"
-                                title="${bundle.rating.voteCount} votes">
-                            <span class="rating-stars">${renderStars(bundle.rating.starRating)}</span>
-                            <span class="rating-score">${bundle.rating.starRating?.toFixed(1) || '0.0'}</span>
+                        <div class="interactive-stars" data-bundle-id="${bundle.id}" data-current-rating="${bundle.rating.starRating}" data-action="showFeedbacks">
+                            ${[1,2,3,4,5].map(i => '<span class="star ' + (i <= Math.round(bundle.rating.starRating) ? 'filled' : '') + '" data-star="' + i + '" title="' + i + ' star' + (i > 1 ? 's' : '') + '">★</span>').join('')}
+                            <span class="rating-score">${bundle.rating.starRating.toFixed(1)}</span>
                             <span class="rating-votes">(${bundle.rating.voteCount})</span>
-                        </button>
+                        </div>
                     ` : ''}
                 </div>
                 <div class="bundle-author-row">
@@ -723,6 +721,104 @@ function installBundleVersion(bundleId, version, event) {
     });
 }
 
+// ========================================================================
+// Interactive Star Rating
+// ========================================================================
+
+function handleStarHover(starElement) {
+    const container = starElement.closest('.interactive-stars');
+    const starValue = parseInt(starElement.dataset.star);
+    const stars = container.querySelectorAll('.star');
+    stars.forEach(s => {
+        const val = parseInt(s.dataset.star);
+        s.classList.toggle('hovered', val <= starValue);
+    });
+}
+
+function handleStarLeave(container) {
+    const currentRating = parseFloat(container.dataset.currentRating) || 0;
+    const stars = container.querySelectorAll('.star');
+    stars.forEach(s => {
+        s.classList.remove('hovered');
+        const val = parseInt(s.dataset.star);
+        s.classList.toggle('filled', val <= Math.round(currentRating));
+    });
+}
+
+function handleStarClick(starElement, event) {
+    event.stopPropagation();
+    const container = starElement.closest('.interactive-stars');
+    const bundleId = container.dataset.bundleId;
+    const rating = parseInt(starElement.dataset.star);
+
+    // Show inline feedback form
+    let form = container.parentElement.querySelector('.inline-feedback-form');
+    if (!form) {
+        form = createFeedbackForm(bundleId, rating);
+        container.parentElement.appendChild(form);
+    } else {
+        form.dataset.rating = rating;
+    }
+
+    // Update star display to show selected rating
+    const stars = container.querySelectorAll('.star');
+    stars.forEach(s => {
+        const val = parseInt(s.dataset.star);
+        s.classList.toggle('filled', val <= rating);
+        s.classList.remove('hovered');
+    });
+
+    form.classList.add('visible');
+    form.querySelector('textarea')?.focus();
+}
+
+function createFeedbackForm(bundleId, rating) {
+    const form = document.createElement('div');
+    form.className = 'inline-feedback-form visible';
+    form.dataset.rating = rating;
+    form.innerHTML = `
+        <textarea placeholder="Optional: share your experience..." maxlength="1000"></textarea>
+        <div class="form-actions">
+            <button class="btn btn-secondary btn-small" data-action="cancelFeedback" data-bundle-id="${bundleId}">Cancel</button>
+            <button class="btn btn-primary btn-small" data-action="submitInlineFeedback" data-bundle-id="${bundleId}">Submit</button>
+        </div>
+    `;
+    return form;
+}
+
+function submitInlineFeedback(bundleId, element) {
+    const form = element.closest('.inline-feedback-form');
+    const rating = parseInt(form.dataset.rating);
+    const comment = form.querySelector('textarea').value.trim();
+
+    vscode.postMessage({
+        type: 'submitFeedback',
+        bundleId: bundleId,
+        rating: rating,
+        comment: comment || undefined,
+    });
+
+    form.classList.remove('visible');
+}
+
+function cancelFeedback(bundleId, element) {
+    const form = element.closest('.inline-feedback-form');
+    form.classList.remove('visible');
+}
+
+// Star hover events
+document.addEventListener('mouseover', (e) => {
+    const star = e.target.closest('.interactive-stars .star');
+    if (star) handleStarHover(star);
+});
+
+document.addEventListener('mouseout', (e) => {
+    const container = e.target.closest('.interactive-stars');
+    if (container && !container.contains(e.relatedTarget)) {
+        handleStarLeave(container);
+    }
+});
+
 // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.version-selector-group')) {
@@ -739,6 +835,13 @@ function installBundleVersion(bundleId, version, event) {
         // Handle bundle-actions stop propagation
         if (target.closest('[data-stop-propagation]')) {
             e.stopPropagation();
+        }
+
+        // Handle star clicks (before generic action handling)
+        const starElement = target.closest('.interactive-stars .star');
+        if (starElement) {
+            handleStarClick(starElement, e);
+            return;
         }
 
         // Handle data-action attributes
@@ -804,6 +907,12 @@ function installBundleVersion(bundleId, version, event) {
                     break;
                 case 'quickFeedback':
                     if (bundleId) quickFeedback(bundleId);
+                    break;
+                case 'submitInlineFeedback':
+                    if (bundleId) submitInlineFeedback(bundleId, actionElement);
+                    break;
+                case 'cancelFeedback':
+                    if (bundleId) cancelFeedback(bundleId, actionElement);
                     break;
             }
         }

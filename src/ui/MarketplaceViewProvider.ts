@@ -22,13 +22,15 @@ import { FeedbackCache } from '../services/engagement/FeedbackCache';
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks' | 'submitFeedback';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
     version?: string;
     enabled?: boolean;
     sourceId?: string;
+    rating?: number;
+    comment?: string;
 }
 
 /**
@@ -542,6 +544,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     await this.handleGetFeedbacks(message.bundleId);
                 }
                 break;
+            case 'submitFeedback':
+                if (message.bundleId && message.rating) {
+                    await this.handleWebviewFeedback(message.bundleId, message.rating, message.comment);
+                }
+                break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
         }
@@ -643,6 +650,33 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     rating: null
                 });
             }
+        }
+    }
+
+    /**
+     * Handle feedback submitted from the webview interactive stars
+     */
+    private async handleWebviewFeedback(bundleId: string, rating: number, comment?: string): Promise<void> {
+        try {
+            const bundles = await this.registryManager.searchBundles({ text: bundleId });
+            const bundle = bundles.find(b => b.id === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = bundle ? sources.find(s => s.id === bundle.sourceId) : undefined;
+
+            await vscode.commands.executeCommand('promptRegistry.feedback', {
+                resourceId: bundleId,
+                resourceType: 'bundle',
+                name: bundle?.name || bundleId,
+                version: bundle?.version,
+                sourceUrl: source?.url,
+                sourceType: source?.type,
+                hubId: source?.hubId,
+                sourceId: bundle?.sourceId,
+                prefilledRating: rating,
+                prefilledComment: comment,
+            });
+        } catch (error) {
+            this.logger.error(`Failed to process webview feedback: ${error}`);
         }
     }
 

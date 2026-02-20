@@ -36,6 +36,10 @@ export interface FeedbackableItem {
     hubId?: string;
     /** Source ID for cache key matching */
     sourceId?: string;
+    /** Pre-filled rating from webview (skips QuickPick) */
+    prefilledRating?: RatingScore;
+    /** Pre-filled comment from webview (skips InputBox) */
+    prefilledComment?: string;
 }
 
 /**
@@ -145,6 +149,12 @@ export class FeedbackCommands {
     async submitFeedback(item: FeedbackableItem): Promise<FeedbackResult> {
         const resourceName = item.name || item.resourceId;
 
+        // Fast path: pre-filled from webview interactive stars
+        if (item.prefilledRating) {
+            const comment = item.prefilledComment || `Rated ${item.prefilledRating} stars`;
+            return this.saveFeedback(item, comment, item.prefilledRating);
+        }
+
         // Step 1: Star Rating (1-5)
         const ratingOptions: vscode.QuickPickItem[] = [
             { label: '⭐⭐⭐⭐⭐', description: '5 stars - Excellent!' },
@@ -196,7 +206,7 @@ export class FeedbackCommands {
 
         // Prepare comment
         const comment = quickComment.trim() || `Rated ${rating} stars`;
-        
+
         // Save the feedback first
         const result = await this.saveFeedback(item, comment, rating);
 

@@ -493,6 +493,73 @@ body {
     font-size: 11px;
 }
 
+/* Interactive star rating */
+.interactive-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+    padding: 4px 8px;
+    background: var(--vscode-badge-background);
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.interactive-stars .star {
+    font-size: 16px;
+    color: var(--vscode-descriptionForeground);
+    transition: color 0.1s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+.interactive-stars .star.filled {
+    color: #ffa500;
+}
+
+.interactive-stars .star.hovered {
+    color: #ffc966;
+}
+
+/* Inline feedback form */
+.inline-feedback-form {
+    display: none;
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+}
+
+.inline-feedback-form.visible {
+    display: block;
+}
+
+.inline-feedback-form textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    resize: vertical;
+}
+
+.inline-feedback-form textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.inline-feedback-form .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 6px;
+}
+
 .bundle-description {
     font-size: 14px;
     color: var(--vscode-foreground);
