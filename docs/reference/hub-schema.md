@@ -224,6 +224,52 @@ configuration:
   strictMode: true
 ```
 
+## Scaffold Defaults Object (Optional)
+
+Default values for project scaffolding prompts. Each organization-level field is individually skipped when its default is present. Fields like `githubOrg` and `githubRunner` are always shown but pre-filled from defaults.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `githubOrg` | string | GitHub organization name (pre-fills the prompt; always shown) |
+| `githubRunner` | string | GitHub Actions runner label or pattern. Supports `{githubOrg}` placeholder (e.g., `gmsshr-core-{githubOrg}`). Always shown, pre-filled with resolved value. |
+| `organizationName` | string | Organization name for LICENSE (skipped when present — value used directly) |
+| `internalContact` | string | Internal contact email for security/support (skipped when present) |
+| `legalContact` | string | Legal contact email for licensing questions (skipped when present) |
+| `organizationPolicyLink` | string | Organization policy URL (skipped when present) |
+
+**Note:** `author`, `description`, and `tags` are NOT part of scaffold defaults. The author field is pre-filled from the user's GitHub identity instead.
+
+### Runner Pattern
+
+The `githubRunner` field supports a `{githubOrg}` placeholder that is resolved at scaffold time using the selected GitHub organization. Only `{githubOrg}` is supported.
+
+**Example:** `gmsshr-core-{githubOrg}` with org `myorg` → `gmsshr-core-myorg`
+
+### Prompt Behavior
+
+| Field | Hub Default Present | Hub Default Absent |
+|-------|--------------------|--------------------|
+| `projectName` | Always asked | Always asked |
+| `author` | Prefilled from GitHub identity | Prefilled from GitHub identity |
+| `githubOrg` | Prefilled from default | Shown empty |
+| `githubRunner` | Prefilled with resolved pattern | Quick pick (ubuntu-latest / self-hosted / custom) |
+| `organizationName` | **Skipped** — hub value used | Asked |
+| `internalContact` | **Skipped** — hub value used | Asked |
+| `legalContact` | **Skipped** — hub value used | Asked |
+| `organizationPolicyLink` | **Skipped** — hub value used | Asked |
+
+### Example
+
+```yaml
+scaffoldDefaults:
+  githubOrg: "myorg"
+  githubRunner: "gmsshr-core-{githubOrg}"
+  organizationName: "My Organization Inc."
+  internalContact: "security@myorg.com"
+  legalContact: "legal@myorg.com"
+  organizationPolicyLink: "https://myorg.com/policies"
+```
+
 ## Complete Example
 
 ```yaml
@@ -269,6 +315,14 @@ profiles:
 configuration:
   autoSync: true
   syncInterval: 3600
+
+scaffoldDefaults:
+  githubOrg: "myorg"
+  githubRunner: "gmsshr-core-{githubOrg}"
+  organizationName: "My Organization"
+  internalContact: "security@myorg.com"
+  legalContact: "legal@myorg.com"
+  organizationPolicyLink: "https://myorg.com/policies"
 ```
 
 ## Validation
