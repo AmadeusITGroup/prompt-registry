@@ -1229,7 +1229,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         const ratingDisplayHtml = rating ? `
             <span class="rating-stars">${'★'.repeat(Math.round(rating.starRating))}${'☆'.repeat(5 - Math.round(rating.starRating))}</span>
             <span class="rating-score">${rating.starRating.toFixed(1)}</span>
-            <span class="rating-meta">${rating.voteCount} votes (${rating.confidence} confidence)</span>
+            <span class="rating-meta">${rating.voteCount} votes</span>
         ` : `<span class="no-rating">No ratings yet</span>`;
 
         const breakdownContent = isInstalled ? `

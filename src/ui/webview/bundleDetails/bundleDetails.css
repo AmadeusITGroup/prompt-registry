@@ -244,17 +244,15 @@ code {
     margin-bottom: 24px;
 }
 
-.rating-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
 .rating-display {
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-bottom: 12px;
+}
+
+.rating-action {
+    margin-bottom: 4px;
 }
 
 .rating-stars {
