@@ -35,8 +35,8 @@
     "vscode": "^1.99.3"
   },
   "extensionKind": [
-    "ui",
-    "workspace"
+    "workspace",
+    "ui"
   ],
   "main": "./dist/extension.js",
   "icon": "icon.png",

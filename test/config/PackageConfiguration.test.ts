@@ -19,6 +19,17 @@ suite('Package Configuration - Update Check Settings', () => {
     });
 
     suite('Configuration Schema Structure', () => {
+        test('should prefer workspace extension host for remote environments', () => {
+            assert.ok(Array.isArray(packageJson.extensionKind), 'package.json should define extensionKind array');
+            assert.ok(packageJson.extensionKind.includes('workspace'), 'extensionKind should include workspace');
+            assert.ok(packageJson.extensionKind.includes('ui'), 'extensionKind should include ui fallback');
+            assert.strictEqual(
+                packageJson.extensionKind[0],
+                'workspace',
+                'workspace should be first so WSL/remote sessions run repository file operations in the remote host'
+            );
+        });
+
         test('should have configuration section', () => {
             assert.ok(packageJson.contributes, 'package.json should have contributes section');
             assert.ok(packageJson.contributes.configuration, 'contributes should have configuration section');
