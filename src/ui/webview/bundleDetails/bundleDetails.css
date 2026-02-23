@@ -397,3 +397,23 @@ code {
     font-size: 13px;
     margin-top: 8px;
 }
+
+.issue-links {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+}
+
+.btn-link:hover {
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}

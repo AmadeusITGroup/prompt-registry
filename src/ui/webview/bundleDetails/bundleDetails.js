@@ -123,6 +123,20 @@
         });
     }
 
+    // Report Issue / Request Feature
+    const reportIssueBtn = document.getElementById('reportIssueBtn');
+    const requestFeatureBtn = document.getElementById('requestFeatureBtn');
+    if (reportIssueBtn) {
+        reportIssueBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'reportIssue', bundleId: bundleId });
+        });
+    }
+    if (requestFeatureBtn) {
+        requestFeatureBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'requestFeature', bundleId: bundleId });
+        });
+    }
+
     // Cancel feedback
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {

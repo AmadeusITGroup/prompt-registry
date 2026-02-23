@@ -516,8 +516,6 @@ function renderBundles() {
                 <button class="btn btn-link" data-action="openSourceRepo" data-bundle-id="${bundle.id}" title="Open Source Repository">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 1 1 0v2a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2h2a.5.5 0 0 1 0 1h-2zM9 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V3.707l-5.146 5.147a.5.5 0 0 1-.708-.708L12.293 3H9.5a.5.5 0 0 1-.5-.5z"/></svg>
                 </button>
-                <button class="btn btn-link" data-action="reportIssue" data-bundle-id="${bundle.id}" title="Report Issue">Report Issue</button>
-                <button class="btn btn-link" data-action="requestFeature" data-bundle-id="${bundle.id}" title="Request Feature">Request Feature</button>
             </div>
         </div>
     `).join('');

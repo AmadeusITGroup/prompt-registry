@@ -1171,6 +1171,18 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         await this.handleBundleDetailFeedback(
                             panel, bundle, message.bundleId, message.rating, message.comment
                         );
+                    } else if (message.type === 'reportIssue' || message.type === 'requestFeature') {
+                        const command = message.type === 'reportIssue' ? 'promptRegistry.reportIssue' : 'promptRegistry.requestFeature';
+                        const detailSources = await this.registryManager.listSources();
+                        const detailSource = detailSources.find(s => s.id === bundle.sourceId);
+                        await vscode.commands.executeCommand(command, {
+                            resourceId: bundle.id,
+                            resourceType: 'bundle',
+                            name: bundle.name,
+                            version: bundle.version,
+                            sourceUrl: detailSource?.url,
+                            sourceType: detailSource?.type,
+                        });
                     }
                 },
                 undefined,
