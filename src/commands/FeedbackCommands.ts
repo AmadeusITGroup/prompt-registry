@@ -85,6 +85,18 @@ export class FeedbackCommands {
             vscode.commands.registerCommand(
                 'promptRegistry.submitFeedback',
                 (item: FeedbackableItem | any) => this.submitFeedback(this.normalizeFeedbackItem(item))
+            ),
+            vscode.commands.registerCommand(
+                'promptRegistry.reportIssue',
+                (item: any) => this.reportIssue(this.normalizeFeedbackItem(item))
+            ),
+            vscode.commands.registerCommand(
+                'promptRegistry.requestFeature',
+                (item: any) => this.requestFeature(this.normalizeFeedbackItem(item))
+            ),
+            vscode.commands.registerCommand(
+                'promptRegistry.retryFeedback',
+                (item: any) => this.retryFeedback(this.normalizeFeedbackItem(item))
             )
         );
 
@@ -353,6 +365,139 @@ export class FeedbackCommands {
         }
     }
 
+
+    /**
+     * Report an issue for a bundle (opens issue tracker with bug template)
+     */
+    async reportIssue(item: FeedbackableItem): Promise<void> {
+        await this.openIssueTrackerWithTemplate(item, 'bug');
+    }
+
+    /**
+     * Request a feature for a bundle (opens issue tracker with feature template)
+     */
+    async requestFeature(item: FeedbackableItem): Promise<void> {
+        await this.openIssueTrackerWithTemplate(item, 'feature');
+    }
+
+    /**
+     * Retry submitting unsynced feedback for a bundle
+     */
+    async retryFeedback(item: FeedbackableItem): Promise<void> {
+        const storage = this.engagementService?.getStorage?.();
+        if (!storage) return;
+
+        const unsynced = await storage.getUnsyncedFeedback();
+        const pending = unsynced.filter(f => f.bundleId === item.resourceId);
+
+        if (pending.length === 0) {
+            vscode.window.showInformationMessage('No pending feedback to retry.');
+            return;
+        }
+
+        for (const entry of pending) {
+            try {
+                if (this.engagementService) {
+                    await this.engagementService.submitFeedback(
+                        entry.resourceType,
+                        entry.bundleId,
+                        entry.comment || `Rated ${entry.rating} stars`,
+                        { rating: entry.rating, hubId: entry.hubId || undefined }
+                    );
+                    await storage.markFeedbackSynced(entry.id);
+                }
+            } catch (error) {
+                this.logger.warn(`Retry failed for ${entry.id}: ${error}`);
+            }
+        }
+
+        const stillUnsynced = (await storage.getUnsyncedFeedback()).filter(f => f.bundleId === item.resourceId);
+        if (stillUnsynced.length === 0) {
+            vscode.window.showInformationMessage('Feedback submitted successfully!');
+        } else {
+            vscode.window.showWarningMessage(`${stillUnsynced.length} feedback(s) still pending. Please try again later.`);
+        }
+    }
+
+    private async openIssueTrackerWithTemplate(
+        item: FeedbackableItem,
+        type: 'bug' | 'feature'
+    ): Promise<void> {
+        try {
+            if (!item.sourceUrl) {
+                vscode.window.showWarningMessage('No source repository URL available for this bundle.');
+                return;
+            }
+
+            let issueUrl = item.sourceUrl;
+            if (issueUrl.endsWith('.git')) {
+                issueUrl = issueUrl.slice(0, -4);
+            }
+
+            const githubMatch = issueUrl.match(/^(https?:\/\/github\.com\/[^/]+\/[^/]+)/);
+            if (githubMatch) {
+                issueUrl = `${githubMatch[1]}/issues/new`;
+            } else if (!issueUrl.includes('/issues')) {
+                issueUrl = `${issueUrl}/issues/new`;
+            }
+
+            const isAwesomeCopilot = item.sourceType === 'awesome-copilot';
+            const itemType = isAwesomeCopilot ? 'Collection' : 'Bundle';
+            const name = item.name || item.resourceId;
+
+            let title: string;
+            let bodyParts: string[];
+
+            if (type === 'bug') {
+                title = `[Bug Report] ${name}`;
+                bodyParts = [
+                    `${itemType} Information`,
+                    `- **${itemType} ID:** ${item.resourceId}`,
+                    ...(item.version ? [`- **Version:** ${item.version}`] : []),
+                    '',
+                    '## Bug Description',
+                    '_Describe the bug clearly and concisely_',
+                    '',
+                    '## Steps to Reproduce',
+                    '1. ',
+                    '2. ',
+                    '3. ',
+                    '',
+                    '## Expected Behavior',
+                    '_What did you expect to happen?_',
+                    '',
+                    '## Actual Behavior',
+                    '_What actually happened?_',
+                    '',
+                    '## Additional Context',
+                    '_Any other information that might be helpful_',
+                ];
+            } else {
+                title = `[Feature Request] ${name}`;
+                bodyParts = [
+                    `${itemType} Information`,
+                    `- **${itemType} ID:** ${item.resourceId}`,
+                    ...(item.version ? [`- **Version:** ${item.version}`] : []),
+                    '',
+                    '## Feature Description',
+                    '_Describe the feature you would like_',
+                    '',
+                    '## Use Case',
+                    '_Why would this feature be useful?_',
+                    '',
+                    '## Additional Context',
+                    '_Any other information or examples_',
+                ];
+            }
+
+            const params = new URLSearchParams({ title, body: bodyParts.join('\n') });
+            const uri = vscode.Uri.parse(`${issueUrl}?${params.toString()}`, true);
+            await vscode.env.openExternal(uri);
+        } catch (error) {
+            this.logger.warn('Could not open issue tracker', error as Error);
+            vscode.window.showWarningMessage('Could not open issue tracker. Please visit the repository manually.');
+        }
+    }
 
     /**
      * Save feedback to the engagement service

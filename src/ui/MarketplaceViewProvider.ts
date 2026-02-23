@@ -26,7 +26,7 @@ import { PendingFeedback } from '../types/pendingFeedback';
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks' | 'submitFeedback';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks' | 'submitFeedback' | 'reportIssue' | 'requestFeature';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
@@ -551,6 +551,26 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             case 'submitFeedback':
                 if (message.bundleId && message.rating) {
                     await this.handleWebviewFeedback(message.bundleId, message.rating, message.comment);
+                }
+                break;
+            case 'reportIssue':
+            case 'requestFeature':
+                if (message.bundleId) {
+                    const command = message.type === 'reportIssue' ? 'promptRegistry.reportIssue' : 'promptRegistry.requestFeature';
+                    const bundles = await this.registryManager.searchBundles({ text: message.bundleId });
+                    const foundBundle = bundles.find(b => b.id === message.bundleId);
+                    if (foundBundle) {
+                        const allSources = await this.registryManager.listSources();
+                        const foundSource = allSources.find(s => s.id === foundBundle.sourceId);
+                        await vscode.commands.executeCommand(command, {
+                            resourceId: foundBundle.id,
+                            resourceType: 'bundle',
+                            name: foundBundle.name,
+                            version: foundBundle.version,
+                            sourceUrl: foundSource?.url,
+                            sourceType: foundSource?.type,
+                        });
+                    }
                 }
                 break;
             default:

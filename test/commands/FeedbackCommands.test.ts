@@ -232,9 +232,12 @@ suite('FeedbackCommands', () => {
 
             commands.registerCommands(mockContext);
 
-            assert.strictEqual(registerCommandStub.callCount, 2);
+            assert.strictEqual(registerCommandStub.callCount, 5);
             assert.ok(registerCommandStub.calledWith('promptRegistry.feedback'));
             assert.ok(registerCommandStub.calledWith('promptRegistry.submitFeedback'));
+            assert.ok(registerCommandStub.calledWith('promptRegistry.reportIssue'));
+            assert.ok(registerCommandStub.calledWith('promptRegistry.requestFeature'));
+            assert.ok(registerCommandStub.calledWith('promptRegistry.retryFeedback'));
         });
     });
 

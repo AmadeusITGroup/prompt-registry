@@ -439,6 +439,24 @@
         "title": "Rate & Feedback",
         "category": "Prompt Registry",
         "icon": "$(star-full)"
+      },
+      {
+        "command": "promptRegistry.reportIssue",
+        "title": "Report Issue",
+        "category": "Prompt Registry",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "promptRegistry.requestFeature",
+        "title": "Request Feature",
+        "category": "Prompt Registry",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "promptRegistry.retryFeedback",
+        "title": "Retry Feedback Submission",
+        "category": "Prompt Registry",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -658,6 +676,21 @@
           "command": "promptRegistry.feedback",
           "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
           "group": "engagement@1"
+        },
+        {
+          "command": "promptRegistry.reportIssue",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
+          "group": "engagement@2"
+        },
+        {
+          "command": "promptRegistry.requestFeature",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
+          "group": "engagement@3"
+        },
+        {
+          "command": "promptRegistry.retryFeedback",
+          "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
+          "group": "engagement@4"
         },
         {
           "command": "promptRegistry.moveToRepositoryCommit",
