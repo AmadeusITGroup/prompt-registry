@@ -26,7 +26,21 @@
                 {{ratingDisplay}}
             </div>
             <div class="feedback-actions">
-                <button class="btn-feedback" data-action="feedback">⭐ Rate & Feedback</button>
+                <div class="interactive-stars" id="detailStars">
+                    <span class="star" data-star="1" title="1 star">★</span>
+                    <span class="star" data-star="2" title="2 stars">★</span>
+                    <span class="star" data-star="3" title="3 stars">★</span>
+                    <span class="star" data-star="4" title="4 stars">★</span>
+                    <span class="star" data-star="5" title="5 stars">★</span>
+                    <span class="star-label">Rate this bundle</span>
+                </div>
+            </div>
+        </div>
+        <div class="inline-feedback-form" id="detailFeedbackForm">
+            <textarea placeholder="Optional: share your experience..." maxlength="1000"></textarea>
+            <div class="form-actions">
+                <button class="btn btn-secondary btn-small" id="cancelFeedbackBtn">Cancel</button>
+                <button class="btn btn-primary btn-small" id="submitFeedbackBtn">Submit</button>
             </div>
         </div>
     </div>
