@@ -385,7 +385,9 @@ export class FeedbackCommands {
      */
     async retryFeedback(item: FeedbackableItem): Promise<void> {
         const storage = this.engagementService?.getStorage?.();
-        if (!storage) return;
+        if (!storage) {
+            return;
+        }
 
         const unsynced = await storage.getUnsyncedFeedback();
         const pending = unsynced.filter(f => f.bundleId === item.resourceId);
