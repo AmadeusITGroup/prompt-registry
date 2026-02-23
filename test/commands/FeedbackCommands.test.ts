@@ -241,6 +241,61 @@ suite('FeedbackCommands', () => {
         });
     });
 
+    suite('Issue Tracker URL Encoding', () => {
+        let openExternalStub: sinon.SinonStub;
+
+        setup(() => {
+            openExternalStub = sandbox.stub(vscode.env, 'openExternal').resolves(true);
+        });
+
+        test('reportIssue URL should not double-encode markdown characters', async () => {
+            const item = createMockItem({
+                sourceUrl: 'https://github.com/org/repo',
+                sourceType: 'github',
+            });
+
+            await commands.reportIssue(item);
+
+            assert.ok(openExternalStub.calledOnce, 'openExternal should be called');
+            const uri: vscode.Uri = openExternalStub.firstCall.args[0];
+            const url = uri.toString();
+
+            // The final URL query should contain properly encoded values
+            // that decode to markdown with ## headers
+            const queryString = url.split('?')[1];
+            assert.ok(queryString, 'URL should have query string');
+
+            // Decode the query once — it should produce clean markdown
+            const params = new URLSearchParams(queryString);
+            const body = params.get('body');
+            assert.ok(body, 'body param should exist');
+            assert.ok(body!.includes('## Bug Description'), `body should contain "## Bug Description" after single decode, got: ${body!.substring(0, 200)}`);
+            assert.ok(body!.includes('## Steps to Reproduce'), 'body should contain "## Steps to Reproduce"');
+            assert.ok(!body!.includes('%23'), `body should not contain literal %23 after decode, got: ${body!.substring(0, 200)}`);
+        });
+
+        test('requestFeature URL should not double-encode markdown characters', async () => {
+            const item = createMockItem({
+                sourceUrl: 'https://github.com/org/repo',
+                sourceType: 'github',
+            });
+
+            await commands.requestFeature(item);
+
+            assert.ok(openExternalStub.calledOnce);
+            const uri: vscode.Uri = openExternalStub.firstCall.args[0];
+            const url = uri.toString();
+
+            const queryString = url.split('?')[1];
+            const params = new URLSearchParams(queryString);
+            const body = params.get('body');
+            assert.ok(body, 'body param should exist');
+            assert.ok(body!.includes('## Feature Description'), `body should contain "## Feature Description" after single decode, got: ${body!.substring(0, 200)}`);
+            assert.ok(!body!.includes('%23'), `body should not contain literal %23 after decode`);
+            assert.ok(!body!.includes('%3F'), `body should not contain literal %3F after decode`);
+        });
+    });
+
     suite('setEngagementService()', () => {
         test('should allow setting engagement service after construction', async () => {
             const commandsWithoutService = new FeedbackCommands();

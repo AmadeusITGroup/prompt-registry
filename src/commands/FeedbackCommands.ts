@@ -493,9 +493,8 @@ export class FeedbackCommands {
             }
 
             const body = bodyParts.join('\n');
-            const query = `title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-            const uri = vscode.Uri.parse(issueUrl).with({ query });
-            await vscode.env.openExternal(uri);
+            const url = `${issueUrl}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+            await vscode.env.openExternal(vscode.Uri.parse(url));
         } catch (error) {
             this.logger.warn('Could not open issue tracker', error as Error);
             vscode.window.showWarningMessage('Could not open issue tracker. Please visit the repository manually.');
