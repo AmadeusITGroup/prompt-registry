@@ -492,8 +492,9 @@ export class FeedbackCommands {
                 ];
             }
 
-            const params = new URLSearchParams({ title, body: bodyParts.join('\n') });
-            const uri = vscode.Uri.parse(`${issueUrl}?${params.toString()}`, true);
+            const body = bodyParts.join('\n');
+            const query = `title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+            const uri = vscode.Uri.parse(issueUrl).with({ query });
             await vscode.env.openExternal(uri);
         } catch (error) {
             this.logger.warn('Could not open issue tracker', error as Error);
