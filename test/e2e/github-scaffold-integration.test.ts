@@ -60,9 +60,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 'skills/example-skill/assets',
                 '.github',
                 '.github/workflows',
-                '.github/actions',
-                '.github/actions/publish-common',
-                '.github/actions/pr-comment',
                 '.github/ISSUE_TEMPLATE',
                 '.vscode',
                 '.githooks'
@@ -82,8 +79,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 'README.md',
                 '.gitignore',
                 '.github/workflows/publish.yml',
-                '.github/actions/publish-common/action.yml',
-                '.github/actions/pr-comment/action.yml',
                 '.github/ISSUE_TEMPLATE/bug_report.yml',
                 '.github/ISSUE_TEMPLATE/feature_request.yml',
                 '.github/ISSUE_TEMPLATE/config.yml',
@@ -171,14 +166,14 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                 githubRunner: customRunner
             });
 
-            // Verify publish.yml has custom runner
+            // Verify publish.yml passes custom runner to the reusable workflow
             const publishContent = fs.readFileSync(
                 path.join(testDir, '.github/workflows/publish.yml'),
                 'utf8'
             );
             assert.ok(
-                publishContent.includes(`runs-on: ${customRunner}`),
-                `publish.yml should use runner: ${customRunner}`
+                publishContent.includes(`githubRunner: ${customRunner}`),
+                `publish.yml should pass githubRunner: ${customRunner} to the reusable workflow`
             );
         });
     });
@@ -200,8 +195,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
             // Design document specifies this exact structure:
             const designStructure = {
                 directories: [
-                    '.github/actions/publish-common',
-                    '.github/actions/pr-comment',
                     '.github/workflows',
                     '.github/ISSUE_TEMPLATE',
                     '.githooks',
@@ -217,8 +210,6 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
                     'skills/example-skill/assets'
                 ],
                 files: {
-                    '.github/actions/publish-common/action.yml': true,
-                    '.github/actions/pr-comment/action.yml': true,
                     '.github/workflows/publish.yml': true,
                     '.github/ISSUE_TEMPLATE/bug_report.yml': true,
                     '.github/ISSUE_TEMPLATE/feature_request.yml': true,

@@ -5,6 +5,9 @@ import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 import { FileUtils } from '../utils/fileUtils';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
+import { ScaffoldDefaults } from '../types/hub';
+import { HubManager } from '../services/HubManager';
+import { resolveRunnerPattern } from '../utils/scaffoldUtils';
 import { NpmCliWrapper } from '../utils/NpmCliWrapper';
 
 
@@ -232,7 +235,7 @@ export class ScaffoldCommand {
     /**
      * Run the scaffold command with full UI flow
      */
-    static async runWithUI(): Promise<void> {
+    static async runWithUI(hubManager?: HubManager): Promise<void> {
         const logger = Logger.getInstance();
 
         try {
@@ -240,20 +243,31 @@ export class ScaffoldCommand {
             const scaffoldType = await ScaffoldCommand.promptForScaffoldType();
             if (!scaffoldType) {return;}
 
-            // Step 2: Handle skill creation in existing project
+            // Step 2: Load scaffold defaults from active hub
+            let scaffoldDefaults: ScaffoldDefaults | undefined;
+            if (hubManager) {
+                try {
+                    const activeHub = await hubManager.getActiveHub();
+                    scaffoldDefaults = activeHub?.config?.scaffoldDefaults;
+                } catch {
+                    // No active hub or hub load failed — proceed without defaults
+                }
+            }
+
+            // Step 3: Handle skill creation in existing project
             if (scaffoldType.value === ScaffoldType.Skill && await ScaffoldCommand.handleSkillInExistingProject()) {
                 return;
             }
 
-            // Step 3: Select target directory
+            // Step 4: Select target directory
             const targetPath = await ScaffoldCommand.promptForTargetDirectory(scaffoldType.label);
             if (!targetPath) {return;}
 
-            // Step 4: Collect project details
-            const options = await ScaffoldCommand.promptForProjectDetails(scaffoldType.value);
+            // Step 5: Collect project details
+            const options = await ScaffoldCommand.promptForProjectDetails(scaffoldType.value, scaffoldDefaults);
             if (!options) {return;}
 
-            // Step 5: Execute scaffold with progress
+            // Step 6: Execute scaffold with progress
             await vscode.window.withProgress(
                 { location: vscode.ProgressLocation.Notification, title: `Scaffolding ${scaffoldType.label}...` },
                 async () => {
@@ -262,7 +276,7 @@ export class ScaffoldCommand {
                 }
             );
 
-            // Step 6: Post-scaffold actions
+            // Step 7: Post-scaffold actions
             await ScaffoldCommand.handlePostScaffoldActions(scaffoldType.label, targetPath);
         } catch (error) {
             logger.error('Scaffold failed', error as Error);
@@ -338,7 +352,7 @@ export class ScaffoldCommand {
     /**
      * Collect project details from user input
      */
-    private static async promptForProjectDetails(type: ScaffoldType): Promise<ScaffoldOptions | undefined> {
+    private static async promptForProjectDetails(type: ScaffoldType, scaffoldDefaults?: ScaffoldDefaults): Promise<ScaffoldOptions | undefined> {
         // Get project name
         const projectName = await vscode.window.showInputBox({
             prompt: 'Enter project name (optional)',
@@ -347,13 +361,11 @@ export class ScaffoldCommand {
             ignoreFocusOut: true
         });
 
-        // Get GitHub runner choice
-        const githubRunner = await ScaffoldCommand.promptForGitHubRunner();
         let details: { description?: string; author?: string; tags?: string[] } = {};
-        let orgDetails: { organizationName?: string; internalContact?: string; legalContact?: string; organizationPolicyLink?: string } = {};
-        
+        let orgDetails: { author?: string; githubOrg?: string; organizationName?: string; internalContact?: string; legalContact?: string; organizationPolicyLink?: string } = {};
+
         // Collect additional details if needed
-        
+
         if (type === ScaffoldType.Apm) {
             const apmDetails = await ScaffoldCommand.promptForApmDetails();
             if (apmDetails) {
@@ -370,8 +382,11 @@ export class ScaffoldCommand {
 
         // For GitHub type, collect organization details for InnerSource LICENSE
         if (type === ScaffoldType.GitHub) {
-            orgDetails = await ScaffoldCommand.promptForOrganizationDetails();
+            orgDetails = await ScaffoldCommand.promptForOrganizationDetails(scaffoldDefaults);
         }
+
+        // Get GitHub runner choice (always asked, prefilled from hub defaults)
+        const githubRunner = await ScaffoldCommand.promptForGitHubRunner(scaffoldDefaults, orgDetails.githubOrg);
 
         return {
             projectName,
@@ -384,7 +399,29 @@ export class ScaffoldCommand {
     /**
      * Prompt for GitHub Actions runner configuration
      */
-    private static async promptForGitHubRunner(): Promise<string> {
+    private static async promptForGitHubRunner(scaffoldDefaults?: ScaffoldDefaults, githubOrg?: string): Promise<string> {
+        // If hub provides a runner default, resolve the pattern and pre-fill
+        if (scaffoldDefaults?.githubRunner) {
+            const resolvedRunner = githubOrg
+                ? resolveRunnerPattern(scaffoldDefaults.githubRunner, githubOrg)
+                : scaffoldDefaults.githubRunner;
+            const customRunner = await vscode.window.showInputBox({
+                prompt: 'Enter GitHub Actions runner label',
+                placeHolder: 'my-runner or [self-hosted, linux, x64]',
+                value: resolvedRunner,
+                validateInput: (value) => {
+                    if (!value || value.trim().length === 0) {
+                        return 'Runner label cannot be empty';
+                    }
+                    return undefined;
+                },
+                ignoreFocusOut: true
+            });
+            // undefined means the user pressed Escape — use resolved default
+            // empty string is prevented by validateInput
+            return customRunner ?? resolvedRunner;
+        }
+
         const runnerChoice = await vscode.window.showQuickPick(
             [
                 {
@@ -484,15 +521,19 @@ export class ScaffoldCommand {
     }
 
     /**
-     * Prompt for organization details for InnerSource LICENSE and docs
+     * Prompt for organization details for InnerSource LICENSE and docs.
+     * When hub scaffoldDefaults are present, individual org-level fields are
+     * skipped (hub value used directly). Fields without a hub default are still prompted.
      */
-    private static async promptForOrganizationDetails(): Promise<{ 
+    private static async promptForOrganizationDetails(
+        scaffoldDefaults?: ScaffoldDefaults
+    ): Promise<{
         author?: string;
         githubOrg?: string;
-        organizationName?: string; 
-        internalContact?: string; 
-        legalContact?: string; 
-        organizationPolicyLink?: string 
+        organizationName?: string;
+        internalContact?: string;
+        legalContact?: string;
+        organizationPolicyLink?: string
     }> {
         const author = await vscode.window.showInputBox({
             prompt: 'Enter author name (for package.json)',
@@ -500,40 +541,43 @@ export class ScaffoldCommand {
             ignoreFocusOut: true
         });
 
+        // githubOrg: always asked, prefilled from hub defaults if present
         const githubOrg = await vscode.window.showInputBox({
             prompt: 'Enter GitHub organization/username (for repository URLs)',
             placeHolder: 'your-org',
+            value: scaffoldDefaults?.githubOrg || '',
             ignoreFocusOut: true
         });
 
-        const organizationName = await vscode.window.showInputBox({
+        // Each org field: use hub default if present, otherwise prompt
+        const organizationName = scaffoldDefaults?.organizationName ?? await vscode.window.showInputBox({
             prompt: 'Enter organization name (for LICENSE)',
             placeHolder: 'Your Organization Name',
             value: 'Your Organization',
             ignoreFocusOut: true
         });
 
-        const internalContact = await vscode.window.showInputBox({
+        const internalContact = scaffoldDefaults?.internalContact ?? await vscode.window.showInputBox({
             prompt: 'Enter internal contact email (for security/support inquiries)',
             placeHolder: 'security@yourorg.com',
             value: 'security@yourorg.com',
             ignoreFocusOut: true
         });
 
-        const legalContact = await vscode.window.showInputBox({
+        const legalContact = scaffoldDefaults?.legalContact ?? await vscode.window.showInputBox({
             prompt: 'Enter legal contact email (for licensing questions)',
             placeHolder: 'legal@yourorg.com',
             value: 'legal@yourorg.com',
             ignoreFocusOut: true
         });
 
-        const organizationPolicyLink = await vscode.window.showInputBox({
+        const organizationPolicyLink = scaffoldDefaults?.organizationPolicyLink ?? await vscode.window.showInputBox({
             prompt: 'Enter organization policy URL (optional)',
             placeHolder: 'https://yourorg.com/policies',
             ignoreFocusOut: true
         });
 
-        return { 
+        return {
             author,
             githubOrg,
             organizationName, 

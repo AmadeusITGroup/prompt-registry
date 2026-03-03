@@ -88,7 +88,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
             // GitHub workflows (Requirements 2.1)
             '.github/workflows/publish.yml',
             '.github/workflows/post-pr-comment.yml',
-            '.github/actions/publish-common/action.yml',
             
             // Scripts directory documentation (npm package provides CLI commands)
             'scripts/README.md',
@@ -122,8 +121,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
             'scripts',
             '.github',
             '.github/workflows',
-            '.github/actions',
-            '.github/actions/publish-common',
             '.vscode',
             '.githooks',
         ];
@@ -354,10 +351,10 @@ suite('GitHub Scaffold Property-Based Tests', () => {
                         const workflowPath = path.join(tempDir, workflowFile);
                         const workflowContent = fs.readFileSync(workflowPath, 'utf8');
 
-                        // Verify the runner value is present
+                        // Thin caller passes githubRunner as an input to the reusable workflow
                         assert.ok(
-                            workflowContent.includes(`runs-on: ${config.githubRunner}`),
-                            `Workflow ${workflowFile} should contain runs-on: ${config.githubRunner}`
+                            workflowContent.includes(`githubRunner: ${config.githubRunner}`),
+                            `Workflow ${workflowFile} should contain githubRunner: ${config.githubRunner}`
                         );
 
                         // Verify no unsubstituted template variables remain
@@ -405,13 +402,9 @@ suite('GitHub Scaffold Property-Based Tests', () => {
                     // Scaffold the project
                     await templateEngine.scaffoldProject(tempDir, context);
 
-                    // Read publish.yml workflow
+                    // Read publish.yml workflow (thin caller)
                     const publishWorkflowPath = path.join(tempDir, '.github/workflows/publish.yml');
                     const publishWorkflowContent = fs.readFileSync(publishWorkflowPath, 'utf8');
-
-                    // Read publish-common action
-                    const publishCommonPath = path.join(tempDir, '.github/actions/publish-common/action.yml');
-                    const publishCommonContent = fs.readFileSync(publishCommonPath, 'utf8');
 
                     // Verify publish.yml has push and pull_request triggers
                     assert.ok(
@@ -427,43 +420,10 @@ suite('GitHub Scaffold Property-Based Tests', () => {
                         'publish.yml should have workflow_dispatch trigger for manual runs'
                     );
 
-                    // Verify publish.yml uses the publish-common action
+                    // Verify publish.yml delegates to the reusable workflow
                     assert.ok(
-                        publishWorkflowContent.includes('uses: ./.github/actions/publish-common'),
-                        'publish.yml should use the publish-common action'
-                    );
-
-                    // Verify publish-common action includes validation step
-                    assert.ok(
-                        publishCommonContent.includes('Validate collections') ||
-                        publishCommonContent.includes('npm run validate'),
-                        'publish-common action should include validation step'
-                    );
-
-                    // Verify validation runs before publishing
-                    // The publish-common action should run before the publish step
-                    const publishCommonIndex = publishWorkflowContent.indexOf('publish-common');
-                    const publishCollectionsIndex = publishWorkflowContent.indexOf('Publish affected collections');
-                    
-                    assert.ok(
-                        publishCommonIndex < publishCollectionsIndex,
-                        'publish-common (with validation) should run before publishing collections'
-                    );
-
-                    // Verify both jobs (publish-collections and publish-preview) use validation
-                    assert.ok(
-                        (publishWorkflowContent.match(/uses: \.\/\.github\/actions\/publish-common/g) || []).length >= 2,
-                        'Both publish-collections and publish-preview jobs should use publish-common action'
-                    );
-
-                    // Verify the publish-common action has the validation step in the correct order
-                    // (after dependencies are installed, before any publishing)
-                    const installDepsIndex = publishCommonContent.indexOf('Install dependencies');
-                    const validateIndex = publishCommonContent.indexOf('Validate collections');
-                    
-                    assert.ok(
-                        installDepsIndex < validateIndex,
-                        'Validation should run after dependencies are installed'
+                        publishWorkflowContent.includes('AmadeusITGroup/prompt-registry/.github/workflows/collection-publish.yml@v1'),
+                        'publish.yml should delegate to the reusable collection-publish workflow'
                     );
 
                 } finally {

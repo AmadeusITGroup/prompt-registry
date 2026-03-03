@@ -1,0 +1,70 @@
+name: Release Reusable Workflows
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semantic version tag to create (e.g. v1.2.3)'
+        required: true
+        type: string
+      release-notes:
+        description: 'Optional release notes'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and Move Major Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ inputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version must be in the format vMAJOR.MINOR.PATCH (e.g. v1.2.3), got: $VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          echo "MAJOR_TAG=$MAJOR" >> "$GITHUB_ENV"
+
+      - name: Create or update version tag
+        env:
+          RELEASE_NOTES: ${{ inputs.release-notes }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG_MESSAGE="Release $VERSION"
+          if [ -n "$RELEASE_NOTES" ]; then
+            TAG_MESSAGE="$TAG_MESSAGE: $RELEASE_NOTES"
+          fi
+          git tag -a "$VERSION" -m "$TAG_MESSAGE"
+          git push origin "$VERSION"
+
+      - name: Move major tag
+        run: |
+          # Delete remote major tag if it exists, then re-create pointing to HEAD
+          git push origin ":refs/tags/$MAJOR_TAG" || true
+          git tag -fa "$MAJOR_TAG" -m "Latest $MAJOR_TAG release: $VERSION"
+          git push origin "$MAJOR_TAG"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ inputs.release-notes }}
+        run: |
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="Reusable workflow release $VERSION. Scaffolded projects pinned to \`$MAJOR_TAG\` will automatically benefit from this release."
+          fi
+          gh release create "$VERSION" \
+            --title "Reusable Workflows $VERSION" \
+            --notes "$RELEASE_NOTES"
