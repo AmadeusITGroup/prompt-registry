@@ -13,7 +13,8 @@
     "generate-manifest": "./bin/generate-manifest.js",
     "publish-collections": "./bin/publish-collections.js",
     "list-collections": "./bin/list-collections.js",
-    "create-skill": "./bin/create-skill.js"
+    "create-skill": "./bin/create-skill.js",
+    "hub-release-analyzer": "./bin/hub-release-analyzer.js"
   },
   "scripts": {
     "build": "tsc",

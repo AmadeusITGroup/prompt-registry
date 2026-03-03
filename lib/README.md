@@ -46,6 +46,10 @@ npx --package @prompt-registry/collection-scripts list-collections
 
 # Publish affected collections (CI/CD)
 npx --package @prompt-registry/collection-scripts publish-collections
+
+# Analyze hub release downloads
+npx --package @prompt-registry/collection-scripts hub-release-analyzer https://github.com/owner/repo
+npx --package @prompt-registry/collection-scripts hub-release-analyzer ./hub-config.yml --output-dir ./reports
 ```
 
 ### After Installation
@@ -70,6 +74,7 @@ create-skill my-skill --description "A helpful skill"
 | `publish-collections` | Build and publish affected collections |
 | `list-collections` | List all collections in repo |
 | `create-skill` | Create a new skill directory structure |
+| `hub-release-analyzer` | Analyze GitHub release download statistics for hub configs |
 
 ## Programmatic API
 
