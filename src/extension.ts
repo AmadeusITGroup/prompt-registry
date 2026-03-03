@@ -377,7 +377,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.cleanupStaleLockfileEntries', () => this.bundleCommands!.cleanupStaleLockfileEntries()),
             
             // Scaffold Command - Create project structure
-            vscode.commands.registerCommand('promptRegistry.scaffoldProject', () => ScaffoldCommand.runWithUI()),
+            vscode.commands.registerCommand('promptRegistry.scaffoldProject', () => ScaffoldCommand.runWithUI(this.hubManager)),
             
             
             // Add Resource Command - Add individual resources
