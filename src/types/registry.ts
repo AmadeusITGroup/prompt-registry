@@ -77,6 +77,10 @@ export interface Bundle {
         algorithm: string;
         hash: string;
     };
+    /** Engagement: GitHub Discussion number for voting (from ratings.json or hub config) */
+    discussionNumber?: number;
+    /** Engagement: GitHub repository for voting (owner/repo format) */
+    votingRepository?: string;
 }
 
 /**

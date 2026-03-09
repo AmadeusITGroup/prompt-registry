@@ -6,6 +6,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle, RegistrySource } from '../types/registry';
@@ -15,18 +16,25 @@ import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { McpServerConfig, McpStdioServerConfig, McpRemoteServerConfig, isStdioServerConfig, isRemoteServerConfig } from '../types/mcp';
 import { SetupStateManager } from '../services/SetupStateManager';
+import { RatingCache } from '../services/engagement/RatingCache';
+import { FeedbackCache } from '../services/engagement/FeedbackCache';
+import { EngagementService } from '../services/engagement/EngagementService';
+import { RatingScore } from '../types/engagement';
+import { PendingFeedback } from '../types/pendingFeedback';
 
 /**
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks' | 'submitFeedback' | 'reportIssue' | 'requestFeature';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
     version?: string;
     enabled?: boolean;
     sourceId?: string;
+    rating?: number;
+    comment?: string;
 }
 
 /**
@@ -320,6 +328,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     ? autoUpdatePreferences[installed.bundleId] ?? false
                     : false;
 
+                // Get rating from cache if available
+                const ratingCache = RatingCache.getInstance();
+                const ratingDisplay = ratingCache.getRatingDisplay(bundle.sourceId, bundle.id);
+                const cachedRating = ratingCache.getRating(bundle.sourceId, bundle.id);
+
                 return {
                     ...bundle,
                     installed: !!installed,
@@ -330,6 +343,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     contentBreakdown,
                     availableVersions,
                     autoUpdateEnabled,
+                    rating: cachedRating ? {
+                        starRating: cachedRating.starRating,
+                        voteCount: cachedRating.voteCount,
+                        confidence: cachedRating.confidence,
+                        displayText: ratingDisplay?.text
+                    } : undefined,
                 };
             }));
 
@@ -524,6 +543,36 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             case 'completeSetup':
                 await this.handleCompleteSetup();
                 break;
+            case 'getFeedbacks':
+                if (message.bundleId) {
+                    await this.handleGetFeedbacks(message.bundleId);
+                }
+                break;
+            case 'submitFeedback':
+                if (message.bundleId && message.rating) {
+                    await this.handleWebviewFeedback(message.bundleId, message.rating, message.comment);
+                }
+                break;
+            case 'reportIssue':
+            case 'requestFeature':
+                if (message.bundleId) {
+                    const command = message.type === 'reportIssue' ? 'promptRegistry.reportIssue' : 'promptRegistry.requestFeature';
+                    const bundles = await this.registryManager.searchBundles({ text: message.bundleId });
+                    const foundBundle = bundles.find(b => b.id === message.bundleId);
+                    if (foundBundle) {
+                        const allSources = await this.registryManager.listSources();
+                        const foundSource = allSources.find(s => s.id === foundBundle.sourceId);
+                        await vscode.commands.executeCommand(command, {
+                            resourceId: foundBundle.id,
+                            resourceType: 'bundle',
+                            name: foundBundle.name,
+                            version: foundBundle.version,
+                            sourceUrl: foundSource?.url,
+                            sourceType: foundSource?.type,
+                        });
+                    }
+                }
+                break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
         }
@@ -554,36 +603,236 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Handle complete setup request from marketplace empty state.
-     * 
+     *
      * State Management: This method marks setup as started, then delegates to
      * the initializeHub command. The command handles its own state transitions
      * (markComplete on success, markIncomplete on failure). We only need to
      * mark started here and refresh the UI afterward.
-     * 
+     *
      * Requirements: 4.4
      */
     private async handleCompleteSetup(): Promise<void> {
         this.logger.info('User clicked Complete Setup from marketplace');
-        
+
         // Mark setup as started before triggering the flow
         await this.setupStateManager.markStarted();
-        
+
         try {
             // Trigger first-run flow via the extension command
             // Note: initializeHub handles markComplete/markIncomplete internally
             // Pass resetAuth to clear cached auth so the user is re-prompted for GitHub authentication
             await vscode.commands.executeCommand('promptRegistry.initializeHub', { resetAuth: true });
-            
+
             // Refresh marketplace to show updated state
             await this.loadBundles();
         } catch (error) {
             this.logger.error('Failed to complete setup from marketplace', error as Error);
-            
+
             // Only show error message - state is already marked by initializeHub
             vscode.window.showErrorMessage(`Failed to complete setup: ${(error as Error).message}`);
-            
+
             // Refresh to show current state
             await this.loadBundles();
+        }
+    }
+
+    /**
+     * Get feedbacks for a bundle and send to webview
+     */
+    private async handleGetFeedbacks(bundleId: string): Promise<void> {
+        try {
+            const feedbackCache = FeedbackCache.getInstance();
+            const ratingCache = RatingCache.getInstance();
+
+            // Get feedbacks from cache
+            const feedbacks = feedbackCache.getFeedbacks(bundleId) || [];
+
+            // Get rating data for the bundle
+            // Note: We need sourceId to look up ratings, but bundleId alone is insufficient
+            // For now, we'll need to find the bundle to get its sourceId
+            const bundles = await this.registryManager.searchBundles({ text: bundleId });
+            const bundle = bundles.find(b => b.id === bundleId);
+            const rating = bundle ? ratingCache.getRating(bundle.sourceId, bundleId) : undefined;
+
+            // Send data to webview
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbacksLoaded',
+                    bundleId: bundleId,
+                    feedbacks: feedbacks,
+                    rating: rating
+                });
+            }
+        } catch (error) {
+            this.logger.error('Failed to get feedbacks', error as Error);
+            // Send empty feedbacks on error
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbacksLoaded',
+                    bundleId: bundleId,
+                    feedbacks: [],
+                    rating: null
+                });
+            }
+        }
+    }
+
+    /**
+     * Handle feedback submitted from the webview interactive stars.
+     * Submits directly to EngagementService without routing through VS Code commands,
+     * so the entire flow stays in the webview with no native dialogs.
+     */
+    private async handleWebviewFeedback(bundleId: string, rating: number, comment?: string): Promise<void> {
+        try {
+            const bundles = await this.registryManager.searchBundles({ text: bundleId });
+            const bundle = bundles.find(b => b.id === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = bundle ? sources.find(s => s.id === bundle.sourceId) : undefined;
+            const ratingScore = rating as RatingScore;
+            const feedbackComment = comment || `Rated ${rating} stars`;
+
+            const engagementService = EngagementService.getInstance();
+            let synced = false;
+
+            // Try remote submission
+            if (engagementService.initialized) {
+                try {
+                    await engagementService.submitFeedback(
+                        'bundle',
+                        bundleId,
+                        feedbackComment,
+                        { version: bundle?.version, rating: ratingScore, hubId: source?.hubId || undefined }
+                    );
+                    synced = true;
+                } catch (err) {
+                    this.logger.warn(`Failed to submit feedback to remote: ${err}`);
+                }
+            }
+
+            // Save locally as pending feedback
+            try {
+                const storage = engagementService.getStorage?.();
+                if (storage) {
+                    const pending: PendingFeedback = {
+                        id: crypto.randomUUID(),
+                        bundleId,
+                        sourceId: bundle?.sourceId || bundleId,
+                        hubId: source?.hubId || '',
+                        resourceType: 'bundle',
+                        rating: ratingScore,
+                        comment: comment || undefined,
+                        timestamp: new Date().toISOString(),
+                        synced,
+                    };
+                    await storage.savePendingFeedback(pending);
+                }
+            } catch (storageErr) {
+                this.logger.error('Failed to save pending feedback locally');
+            }
+
+            // Optimistic cache update
+            try {
+                const ratingCache = RatingCache.getInstance();
+                const cacheSourceId = bundle?.sourceId || bundleId;
+                ratingCache.applyOptimisticRating(cacheSourceId, bundleId, ratingScore);
+            } catch {
+                // non-critical
+            }
+
+            // Send result back to webview
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbackSubmitted',
+                    bundleId,
+                    rating,
+                    synced,
+                    success: true,
+                });
+            }
+        } catch (error) {
+            this.logger.error(`Failed to process webview feedback: ${error}`);
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbackSubmitted',
+                    bundleId,
+                    success: false,
+                });
+            }
+        }
+    }
+
+    /**
+     * Handle feedback from the bundle detail panel's interactive stars.
+     * Submits directly to EngagementService, sends result back to the detail panel.
+     */
+    private async handleBundleDetailFeedback(
+        panel: vscode.WebviewPanel,
+        bundle: Bundle,
+        bundleId: string,
+        rating: number,
+        comment?: string
+    ): Promise<void> {
+        try {
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const ratingScore = rating as RatingScore;
+            const feedbackComment = comment || `Rated ${rating} stars`;
+
+            const engagementService = EngagementService.getInstance();
+            let synced = false;
+
+            if (engagementService.initialized) {
+                try {
+                    await engagementService.submitFeedback(
+                        'bundle', bundleId, feedbackComment,
+                        { version: bundle.version, rating: ratingScore, hubId: source?.hubId || undefined }
+                    );
+                    synced = true;
+                } catch (err) {
+                    this.logger.warn(`Failed to submit feedback to remote: ${err}`);
+                }
+            }
+
+            try {
+                const storage = engagementService.getStorage?.();
+                if (storage) {
+                    await storage.savePendingFeedback({
+                        id: crypto.randomUUID(),
+                        bundleId,
+                        sourceId: bundle.sourceId || bundleId,
+                        hubId: source?.hubId || '',
+                        resourceType: 'bundle',
+                        rating: ratingScore,
+                        comment: comment || undefined,
+                        timestamp: new Date().toISOString(),
+                        synced,
+                    });
+                }
+            } catch {
+                this.logger.error('Failed to save pending feedback locally');
+            }
+
+            try {
+                const ratingCache = RatingCache.getInstance();
+                ratingCache.applyOptimisticRating(bundle.sourceId, bundleId, ratingScore);
+            } catch {
+                // non-critical
+            }
+
+            panel.webview.postMessage({
+                type: 'feedbackSubmitted',
+                bundleId,
+                rating,
+                synced,
+                success: true,
+            });
+        } catch (error) {
+            this.logger.error(`Failed to process detail panel feedback: ${error}`);
+            panel.webview.postMessage({
+                type: 'feedbackSubmitted',
+                bundleId,
+                success: false,
+            });
         }
     }
 
@@ -887,6 +1136,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 }
             }
 
+            // Get rating from cache
+            const ratingCache = RatingCache.getInstance();
+            const ratingDisplay = ratingCache.getRatingDisplay(bundle.sourceId, bundle.id);
+            const cachedRating = ratingCache.getRating(bundle.sourceId, bundle.id);
+
             // Create webview panel
             const panel = vscode.window.createWebviewPanel(
                 'bundleDetails',
@@ -898,7 +1152,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             );
 
             // Set HTML content
-            panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
+            panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled, cachedRating, ratingDisplay);
 
             // Handle messages from the details panel
             panel.webview.onDidReceiveMessage(
@@ -912,6 +1166,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                             const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
                             panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
                         }
+                    } else if (message.type === 'submitFeedback' && message.rating) {
+                        // Handle inline feedback submission directly (no VS Code dialogs)
+                        await this.handleBundleDetailFeedback(
+                            panel, bundle, message.bundleId, message.rating, message.comment
+                        );
                     }
                 },
                 undefined,
@@ -942,7 +1201,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         bundle: Bundle, 
         installed: InstalledBundle | undefined, 
         breakdown: ContentBreakdown, 
-        autoUpdateEnabled: boolean = false
+        autoUpdateEnabled: boolean = false,
+        rating?: { starRating: number; voteCount: number; confidence: string } | null,
+        ratingDisplay?: { text: string; tooltip: string } | null
     ): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
@@ -984,6 +1245,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             <div class="toggle-slider"></div>
         </div>
     </div>` : '';
+
+        const ratingDisplayHtml = rating ? `
+            <span class="rating-stars">${'★'.repeat(Math.round(rating.starRating))}${'☆'.repeat(5 - Math.round(rating.starRating))}</span>
+            <span class="rating-score">${rating.starRating.toFixed(1)}</span>
+            <span class="rating-meta">${rating.voteCount} votes</span>
+        ` : `<span class="no-rating">No ratings yet</span>`;
 
         const breakdownContent = isInstalled ? `
         <div class="breakdown">
@@ -1051,6 +1318,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             .replace('{{author}}', this.escapeHtml(bundle.author || 'Unknown'))
             .replace('{{version}}', bundle.version)
             .replace('{{autoUpdateSection}}', autoUpdateSection)
+            .replace('{{ratingDisplay}}', ratingDisplayHtml)
             .replace('{{description}}', bundle.description || 'No description available')
             .replace('{{breakdownContent}}', breakdownContent)
             .replace('{{displayBundleId}}', isInstalled ? installed!.bundleId : bundle.id)

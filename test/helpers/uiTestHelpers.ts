@@ -155,6 +155,8 @@ export function setupTreeProviderMocks(
  * Keep this in sync with package.json contributes.menus.view/item/context
  */
 export const VALID_CONTEXT_PATTERNS_FOR_MENUS = [
+    // Broad pattern matching any installed bundle (e.g., feedback menu items)
+    /^installed_bundle/,
     // Base context value patterns (match any scope suffix)
     // These match the package.json patterns: viewItem =~ /^installed_bundle_auto_disabled/
     /^installed_bundle_auto_disabled/,
