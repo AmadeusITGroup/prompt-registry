@@ -167,7 +167,7 @@ export function determineFileType(fileName: string, tags?: string[]): CopilotFil
 
 /**
  * Generate the target file name for a given ID and file type.
- * 
+ *
  * @param id - The prompt/agent/etc. identifier
  * @param type - The Copilot file type
  * @returns The target file name with appropriate extension
@@ -176,6 +176,13 @@ export function getTargetFileName(id: string, type: CopilotFileType): string {
     // Skills use SKILL.md as the main file
     if (type === 'skill') {
         return 'SKILL.md';
+    }
+
+    // Strip existing type suffix from ID to prevent duplicate extensions
+    // e.g., "my-bundle.prompt" with type "prompt" should become "my-bundle.prompt.md", not "my-bundle.prompt.prompt.md"
+    const extensionWithoutMd = FILE_EXTENSIONS[type].replace('.md', ''); // e.g., '.prompt' from '.prompt.md'
+    if (id.toLowerCase().endsWith(extensionWithoutMd.toLowerCase())) {
+        id = id.slice(0, -extensionWithoutMd.length);
     }
 
     return `${id}${FILE_EXTENSIONS[type]}`;
