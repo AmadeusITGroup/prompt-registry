@@ -76,6 +76,9 @@ jobs:
           cache-dependency-path: "lib/package-lock.json"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Upgrade npm for OIDC Trusted Publisher support
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -106,8 +109,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish package
         if: steps.version-check.outputs.exists == 'false'
-        run: npm publish
-      - name: Push the tag
-        if: steps.version-check.outputs.exists == 'false'
-        run: |
-          git push origin "collection-scripts-v${{ steps.version-check.outputs.version }}"
+        run: npm publish --provenance --access public
