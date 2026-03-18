@@ -169,6 +169,21 @@ suite('copilotFileTypeUtils', () => {
         test('should handle IDs with special characters', () => {
             assert.strictEqual(getTargetFileName('my_prompt-v1', 'prompt'), 'my_prompt-v1.prompt.md');
         });
+
+        test('should strip existing type suffix to prevent duplicate extensions', () => {
+            // Regression test: IDs from manifests often already contain type suffix (e.g., ".prompt", ".agent")
+            // which would result in duplicate extensions like "name.prompt.prompt.md"
+            assert.strictEqual(getTargetFileName('my-bundle.prompt', 'prompt'), 'my-bundle.prompt.md');
+            assert.strictEqual(getTargetFileName('my-bundle.agent', 'agent'), 'my-bundle.agent.md');
+            assert.strictEqual(getTargetFileName('my-bundle.instructions', 'instructions'), 'my-bundle.instructions.md');
+            assert.strictEqual(getTargetFileName('my-bundle.chatmode', 'chatmode'), 'my-bundle.chatmode.md');
+        });
+
+        test('should handle edge cases with dots in ID', () => {
+            // Dots that are NOT type suffixes should be preserved
+            assert.strictEqual(getTargetFileName('bundle.v1.prompt', 'prompt'), 'bundle.v1.prompt.md');
+            assert.strictEqual(getTargetFileName('my.bundle.agent', 'agent'), 'my.bundle.agent.md');
+        });
     });
 
     suite('getRepositoryTargetDirectory', () => {
