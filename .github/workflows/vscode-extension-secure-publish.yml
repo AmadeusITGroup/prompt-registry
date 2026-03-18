@@ -60,6 +60,11 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Verify release authenticity
         if: github.event_name == 'release'
         run: |
@@ -89,18 +94,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
-
-      - name: Install dependencies with integrity check
-        working-directory: ${{ env.EXTENSION_DIR }}
-        run: |
-          npm ci --fund=false
-          npm audit --omit=dev --audit-level=moderate
+      - name: Run security audit
+        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Update version in package.json
         working-directory: ${{ env.EXTENSION_DIR }}
@@ -119,7 +114,7 @@ jobs:
       - name: Build and package extension
         working-directory: ${{ env.EXTENSION_DIR }}
         run: |
-          npm run compile
+          npm run compile:extension
           npm install -g @vscode/vsce
 
           npm run package:prepare

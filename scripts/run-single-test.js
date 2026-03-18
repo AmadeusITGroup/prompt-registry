@@ -44,7 +44,7 @@ jsPath = jsPath.replace(/\.ts$/, '.js');
 if (!noCompile) {
     console.log('Compiling tests...');
     try {
-        execSync('npm run compile-tests', { stdio: 'inherit' });
+        execSync('npm run compile:tests', { stdio: 'inherit' });
     } catch (error) {
         console.error('Test compilation failed');
         process.exit(1);

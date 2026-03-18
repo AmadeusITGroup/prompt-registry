@@ -47,9 +47,9 @@ run_step "Security audit (npm)" "npm audit --omit=dev --audit-level=moderate || 
 # 5. Lint code
 run_step "ESLint validation" "npm run lint"
 # 6. Type checking & compilation
-run_step "TypeScript compilation" "npm run compile"
+run_step "TypeScript compilation" "npm run compile:extension"
 # 7. Compile tests
-run_step "Compile test suite" "npm run compile-tests"
+run_step "Compile test suite" "npm run compile:tests"
 # 8. Run unit tests
 run_step "Unit tests" "npm run test:unit"
 # 9. Run integration tests (if display available)

@@ -44,30 +44,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # Security: Pin to specific commit for reproducibility
-          # persist-credentials: false
+          persist-credentials: false
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
 
-      - name: Build lib package
-        working-directory: lib
-        shell: bash
-        run: |
-          npm ci --fund=false
-          npm run build
-
-      - name: Install dependencies with audit
-        working-directory: ${{ env.EXTENSION_DIR }}
-        shell: bash
-        run: |
-          npm ci --audit --fund=false
-          npm audit --omit=dev --audit-level=moderate
+      - name: Run security audit
+        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -99,21 +85,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "package-lock.json"
-
-      - name: Build lib package
-        working-directory: lib
-        run: |
-          npm ci --fund=false
-          npm run build
-
-      - name: Install dependencies
-        run: npm ci --fund=false
 
       - name: Generate SBOM (Software Bill of Materials)
         run: |
@@ -144,14 +119,8 @@ jobs:
   # - Ensures consistent production packaging regardless of development state
   validate:
     name: Validate Extension
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     needs: [security-scan, dependency-analysis]
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        node-version: [24]
 
     steps:
       - name: Harden Runner
@@ -164,24 +133,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: "npm"
-          cache-dependency-path: "package-lock.json"
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies
-        run: npm ci --fund=false
-
-      - name: Build lib package
-        run: npm run compile-lib
+      - name: Build
+        run: npm run build
 
       - name: Run linting
         run: npm run lint -- --quiet
-
-      - name: Run type checking
-        run: npm run compile
 
       - name: Install VS Code dependencies (Linux)
         if: runner.os == 'Linux'
@@ -209,77 +170,70 @@ jobs:
             ./post_compile_fixes.sh
           fi
 
-      - name: Run unit tests
+      - name: Compile tests
+        run: npm run compile:tests
+
+      - name: Run tests
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
-            xvfb-run -a npm test
+            xvfb-run -a npm run test:all
           else
-            npm test
+            npm run test:all
           fi
 
       - name: Switch to production .vscodeignore for packaging
-        if: matrix.node-version == ${{ env.NODE_VERSION }}
         shell: bash
         run: |
-          echo "🔄 Switching to production .vscodeignore for VSIX packaging..."
+          echo "Switching to production .vscodeignore for VSIX packaging..."
           # Backup current .vscodeignore if it exists
           if [ -f ".vscodeignore" ]; then
             cp .vscodeignore .vscodeignore.ci-backup
-            echo "✅ Backed up current .vscodeignore to .vscodeignore.ci-backup"
           fi
 
           # Use production .vscodeignore for packaging (creates smaller, proper VSIX)
           if [ -f ".vscodeignore.production" ]; then
             cp .vscodeignore.production .vscodeignore
-            echo "✅ Switched to production .vscodeignore for optimal VSIX packaging"
-            echo "📦 Production mode excludes: source files, tests, dev tools, CI files"
           else
-            echo "⚠️ Warning: .vscodeignore.production not found, using current .vscodeignore"
+            echo "Warning: .vscodeignore.production not found, using current .vscodeignore"
           fi
 
       - name: Package extension
-        if: matrix.node-version == ${{ env.NODE_VERSION }}
         shell: bash
         run: |
           npm install -g @vscode/vsce
-          echo "📦 Creating VSIX package with production .vscodeignore..."
-          vsce package --out ${{ env.EXTENSION_NAME }}-${{ matrix.os }}-${{ matrix.node-version }}.vsix
+          vsce package --out ${{ env.EXTENSION_NAME }}.vsix
 
           # Show package size for verification
-          if [ -f "${{env.EXTENSION_NAME}}-${{ matrix.os }}-${{ matrix.node-version }}.vsix" ]; then
-            PACKAGE_SIZE=$(ls -lh ${{env.EXTENSION_NAME}}-${{ matrix.os }}-${{ matrix.node-version }}.vsix | awk '{print $5}')
-            echo "✅ VSIX package created successfully (size: $PACKAGE_SIZE)"
+          if [ -f "${{ env.EXTENSION_NAME }}.vsix" ]; then
+            PACKAGE_SIZE=$(ls -lh ${{ env.EXTENSION_NAME }}.vsix | awk '{print $5}')
+            echo "VSIX package created successfully (size: $PACKAGE_SIZE)"
           fi
 
       - name: Restore original .vscodeignore after packaging
-        if: matrix.node-version == ${{ env.NODE_VERSION }}
         shell: bash
         run: |
           # Restore the original .vscodeignore if backup exists
           if [ -f ".vscodeignore.ci-backup" ]; then
             cp .vscodeignore.ci-backup .vscodeignore
             rm .vscodeignore.ci-backup
-            echo "✅ Restored original .vscodeignore from backup"
           fi
 
       - name: Validate VSIX package
-        if: matrix.node-version == ${{ env.NODE_VERSION }}
         shell: bash
         run: |
           # Extract and validate package contents
-          unzip -l ${{env.EXTENSION_NAME}}-${{ matrix.os }}-${{ matrix.node-version }}.vsix
+          unzip -l ${{ env.EXTENSION_NAME }}.vsix
 
           # Verify package.json integrity
           if command -v jq &> /dev/null; then
-            unzip -p ${{env.EXTENSION_NAME}}-${{ matrix.os }}-${{ matrix.node-version }}.vsix extension/package.json | jq '.'
+            unzip -p ${{ env.EXTENSION_NAME }}.vsix extension/package.json | jq '.'
           fi
 
       - name: Upload extension artifacts
-        if: matrix.node-version == ${{ env.NODE_VERSION }}
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-${{ matrix.os }}-node${{ matrix.node-version }}
+          name: vsix-package
           path: ${{ env.EXTENSION_DIR }}/*.vsix
           retention-days: 7
 
@@ -306,26 +260,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "package-lock.json"
-
-      - name: Build lib package
-        working-directory: lib
-        run: |
-          npm ci --fund=false
-          npm run build
-
-      - name: Install dependencies
-        run: npm ci --fund=false
 
       - name: Compile extension and tests
         run: |
-          npm run compile
-          npm run compile-tests
+          npm run build
+          npm run compile:tests
           node .github/workflows/scripts/post-compile-fixes-essential.js
 
       - name: Install VS Code and dependencies (Linux)

@@ -14,7 +14,7 @@
 git clone https://github.com/AmadeusITGroup/prompt-registry.git
 cd prompt-registry
 npm install
-npm run compile
+npm run compile:extension
 npm test
 ```
 
@@ -25,7 +25,7 @@ Press `F5` in VS Code to launch Extension Development Host.
 ```bash
 # Development
 npm run watch          # Dev mode with auto-compile
-npm run compile        # Production build
+npm run compile:extension        # Production build
 npm run lint           # Check code style (ESLint v9 flat config)
 npm run lint:fix       # Auto-fix lint issues
 

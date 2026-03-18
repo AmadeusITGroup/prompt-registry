@@ -19,8 +19,8 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "compile-tests": "tsc -p tsconfig.test.json",
-    "test": "npm run compile-tests && mocha 'dist-test/test/**/*.test.js'",
+    "compile:tests": "tsc -p tsconfig.test.json",
+    "test": "mocha 'dist-test/test/**/*.test.js'",
     "lint": "eslint src/**/*.ts test/**/*.ts",
     "prepublishOnly": "npm run build"
   },
