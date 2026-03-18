@@ -24,6 +24,24 @@ export interface HubReference {
 }
 
 /**
+ * Default values for scaffold prompts, provided by hub configuration
+ */
+export interface ScaffoldDefaults {
+  /** GitHub organization name (prefills githubOrg prompt) */
+  githubOrg?: string;
+  /** GitHub Actions runner label or pattern (supports {githubOrg} placeholder) */
+  githubRunner?: string;
+  /** Organization name for LICENSE (skips prompt when present) */
+  organizationName?: string;
+  /** Internal contact email (skips prompt when present) */
+  internalContact?: string;
+  /** Legal contact email (skips prompt when present) */
+  legalContact?: string;
+  /** Organization policy URL (skips prompt when present) */
+  organizationPolicyLink?: string;
+}
+
+/**
  * Hub configuration structure
  */
 export interface HubConfig {
@@ -41,6 +59,9 @@ export interface HubConfig {
   
   /** Optional registry configuration */
   configuration?: RegistryConfiguration;
+
+  /** Optional scaffold defaults for pre-filling project scaffolding prompts */
+  scaffoldDefaults?: ScaffoldDefaults;
 }
 
 /**
