@@ -29,7 +29,7 @@ These scripts update `package.json` and version references in `README.md`.
 2. **Run tests**:
    ```bash
    npm run lint
-   npm run compile
+   npm run compile:extension
    npm test
    ```
 
@@ -70,7 +70,7 @@ Test on: macOS, Linux, Windows, VS Code Stable + Insiders.
 ## PR Process
 
 1. Update from main: `git fetch upstream && git rebase upstream/main`
-2. Run checks: `npm run lint && npm run compile && npm test`
+2. Run checks: `npm run lint && npm run compile:extension && npm test`
 3. Submit PR with description
 4. Address review feedback
 5. Merge after approval

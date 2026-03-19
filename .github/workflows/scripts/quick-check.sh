@@ -12,11 +12,11 @@ npm run lint
 
 # 2. Compile
 echo "▶ Compiling..."
-npm run compile
+npm run compile:extension
 
 # 3. Compile Tests
 echo "▶ Compiling tests..."
-npm run compile-tests
+npm run compile:tests
 
 # 4. Unit tests only
 echo "▶ Unit tests..."

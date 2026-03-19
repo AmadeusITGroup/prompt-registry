@@ -176,6 +176,7 @@ npm run test:unit           # Unit tests only
 npm run test:integration    # Integration tests (requires VS Code)
 npm run test:coverage       # Generate coverage report
 npm run test:one -- <path>  # Run single test file
+npm run lint                # Run linting (separate from tests)
 ```
 
 ### Debugging Tests

@@ -200,7 +200,7 @@ src/
 
 ```bash
 npm install                    # Install dependencies
-npm run compile                # Production webpack bundle
+npm run compile:extension      # Production webpack bundle
 npm run watch                  # Dev watch mode
 
 # Testing (always prefix with LOG_LEVEL=ERROR unless debugging)

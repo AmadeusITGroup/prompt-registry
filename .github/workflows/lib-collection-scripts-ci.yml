@@ -27,26 +27,31 @@ jobs:
       contents: read
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Build TypeScript
-        working-directory: lib
-        run: npm run build
+        run: npm run build --workspace=lib
+
+      - name: Run linter
+        run: npm run lint
 
       - name: Run tests
-        working-directory: lib
-        run: npm test
+        run: |
+          npm run compile:tests --workspace=lib
+          npm run test --workspace=lib
 
   publish:
     name: Publish to npmjs
@@ -59,25 +64,25 @@ jobs:
       contents: write
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup repository
+        uses: ./.github/actions/setup-repo
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Build TypeScript
-        working-directory: lib
-        run: npm run build
+        run: npm run build --workspace=lib
 
       - name: Check if version changed
         working-directory: lib

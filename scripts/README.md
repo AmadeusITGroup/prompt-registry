@@ -67,7 +67,7 @@ LOG_LEVEL=ERROR npm run test:one -- test/services/RegistryManager.test.ts
 - Check that the file exists in the test directory
 
 **Compilation errors:**
-- Run `npm run compile-tests` manually to see detailed errors
+- Run `npm run compile:tests` manually to see detailed errors
 - Check TypeScript syntax in your test file
 
 **Test fails to run:**

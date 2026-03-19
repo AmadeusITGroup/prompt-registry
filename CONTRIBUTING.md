@@ -48,7 +48,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
 3. **Build the extension**
    ```bash
-   npm run compile
+   npm run compile:extension
    ```
 
 4. **Run tests**
@@ -72,7 +72,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
    npm run watch
    
    # Single compilation
-   npm run compile
+   npm run compile:extension
    ```
 
 2. **Testing**
@@ -405,7 +405,7 @@ and error handling.
 2. **Run all checks**
    ```bash
    npm run lint
-   npm run compile
+   npm run compile:extension
    npm test
    ```
 

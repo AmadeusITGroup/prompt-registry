@@ -1,0 +1,35 @@
+name: "Setup Repository"
+description: "Common setup steps: Node.js setup and install dependencies."
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    required: true
+  registry-url:
+    description: "npm registry URL for publishing"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js ${{ inputs.node-version }}
+      if: inputs.registry-url == ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+        cache-dependency-path: "package-lock.json"
+
+    - name: Setup Node.js ${{ inputs.node-version }} with registry
+      if: inputs.registry-url != ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+        cache-dependency-path: "package-lock.json"
+        registry-url: ${{ inputs.registry-url }}
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci --fund=false

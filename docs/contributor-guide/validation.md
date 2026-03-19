@@ -10,7 +10,6 @@ For validation architecture details, see [Architecture: Validation](./architectu
 |--------|---------|------|----------|
 | `./.github/workflows/scripts/quick-check.sh` | Fast iteration check | ~30s | During development |
 | `./.github/workflows/scripts/validate-locally.sh` | Full CI simulation | ~2-5min | Before pushing |
-| `npm run pretest` | Pre-test setup | ~1min | Before running tests |
 | `npm test` | All tests | ~2min | Verify functionality |
 
 ### Essential Commands
@@ -18,7 +17,7 @@ For validation architecture details, see [Architecture: Validation](./architectu
 | Command | Purpose | When |
 |---------|---------|------|
 | `npm run lint` | Code style | During development |
-| `npm run compile` | Build | Before testing |
+| `npm run compile:extension` | Build | Before testing |
 | `npm run test:unit` | Unit tests | Fast feedback |
 | `npm test` | All tests | Before pushing |
 | `npm run package:full` | Production VSIX | Before release |
@@ -38,13 +37,13 @@ npm audit --omit=dev --audit-level=moderate
 npm run lint
 
 # Type checking & compilation
-npm run compile
+npm run compile:extension
 ```
 
 ### 3. **Testing**
 ```bash
 # Compile tests
-npm run compile-tests
+npm run compile:tests
 
 # Unit tests (fast)
 npm run test:unit
@@ -96,18 +95,18 @@ Runs: Full CI simulation including packaging
 npm run watch
 
 # Terminal 2: Watch mode for tests
-npm run watch-tests
+npm run watch:tests
 ```
 
 ### Manual Quick Check
 ```bash
-npm run lint && npm run compile && npm run test:unit
+npm run lint && npm run compile:extension && npm run test:unit
 ```
 
 ### Full Manual Validation
 ```bash
 npm run lint
-npm run compile
+npm run compile:extension
 npm test
 npm run package:full
 ```
@@ -144,7 +143,7 @@ open coverage/index.html
 | Command | Description |
 |---------|-------------|
 | `npm run lint` | ESLint validation |
-| `npm run compile` | Production build |
+| `npm run compile:extension` | Production build |
 | `npm run watch` | Dev mode with auto-compile |
 | `npm test` | Run all tests |
 | `npm run test:unit` | Unit tests only |
@@ -155,8 +154,8 @@ open coverage/index.html
 | Command | Description |
 |---------|-------------|
 | `npm run dev:setup` | Switch to dev-friendly config |
-| `npm run compile-tests` | Compile test files |
-| `npm run watch-tests` | Auto-compile tests |
+| `npm run compile:tests` | Compile test files |
+| `npm run watch:tests` | Auto-compile tests |
 | `npm run coverage:clean` | Clean coverage reports |
 
 ### Version Management
@@ -171,7 +170,7 @@ open coverage/index.html
 ### Issue: Tests fail with "Cannot find module 'vscode'"
 **Solution:**
 ```bash
-npm run compile-tests
+npm run compile:tests
 # Ensures test fixtures are copied
 ```
 
@@ -231,7 +230,7 @@ git checkout -b feature/new-feature
 
 # 2. Develop with watch mode
 npm run watch        # Terminal 1
-npm run watch-tests  # Terminal 2
+npm run watch:tests  # Terminal 2
 
 # 3. Update test files
 # 4. Full validation before push
