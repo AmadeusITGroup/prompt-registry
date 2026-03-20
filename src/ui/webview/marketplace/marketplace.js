@@ -366,13 +366,13 @@
 
         marketplace.innerHTML = isSetupIncomplete
           ? '<div class="empty-state">'
-            + '<div class="empty-state-icon">⚙️</div>'
-            + '<div class="empty-state-title">Setup Not Complete</div>'
-            + '<p>No hub is configured. Complete setup to browse bundles.</p>'
-            + '<button class="primary-button" data-action="completeSetup">'
-            + 'Complete Setup'
-            + '</button>'
-            + '</div>'
+          + '<div class="empty-state-icon">⚙️</div>'
+          + '<div class="empty-state-title">Setup Not Complete</div>'
+          + '<p>No hub is configured. Complete setup to browse bundles.</p>'
+          + '<button class="primary-button" data-action="completeSetup">'
+          + 'Complete Setup'
+          + '</button>'
+          + '</div>'
           : '<div class="empty-state">'
             + '<div class="spinner"></div>'
             + '<div class="empty-state-title">Syncing sources...</div>'
@@ -535,7 +535,7 @@
   }
 
   function toggleVersionDropdown(dropdownId) {
-    var dropdown = document.querySelector('#version-dropdown-' + dropdownId);
+    var dropdown = document.querySelector('#' + CSS.escape('version-dropdown-' + dropdownId));
     if (!dropdown) {
       return;
     }
