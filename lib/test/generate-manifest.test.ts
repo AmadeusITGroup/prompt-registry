@@ -1,15 +1,17 @@
 /**
  * Generate Manifest Script Tests
- * 
+ *
  * Tests for the generate-manifest.js CLI script that creates deployment manifests
  * from collection YAML files.
  */
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import {
+  spawnSync,
+} from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as yaml from 'js-yaml';
-import { spawnSync } from 'child_process';
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -87,7 +89,7 @@ mcp:
       assert.strictEqual(Object.keys(manifest.mcpServers).length, 2, 'Should have 2 MCP servers');
       assert.ok(manifest.mcpServers['test-server'], 'Should include test-server');
       assert.ok(manifest.mcpServers['another-server'], 'Should include another-server');
-      
+
       // Verify server configuration
       assert.strictEqual(manifest.mcpServers['test-server'].command, 'node');
       assert.deepStrictEqual(manifest.mcpServers['test-server'].args, ['server.js']);

@@ -5,10 +5,10 @@
  * Tests cover input detection, config loading, data extraction, aggregation,
  * and report generation.
  */
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // Import the hub-release-analyzer module
 const analyzer = require('../../bin/hub-release-analyzer.js');
@@ -41,7 +41,7 @@ describe('Hub Release Analyzer', () => {
         '--bundle-filter', 'my-.*',
         '--dry-run',
         '-v',
-        './hub.yml',
+        './hub.yml'
       ];
       const result = parseArgs(argv);
 
@@ -153,8 +153,8 @@ describe('Hub Release Analyzer', () => {
         { id: 'src3', type: 'apm', enabled: true, repository: 'owner/repo3' },
         { id: 'src4', type: 'awesome-copilot', enabled: true, url: 'https://github.com/owner/repo4' },
         { id: 'src5', type: 'github', enabled: true, url: 'https://github.com/owner/repo5' },
-        { id: 'src6', type: 'github', enabled: true }, // no repo info
-      ],
+        { id: 'src6', type: 'github', enabled: true } // no repo info
+      ]
     };
 
     it('should filter enabled GitHub and APM sources only', () => {
@@ -246,15 +246,15 @@ sources: []
           return {
             status: 0,
             stdout: JSON.stringify({
-              content: Buffer.from(hubYaml).toString('base64'),
-            }),
+              content: Buffer.from(hubYaml).toString('base64')
+            })
           };
         }
         return { status: 1 };
       };
 
       const result = loadHubConfig('https://github.com/owner/repo', {
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(result.version, '1.0.0');
@@ -308,7 +308,7 @@ sources: []
       id: 'test-src',
       name: 'Test Source',
       repo: 'owner/repo',
-      type: 'github' as const,
+      type: 'github' as const
     };
 
     const mockReleases = [
@@ -318,17 +318,17 @@ sources: []
         assets: [
           { name: 'bundle-a-1.0.0.zip', size: 1024, download_count: 100 },
           { name: 'bundle-b-1.0.0.zip', size: 2048, download_count: 200 },
-          { name: 'readme.md', size: 100, download_count: 50 },
-        ],
+          { name: 'readme.md', size: 100, download_count: 50 }
+        ]
       },
       {
         tag_name: 'v2.0.0',
         published_at: '2024-02-01T00:00:00Z',
         assets: [
           { name: 'bundle-a-2.0.0.zip', size: 1536, download_count: 150 },
-          { name: 'bundle-c-2.0.0.zip', size: 3072, download_count: 300 },
-        ],
-      },
+          { name: 'bundle-c-2.0.0.zip', size: 3072, download_count: 300 }
+        ]
+      }
     ];
 
     it('should extract all download records from releases', () => {
@@ -350,7 +350,7 @@ sources: []
 
     it('should filter by bundle regex', () => {
       const result = processReleases(mockSource, mockReleases, {
-        bundleFilter: /bundle-a/,
+        bundleFilter: /bundle-a/
       });
 
       assert.strictEqual(result.length, 2);
@@ -379,7 +379,7 @@ sources: []
       { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
       { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a', version: '2.0.0', assetName: 'a-2.0.0.zip', assetSize: 1000, downloadCount: 200, releaseTag: 'v2.0.0', releaseDate: '2024-02-01' },
       { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-b', version: '1.0.0', assetName: 'b-1.0.0.zip', assetSize: 1000, downloadCount: 50, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-      { sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 150, releaseTag: 'v1.0.0', releaseDate: '2024-01-15' },
+      { sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 150, releaseTag: 'v1.0.0', releaseDate: '2024-01-15' }
     ];
 
     it('should aggregate by source', () => {
@@ -432,15 +432,15 @@ sources: []
     const mockAggregated = {
       bySource: [
         { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', totalDownloads: 1000, bundleCount: 5, versionCount: 10, latestRelease: '2024-01-01' },
-        { sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', totalDownloads: 500, bundleCount: 3, versionCount: 6, latestRelease: '2024-02-01' },
+        { sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', totalDownloads: 500, bundleCount: 3, versionCount: 6, latestRelease: '2024-02-01' }
       ],
       byBundle: [
         { bundleId: 'bundle-a', totalDownloads: 800, versionCount: 3, sourceCount: 2, topVersion: { version: '2.0.0', downloads: 400 } },
-        { bundleId: 'bundle-b', totalDownloads: 700, versionCount: 2, sourceCount: 1, topVersion: { version: '1.5.0', downloads: 500 } },
+        { bundleId: 'bundle-b', totalDownloads: 700, versionCount: 2, sourceCount: 1, topVersion: { version: '1.5.0', downloads: 500 } }
       ],
       detailed: [
-        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-      ],
+        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' }
+      ]
     };
 
     beforeEach(() => {
@@ -480,10 +480,10 @@ sources: []
       const aggregatedWithComma = {
         ...mockAggregated,
         bySource: [
-          { sourceId: 'src1', sourceName: 'Source, with comma', sourceRepo: 'owner/repo1', totalDownloads: 1000, bundleCount: 5, versionCount: 10, latestRelease: '2024-01-01' },
+          { sourceId: 'src1', sourceName: 'Source, with comma', sourceRepo: 'owner/repo1', totalDownloads: 1000, bundleCount: 5, versionCount: 10, latestRelease: '2024-01-01' }
         ],
         byBundle: [],
-        detailed: [],
+        detailed: []
       };
 
       generateCsvReports(aggregatedWithComma, tempDir, '2024-01-01');
@@ -501,22 +501,22 @@ sources: []
 
     const mockAggregated = {
       bySource: [
-        { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', totalDownloads: 1000, bundleCount: 5, versionCount: 10, latestRelease: '2024-01-01' },
+        { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', totalDownloads: 1000, bundleCount: 5, versionCount: 10, latestRelease: '2024-01-01' }
       ],
       byBundle: [
-        { bundleId: 'bundle-a', totalDownloads: 800, versionCount: 3, sourceCount: 2, topVersion: { version: '2.0.0', downloads: 400 } },
+        { bundleId: 'bundle-a', totalDownloads: 800, versionCount: 3, sourceCount: 2, topVersion: { version: '2.0.0', downloads: 400 } }
       ],
       detailed: [
         { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-b', version: '2.0.0', assetName: 'b-2.0.0.zip', assetSize: 2048, downloadCount: 200, releaseTag: 'v2.0.0', releaseDate: '2024-02-01' },
-      ],
+        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-b', version: '2.0.0', assetName: 'b-2.0.0.zip', assetSize: 2048, downloadCount: 200, releaseTag: 'v2.0.0', releaseDate: '2024-02-01' }
+      ]
     };
 
     const mockArgs = {
       hubSource: 'https://github.com/owner/repo',
       minDownloads: 10,
       sourceFilter: null,
-      bundleFilter: null,
+      bundleFilter: null
     };
 
     beforeEach(() => {
@@ -576,8 +576,8 @@ sources: []
             status: 0,
             stdout: JSON.stringify([
               { tag_name: 'v1.0.0', assets: [] },
-              { tag_name: 'v2.0.0', assets: [] },
-            ]),
+              { tag_name: 'v2.0.0', assets: [] }
+            ])
           };
         }
         return { status: 1 };
@@ -635,14 +635,14 @@ sources:
         log: (msg: string) => {
           output += msg + '\n';
         },
-        error: () => {},
+        error: () => {}
       };
 
       await main({
         argv: ['--dry-run', hubPath],
         env: {},
         spawnSync: () => ({ status: 0 }),
-        logger: mockLogger,
+        logger: mockLogger
       });
 
       assert.ok(output.includes('DRY RUN') || !output.includes('Error'));

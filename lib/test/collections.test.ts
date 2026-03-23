@@ -1,10 +1,10 @@
 /**
  * Collections module tests
  */
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   listCollectionFiles,
   readCollection,
@@ -130,8 +130,8 @@ items: []
         items: [
           { path: 'prompts/first.md', kind: 'prompt' },
           { path: 'prompts/second.md', kind: 'prompt' },
-          { path: 'instructions/inst.md', kind: 'instruction' },
-        ],
+          { path: 'instructions/inst.md', kind: 'instruction' }
+        ]
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);
@@ -142,7 +142,7 @@ items: []
       assert.deepStrictEqual(paths, [
         'prompts/first.md',
         'prompts/second.md',
-        'instructions/inst.md',
+        'instructions/inst.md'
       ]);
     });
 
@@ -150,7 +150,7 @@ items: []
       const collection = {
         id: 'empty',
         name: 'Empty',
-        items: [],
+        items: []
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);
@@ -162,7 +162,7 @@ items: []
       const collection = {
         id: 'test',
         name: 'Test',
-        items: [{ path: 'prompts\\windows\\style.md', kind: 'prompt' }],
+        items: [{ path: 'prompts\\windows\\style.md', kind: 'prompt' }]
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);
@@ -179,8 +179,8 @@ items: []
           { path: 'prompts/valid.md', kind: 'prompt' },
           { kind: 'prompt' } as any, // Missing path
           { path: '', kind: 'prompt' }, // Empty path
-          { path: 'prompts/another.md', kind: 'prompt' },
-        ],
+          { path: 'prompts/another.md', kind: 'prompt' }
+        ]
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);
@@ -199,7 +199,7 @@ items: []
       const collection = {
         id: 'test',
         name: 'Test',
-        items: [{ path: 'skills/my-skill/SKILL.md', kind: 'skill' }],
+        items: [{ path: 'skills/my-skill/SKILL.md', kind: 'skill' }]
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);
@@ -224,8 +224,8 @@ items: []
         name: 'Test',
         items: [
           { path: 'skills/my-skill/SKILL.md', kind: 'skill' },
-          { path: 'prompts/simple.prompt.md', kind: 'prompt' },
-        ],
+          { path: 'prompts/simple.prompt.md', kind: 'prompt' }
+        ]
       };
 
       const paths = resolveCollectionItemPaths(tempDir, collection);

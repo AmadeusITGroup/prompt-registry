@@ -2,11 +2,15 @@
  * Collection file utilities.
  * @module collections
  */
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as yaml from 'js-yaml';
-import { normalizeRepoRelativePath } from './validate';
-import type { Collection } from './types';
+import type {
+  Collection,
+} from './types';
+import {
+  normalizeRepoRelativePath,
+} from './validate';
 
 /**
  * List all collection files in the repository.
