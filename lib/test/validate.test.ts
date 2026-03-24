@@ -1,20 +1,20 @@
 /**
  * Validation module tests
  */
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
-  validateCollectionId,
-  validateVersion,
-  validateItemKind,
-  normalizeRepoRelativePath,
-  isSafeRepoRelativePath,
-  validateCollectionObject,
-  validateCollectionFile,
-  validateAllCollections,
   generateMarkdown,
+  isSafeRepoRelativePath,
+  normalizeRepoRelativePath,
+  validateAllCollections,
+  validateCollectionFile,
+  validateCollectionId,
+  validateCollectionObject,
+  validateItemKind,
+  validateVersion,
   VALIDATION_RULES,
 } from '../src/validate';
 
@@ -199,7 +199,7 @@ describe('Validation Module', () => {
       const collection = {
         id: 'test-collection',
         name: 'Test Collection',
-        items: [{ path: 'prompts/test.md', kind: 'prompt' }],
+        items: [{ path: 'prompts/test.md', kind: 'prompt' }]
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, true);
@@ -209,7 +209,7 @@ describe('Validation Module', () => {
     it('should reject missing id', () => {
       const collection = {
         name: 'Test Collection',
-        items: [],
+        items: []
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, false);
@@ -219,7 +219,7 @@ describe('Validation Module', () => {
     it('should reject missing name', () => {
       const collection = {
         id: 'test',
-        items: [],
+        items: []
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, false);
@@ -229,7 +229,7 @@ describe('Validation Module', () => {
     it('should reject missing items', () => {
       const collection = {
         id: 'test',
-        name: 'Test',
+        name: 'Test'
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, false);
@@ -240,7 +240,7 @@ describe('Validation Module', () => {
       const collection = {
         id: 'test',
         name: 'Test',
-        items: [{ path: '../outside', kind: 'prompt' }],
+        items: [{ path: '../outside', kind: 'prompt' }]
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, false);
@@ -251,7 +251,7 @@ describe('Validation Module', () => {
       const collection = {
         id: 'test',
         name: 'Test',
-        items: [{ path: 'prompts/test.md', kind: 'invalid' }],
+        items: [{ path: 'prompts/test.md', kind: 'invalid' }]
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, false);
@@ -344,7 +344,7 @@ items: []
 
       const result = validateAllCollections(tempDir, [
         'collections/first.collection.yml',
-        'collections/second.collection.yml',
+        'collections/second.collection.yml'
       ]);
       assert.strictEqual(result.ok, true);
       assert.strictEqual(result.fileResults.length, 2);
@@ -364,7 +364,7 @@ items: []
 
       const result = validateAllCollections(tempDir, [
         'collections/first.collection.yml',
-        'collections/second.collection.yml',
+        'collections/second.collection.yml'
       ]);
       assert.strictEqual(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes('Duplicate collection ID')));
@@ -384,7 +384,7 @@ items: []
 
       const result = validateAllCollections(tempDir, [
         'collections/first.collection.yml',
-        'collections/second.collection.yml',
+        'collections/second.collection.yml'
       ]);
       assert.strictEqual(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes('Duplicate collection name')));
@@ -396,7 +396,7 @@ items: []
       const result = {
         ok: true,
         errors: [],
-        fileResults: [],
+        fileResults: []
       };
       const md = generateMarkdown(result, 2);
       assert.ok(md.includes('✅'));
@@ -407,7 +407,7 @@ items: []
       const result = {
         ok: false,
         errors: ['Error 1', 'Error 2'],
-        fileResults: [],
+        fileResults: []
       };
       const md = generateMarkdown(result, 2);
       assert.ok(md.includes('❌'));

@@ -1,12 +1,12 @@
 /**
  * CLI utilities tests
  */
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import {
-  parseSingleArg,
-  parseMultiArg,
-  hasFlag,
   getPositionalArg,
+  hasFlag,
+  parseMultiArg,
+  parseSingleArg,
 } from '../src/cli';
 
 describe('CLI Module', () => {

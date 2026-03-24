@@ -21,7 +21,7 @@ export interface FileValidationResult extends ObjectValidationResult {
 }
 
 export interface AllCollectionsResult extends ObjectValidationResult {
-  fileResults: Array<{ file: string } & FileValidationResult>;
+  fileResults: ({ file: string } & FileValidationResult)[];
 }
 
 export interface CollectionItem {

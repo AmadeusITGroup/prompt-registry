@@ -1,20 +1,20 @@
 /**
  * Collection validation utilities.
  * @module validate
- * 
+ *
  * Shared validation logic for collection files.
  * Used by validate-collections, build-collection-bundle, and publish-collections
  * to ensure consistent validation across all components.
  */
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 import type {
-  ValidationResult,
-  ObjectValidationResult,
-  FileValidationResult,
   AllCollectionsResult,
   Collection,
+  FileValidationResult,
+  ObjectValidationResult,
+  ValidationResult,
   ValidationRules,
 } from './types';
 
@@ -49,18 +49,18 @@ export const VALIDATION_RULES: ValidationRules = {
   collectionId: {
     maxLength: 100,
     pattern: /^[a-z0-9-]+$/,
-    description: 'lowercase letters, numbers, and hyphens only',
+    description: 'lowercase letters, numbers, and hyphens only'
   },
   version: {
     pattern: /^\d+\.\d+\.\d+$/,
     default: '1.0.0',
-    description: 'semantic versioning format (X.Y.Z)',
+    description: 'semantic versioning format (X.Y.Z)'
   },
   itemKinds: loadItemKindsFromSchema(),
   deprecatedKinds: {
     chatmode: 'agent',
-    'chat-mode': 'agent',
-  },
+    'chat-mode': 'agent'
+  }
 };
 
 /**
@@ -76,14 +76,14 @@ export function validateCollectionId(id: string): ValidationResult {
   if (id.length > VALIDATION_RULES.collectionId.maxLength) {
     return {
       valid: false,
-      error: `Collection ID must be at most ${VALIDATION_RULES.collectionId.maxLength} characters (got ${id.length})`,
+      error: `Collection ID must be at most ${VALIDATION_RULES.collectionId.maxLength} characters (got ${id.length})`
     };
   }
 
   if (!VALIDATION_RULES.collectionId.pattern.test(id)) {
     return {
       valid: false,
-      error: `Collection ID must contain only ${VALIDATION_RULES.collectionId.description}`,
+      error: `Collection ID must contain only ${VALIDATION_RULES.collectionId.description}`
     };
   }
 
@@ -108,7 +108,7 @@ export function validateVersion(version?: string | null): ValidationResult {
   if (!VALIDATION_RULES.version.pattern.test(version)) {
     return {
       valid: false,
-      error: `Version must follow ${VALIDATION_RULES.version.description} (got "${version}")`,
+      error: `Version must follow ${VALIDATION_RULES.version.description} (got "${version}")`
     };
   }
 
@@ -134,7 +134,7 @@ export function validateItemKind(kind: string): ValidationResult {
       valid: false,
       error: `Item kind '${kind}' is deprecated. Use '${replacement}' instead`,
       deprecated: true,
-      replacement,
+      replacement
     };
   }
 
@@ -142,7 +142,7 @@ export function validateItemKind(kind: string): ValidationResult {
   if (!VALIDATION_RULES.itemKinds.includes(normalizedKind)) {
     return {
       valid: false,
-      error: `Invalid item kind '${kind}'. Must be one of: ${VALIDATION_RULES.itemKinds.join(', ')}`,
+      error: `Invalid item kind '${kind}'. Must be one of: ${VALIDATION_RULES.itemKinds.join(', ')}`
     };
   }
 
@@ -334,7 +334,7 @@ export function validateAllCollections(
   collectionFiles: string[]
 ): AllCollectionsResult {
   const errors: string[] = [];
-  const fileResults: Array<{ file: string } & FileValidationResult> = [];
+  const fileResults: ({ file: string } & FileValidationResult)[] = [];
   const seenIds = new Map<string, string>(); // id -> file path
   const seenNames = new Map<string, string>(); // name -> file path
 

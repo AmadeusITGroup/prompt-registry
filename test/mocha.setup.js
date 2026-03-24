@@ -1,7 +1,7 @@
 // Mock vscode module for unit tests
-const path = require('path');
-const fs = require('fs');
-const Module = require('module');
+const path = require('node:path');
+const fs = require('node:fs');
+const Module = require('node:module');
 
 // Set test environment flag to prevent UpdateScheduler from running
 process.env.NODE_ENV = 'test';

@@ -1,16 +1,16 @@
-import * as assert from 'assert';
-import { 
-  HubReference, 
-  HubConfig,
-  validateHubReference,
-  validateHubConfig,
-  sanitizeHubId,
-  isValidProtocol,
-  hasPathTraversal
-} from '../../../src/types/hub';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as yaml from 'js-yaml';
+import {
+  hasPathTraversal,
+  HubConfig,
+  HubReference,
+  isValidProtocol,
+  sanitizeHubId,
+  validateHubConfig,
+  validateHubReference,
+} from '../../../src/types/hub';
 
 suite('Hub Types - TDD Implementation', () => {
   suite('validateHubReference', () => {
@@ -20,7 +20,7 @@ suite('Hub Types - TDD Implementation', () => {
         location: 'promptregistry/official-hub',
         ref: 'main'
       };
-      
+
       assert.doesNotThrow(() => validateHubReference(ref));
     });
 
@@ -29,7 +29,7 @@ suite('Hub Types - TDD Implementation', () => {
         type: 'local',
         location: '../../etc/passwd'
       };
-      
+
       assert.throws(
         () => validateHubReference(ref),
         /Path traversal detected/
@@ -41,7 +41,7 @@ suite('Hub Types - TDD Implementation', () => {
         type: 'url',
         location: 'http://example.com/hub.yml'
       };
-      
+
       assert.throws(
         () => validateHubReference(ref),
         /Only HTTPS URLs are allowed/
@@ -53,7 +53,7 @@ suite('Hub Types - TDD Implementation', () => {
         type: 'github',
         location: 'invalid-format'
       };
-      
+
       assert.throws(
         () => validateHubReference(ref),
         /Invalid GitHub repository format/
@@ -65,7 +65,7 @@ suite('Hub Types - TDD Implementation', () => {
         type: 'github',
         location: ''
       };
-      
+
       assert.throws(
         () => validateHubReference(ref),
         /Location cannot be empty/
@@ -77,7 +77,7 @@ suite('Hub Types - TDD Implementation', () => {
         type: 'url',
         location: 'ftp://malicious.com/hub.yml'
       };
-      
+
       assert.throws(
         () => validateHubReference(ref),
         /Only HTTPS URLs are allowed/
@@ -98,7 +98,7 @@ suite('Hub Types - TDD Implementation', () => {
 
     test('should validate complete valid hub config', () => {
       const result = validateHubConfig(validConfig);
-      
+
       assert.strictEqual(result.valid, true);
       assert.strictEqual(result.errors.length, 0);
     });
@@ -106,18 +106,18 @@ suite('Hub Types - TDD Implementation', () => {
     test('should reject config without version', () => {
       const config = { ...validConfig };
       delete (config as any).version;
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.includes('version is required'));
     });
 
     test('should reject config with invalid version format', () => {
       const config = { ...validConfig, version: 'invalid' };
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.some((e: string) => e.includes('semver')));
     });
@@ -125,9 +125,9 @@ suite('Hub Types - TDD Implementation', () => {
     test('should reject config without metadata', () => {
       const config = { ...validConfig };
       delete (config as any).metadata;
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.includes('metadata is required'));
     });
@@ -135,27 +135,27 @@ suite('Hub Types - TDD Implementation', () => {
     test('should reject config without sources', () => {
       const config = { ...validConfig };
       delete (config as any).sources;
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.includes('sources is required'));
     });
 
     test('should validate config with empty profiles array', () => {
       const config = { ...validConfig, profiles: [] };
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, true);
     });
 
     test('should detect bundle referencing non-existent source', () => {
       const config = { ...validConfig };
       config.profiles[0].bundles[0].source = 'non-existent-source';
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.some((e: string) => e.includes('non-existent source')));
     });
@@ -163,9 +163,9 @@ suite('Hub Types - TDD Implementation', () => {
     test('should validate checksum format - reject invalid', () => {
       const config = { ...validConfig };
       config.metadata.checksum = 'invalid-checksum';
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.some((e: string) => e.includes('checksum')));
     });
@@ -173,18 +173,18 @@ suite('Hub Types - TDD Implementation', () => {
     test('should validate checksum format - accept sha256', () => {
       const config = { ...validConfig };
       config.metadata.checksum = 'sha256:abc123def456';
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, true);
     });
 
     test('should validate checksum format - accept sha512', () => {
       const config = { ...validConfig };
       config.metadata.checksum = 'sha512:abc123def456789';
-      
+
       const result = validateHubConfig(config);
-      
+
       assert.strictEqual(result.valid, true);
     });
   });
@@ -272,18 +272,18 @@ suite('Hub Types - TDD Implementation', () => {
 
     test('should reject config with path traversal in source ID', () => {
       const result = validateHubConfig(maliciousConfig);
-      
+
       assert.strictEqual(result.valid, false);
-      assert.ok(result.errors.some((e: string) => 
+      assert.ok(result.errors.some((e: string) =>
         e.includes('path traversal') || e.includes('../')
       ));
     });
 
     test('should reject config with path traversal in bundle ID', () => {
       const result = validateHubConfig(maliciousConfig);
-      
+
       assert.strictEqual(result.valid, false);
-      assert.ok(result.errors.some((e: string) => 
+      assert.ok(result.errors.some((e: string) =>
         e.includes('traversal') || e.includes('../')
       ));
     });

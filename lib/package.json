@@ -21,7 +21,8 @@
     "watch": "tsc --watch",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run compile-tests && mocha 'dist-test/test/**/*.test.js'",
-    "lint": "eslint src/**/*.ts test/**/*.ts",
+    "lint": "eslint src test",
+    "lint:fix": "eslint src test --fix",
     "prepublishOnly": "npm run build"
   },
   "repository": {
