@@ -424,6 +424,8 @@ export class PromptRegistryExtension {
         await this.setupStateManager.reset();
         // Clear active hub to ensure hub selector is shown
         await this.hubManager?.setActiveHub(null);
+        // Remove any ghost hubs left by failed imports
+        await this.hubManager?.deleteAllHubs();
         this.logger.info('First run state reset via SetupStateManager');
         vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
       }),
