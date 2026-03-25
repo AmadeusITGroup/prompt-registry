@@ -135,20 +135,11 @@ export class ApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Execute shell command
-   * @param command
-   */
-  protected async execShell(command: string): Promise<{ stdout: string; stderr: string }> {
-    return promisify(exec)(command);
-  }
-
-  /**
    * Get authentication token using fallback chain:
    * 1. VSCode GitHub API (if user is logged in)
    * 2. gh CLI (if installed and authenticated)
    * 3. Explicit token from source configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getAuthenticationToken(): Promise<string | undefined> {
     // Return cached token if already resolved
     if (this.authToken !== undefined) {
@@ -212,7 +203,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * Security: Prevents URL injection attacks
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private isValidGitHubUrl(url: string): boolean {
     return GITHUB_URL_PATTERN.test(url);
   }
@@ -220,7 +210,6 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Parse owner and repo from GitHub URL
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private parseGitHubUrl(): { owner: string; repo: string } {
     const match = this.source.url.match(GITHUB_URL_PATTERN);
     if (!match) {
@@ -235,7 +224,6 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Ensure APM runtime is available
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureRuntime(): Promise<void> {
     const status = await this.runtime.getStatus();
     if (!status.installed && !status.uvxAvailable) {
@@ -250,35 +238,8 @@ export class ApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch available bundles from GitHub repository
-   */
-  public async fetchBundles(): Promise<Bundle[]> {
-    this.logger.debug('[ApmAdapter] Fetching bundles...');
-
-    // Check cache
-    const cacheKey = this.source.url;
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.config.cacheTtl) {
-      this.logger.debug('[ApmAdapter] Using cached bundles');
-      return cached.bundles;
-    }
-
-    await this.ensureRuntime();
-
-    try {
-      const bundles = await this.fetchFromGitHub();
-      this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
-      return bundles;
-    } catch (error) {
-      this.logger.error('[ApmAdapter] Failed to fetch bundles', error as Error);
-      throw error;
-    }
-  }
-
-  /**
    * Fetch packages from GitHub
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchFromGitHub(): Promise<ApmBundle[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const bundles: ApmBundle[] = [];
@@ -331,7 +292,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param repo
    * @param branch
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchGitTree(owner: string, repo: string, branch: string): Promise<{ path: string; type: string; sha: string }[]> {
     const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
 
@@ -358,7 +318,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param repo
    * @param subpath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchApmManifest(
     owner: string,
     repo: string,
@@ -380,7 +339,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param url
    * @param extraHeaders
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async httpsGet(url: string, extraHeaders?: Record<string, string>): Promise<string> {
     const token = await this.getAuthenticationToken();
 
@@ -414,38 +372,8 @@ export class ApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Download a bundle by installing via APM CLI
-   * @param bundle
-   */
-  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);
-
-    await this.ensureRuntime();
-    const token = await this.getAuthenticationToken();
-
-    const packageRef = (bundle as ApmBundle).apmPackageRef || bundle.id;
-    const tempDir = await this.createTempDir();
-
-    try {
-      // Install using APM CLI
-      const result = await this.cli.install(packageRef, tempDir, token);
-
-      if (!result.success) {
-        throw new Error(`Failed to install package: ${result.error}`);
-      }
-
-      // Create archive from installed package
-      return await this.createBundleArchive(bundle, tempDir);
-    } finally {
-      // Cleanup
-      await this.cleanupTempDir(tempDir);
-    }
-  }
-
-  /**
    * Create temporary directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createTempDir(): Promise<string> {
     const tempBase = path.join(os.tmpdir(), 'prompt-registry-apm');
     await fs.promises.mkdir(tempBase, { recursive: true });
@@ -456,7 +384,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * Cleanup temporary directory
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupTempDir(dir: string): Promise<void> {
     try {
       await fs.promises.rm(dir, { recursive: true, force: true });
@@ -470,7 +397,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleArchive(bundle: Bundle, installDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -492,7 +418,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async populateArchive(
     archive: archiver.Archiver,
     bundle: Bundle,
@@ -531,7 +456,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createDeploymentManifest(bundle: Bundle, installDir: string): Promise<any> {
     const apmManifestPath = path.join(installDir, 'apm.yml');
     let apmManifest: ApmManifest = { name: bundle.name };
@@ -587,7 +511,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param dir
    * @param recursive
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async findPromptFiles(dir: string, recursive = true): Promise<string[]> {
     const files: string[] = [];
 
@@ -626,7 +549,6 @@ export class ApmAdapter extends RepositoryAdapter {
    * Detect file type from extension
    * @param filename
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
       return 'instructions';
@@ -644,11 +566,73 @@ export class ApmAdapter extends RepositoryAdapter {
    * Convert to title case
    * @param str
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private titleCase(str: string): string {
     return str.split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  /**
+   * Execute shell command
+   * @param command
+   */
+  protected async execShell(command: string): Promise<{ stdout: string; stderr: string }> {
+    return promisify(exec)(command);
+  }
+
+  /**
+   * Fetch available bundles from GitHub repository
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.debug('[ApmAdapter] Fetching bundles...');
+
+    // Check cache
+    const cacheKey = this.source.url;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.config.cacheTtl) {
+      this.logger.debug('[ApmAdapter] Using cached bundles');
+      return cached.bundles;
+    }
+
+    await this.ensureRuntime();
+
+    try {
+      const bundles = await this.fetchFromGitHub();
+      this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
+      return bundles;
+    } catch (error) {
+      this.logger.error('[ApmAdapter] Failed to fetch bundles', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a bundle by installing via APM CLI
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);
+
+    await this.ensureRuntime();
+    const token = await this.getAuthenticationToken();
+
+    const packageRef = (bundle as ApmBundle).apmPackageRef || bundle.id;
+    const tempDir = await this.createTempDir();
+
+    try {
+      // Install using APM CLI
+      const result = await this.cli.install(packageRef, tempDir, token);
+
+      if (!result.success) {
+        throw new Error(`Failed to install package: ${result.error}`);
+      }
+
+      // Create archive from installed package
+      return await this.createBundleArchive(bundle, tempDir);
+    } finally {
+      // Cleanup
+      await this.cleanupTempDir(tempDir);
+    }
   }
 
   /**

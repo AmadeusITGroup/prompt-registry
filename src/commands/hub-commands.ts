@@ -49,6 +49,8 @@ export class HubCommands {
    */
   private readonly logger: Logger;
 
+  private readonly context: vscode.ExtensionContext;
+
   constructor(
     hubManager: HubManager,
     registryManager: RegistryManager,
@@ -61,8 +63,358 @@ export class HubCommands {
     this.registerCommands();
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private readonly context: vscode.ExtensionContext;
+  /**
+   * Convert a hub reference to a URL
+   * @param reference
+   * @param reference.type
+   * @param reference.location
+   */
+  private referenceToUrl(reference: { type: string; location: string }): string | undefined {
+    switch (reference.type) {
+      case 'github': {
+        return `https://github.com/${reference.location}`;
+      }
+      case 'url': {
+        return reference.location;
+      }
+      case 'local': {
+        return undefined;
+      }
+      default: {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * Convert a source to a repository URL
+   * @param source
+   */
+  private sourceToUrl(source: any): string | undefined {
+    if (!source) {
+      return undefined;
+    }
+
+    // Check for explicit repository/homepage in metadata
+    if (source.metadata?.homepage) {
+      return source.metadata.homepage;
+    }
+
+    const url = source.url;
+    if (!url) {
+      return undefined;
+    }
+
+    switch (source.type) {
+      case 'github':
+      case 'awesome-copilot': {
+        // GitHub URL - extract repo path
+        // Could be: https://github.com/owner/repo or owner/repo
+        if (url.startsWith('https://github.com/')) {
+          // Remove /tree/branch or /blob/branch suffix if present
+          const cleanUrl = url.replace(/\/(tree|blob)\/[^/]+.*$/, '');
+          return cleanUrl;
+        } else if (/^[^/]+\/[^/]+$/.test(url)) {
+          // Short format: owner/repo
+          return `https://github.com/${url}`;
+        }
+        return url;
+      }
+      case 'gitlab': {
+        if (url.startsWith('https://gitlab.com/')) {
+          return url.replace(/\/-\/(tree|blob)\/[^/]+.*$/, '');
+        }
+        return url;
+      }
+      case 'http':
+      case 'url': {
+        return url;
+      }
+      case 'local':
+      case 'local-awesome-copilot':
+      case 'local-apm': {
+        return undefined;
+      }
+      default: {
+        return url;
+      }
+    }
+  }
+
+  /**
+   * Convert object to YAML format (simple implementation)
+   * @param obj
+   * @param indent
+   */
+  private objectToYaml(obj: any, indent = 0): string {
+    const spaces = ' '.repeat(indent);
+    // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
+    let yaml = '';
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined) {
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          yaml += `${spaces}${key}: []\n`;
+        } else {
+          yaml += `${spaces}${key}:\n`;
+          for (const item of value) {
+            if (typeof item === 'object' && item !== null) {
+              yaml += `${spaces}- `;
+              // Get object keys and format inline for first property
+              const entries = Object.entries(item);
+              if (entries.length > 0) {
+                const [firstKey, firstValue] = entries[0];
+                // Check if first value is an object - if so, use recursive formatting
+                if (typeof firstValue === 'object' && firstValue !== null) {
+                  yaml += `${firstKey}:\n`;
+                  yaml += this.objectToYaml(firstValue, indent + 4);
+                } else {
+                  yaml += `${firstKey}: ${this.formatYamlValue(firstValue)}\n`;
+                }
+                // Add remaining properties with proper indentation
+                for (let i = 1; i < entries.length; i++) {
+                  const [k, v] = entries[i];
+                  if (typeof v === 'object' && v !== null) {
+                    yaml += `${spaces}  ${k}:\n`;
+                    yaml += this.objectToYaml(v, indent + 4);
+                  } else {
+                    yaml += `${spaces}  ${k}: ${this.formatYamlValue(v)}\n`;
+                  }
+                }
+              }
+            } else {
+              yaml += `${spaces}- ${item}\n`;
+            }
+          }
+        }
+      } else if (typeof value === 'object') {
+        yaml += `${spaces}${key}:\n`;
+        yaml += this.objectToYaml(value, indent + 2);
+      } else {
+        yaml += `${spaces}${key}: ${this.formatYamlValue(value)}\n`;
+      }
+    }
+
+    return yaml;
+  }
+
+  /**
+   * Format a value for YAML output
+   * @param value
+   */
+  private formatYamlValue(value: any): string {
+    if (typeof value === 'string') {
+      // Quote strings that contain special characters
+      if (value.includes(':') || value.includes('#') || value.includes('\n')
+        || value.startsWith('*') || value.startsWith('&') || value.startsWith('!')) {
+        return '"' + value.replace(/"/g, '\\\\"') + '"';
+      }
+      return value;
+    } else if (typeof value === 'boolean') {
+      return value ? 'true' : 'false';
+    } else if (typeof value === 'number') {
+      return String(value);
+    }
+    return String(value);
+  }
+
+  /**
+
+    /**
+   * Select hub source type
+   */
+  private async selectSourceType(): Promise<'github' | 'url' | 'local' | undefined> {
+    const options: HubSourceOption[] = [
+      {
+        label: '$(github) GitHub Repository',
+        description: 'Import from a GitHub repository',
+        value: 'github'
+      },
+      // {
+      //     label: '$(link) HTTPS URL',
+      //     description: 'Import from a direct URL',
+      //     value: 'url'
+      // },
+      {
+        label: '$(file) Local File',
+        description: 'Import from a local hub-config.yml file',
+        value: 'local'
+      }
+    ];
+
+    const selected = await vscode.window.showQuickPick(options, {
+      placeHolder: 'Select hub source type',
+      ignoreFocusOut: true
+    });
+
+    return selected?.value;
+  }
+
+  /**
+   * Get hub reference based on source type
+   * @param sourceType
+   */
+  private async getHubReference(sourceType: 'github' | 'url' | 'local'): Promise<HubReference | undefined> {
+    switch (sourceType) {
+      case 'github': {
+        const location = await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository (e.g., owner/repo)',
+          placeHolder: 'owner/repo',
+          validateInput: (value) => {
+            if (!value || !value.includes('/')) {
+              return 'Please enter a valid GitHub repository (owner/repo)';
+            }
+            return null;
+          },
+          ignoreFocusOut: true
+        });
+
+        if (!location) {
+          return undefined;
+        }
+
+        const ref = await vscode.window.showInputBox({
+          prompt: 'Enter branch, tag, or commit (optional, default: main)',
+          placeHolder: 'main',
+          ignoreFocusOut: true
+        });
+
+        return {
+          type: 'github',
+          location,
+          ref: ref || undefined
+        };
+      }
+
+      case 'url': {
+        const location = await vscode.window.showInputBox({
+          prompt: 'Enter HTTPS URL to hub-config.yml',
+          placeHolder: 'https://example.com/hub-config.yml',
+          validateInput: (value) => {
+            if (!value || !value.startsWith('https://')) {
+              return 'Please enter a valid HTTPS URL';
+            }
+            return null;
+          },
+          ignoreFocusOut: true
+        });
+
+        return location ? { type: 'url', location } : undefined;
+      }
+
+      case 'local': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          filters: {
+            'YAML Files': ['yml', 'yaml']
+          },
+          title: 'Select hub-config.yml file'
+        });
+
+        if (!uris || uris.length === 0) {
+          return undefined;
+        }
+
+        return {
+          type: 'local',
+          location: uris[0].fsPath
+        };
+      }
+    }
+  }
+
+  /**
+   * Get hub ID from user (optional)
+   */
+  private async getHubId(): Promise<string | null | undefined> {
+    const hubId = await vscode.window.showInputBox({
+      prompt: 'Enter hub ID (optional, will auto-generate if empty)',
+      placeHolder: 'my-hub',
+      validateInput: (value) => {
+        if (value && !/^[a-z0-9-]+$/.test(value)) {
+          return 'Hub ID must contain only lowercase letters, numbers, and hyphens';
+        }
+        if (value && (value.startsWith('-') || value.endsWith('-'))) {
+          return 'Hub ID cannot start or end with a hyphen';
+        }
+        return null;
+      },
+      ignoreFocusOut: true
+    });
+
+    return hubId === undefined ? null : (hubId || '');
+  }
+
+  /**
+   * Show detailed information about a hub
+   * @param hubId
+   */
+  private async showHubDetails(hubId: string): Promise<void> {
+    try {
+      const info = await this.hubManager.getHubInfo(hubId);
+
+      // Show in output channel or quick pick with actions
+      const action = await vscode.window.showInformationMessage(
+        `Hub: ${info.config.metadata.name}`,
+        'Sync',
+        'Delete',
+        'Close'
+      );
+
+      if (action === 'Sync') {
+        await this.syncHub(hubId);
+      } else if (action === 'Delete') {
+        await this.deleteHub(hubId);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to get hub details: ${message}`);
+    }
+  }
+
+  /**
+   * Sync all imported hubs
+   */
+  private async syncAllHubs(): Promise<void> {
+    const hubs = await this.hubManager.listHubs();
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Syncing all hubs',
+        cancellable: false
+      },
+      async (progress) => {
+        let completed = 0;
+        for (const hub of hubs) {
+          progress.report({
+            message: `Syncing ${hub.name} (${completed + 1}/${hubs.length})`,
+            increment: (100 / hubs.length)
+          });
+
+          try {
+            await this.hubManager.syncHub(hub.id);
+          } catch (error) {
+            vscode.window.showWarningMessage(
+              `Failed to sync ${hub.name}: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+
+          completed++;
+        }
+
+        vscode.window.showInformationMessage(
+          `Synced ${completed} of ${hubs.length} hubs successfully`
+        );
+      }
+    );
+  }
 
   /**
    * Register all hub-related commands
@@ -411,9 +763,6 @@ export class HubCommands {
       // Get current profiles and sources
       const profiles = await this.registryManager.listProfiles();
       const sources = await this.registryManager.listSources();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _installedBundles = await this.registryManager.listInstalledBundles();
-
       // Prompt for hub metadata
       const hubName = await vscode.window.showInputBox({
         prompt: 'Enter hub name',
@@ -666,383 +1015,5 @@ export class HubCommands {
       this.logger.error('Failed to open repository', error as Error);
       vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
     }
-  }
-
-  /**
-   * Convert a hub reference to a URL
-   * @param reference
-   * @param reference.type
-   * @param reference.location
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private referenceToUrl(reference: { type: string; location: string }): string | undefined {
-    switch (reference.type) {
-      case 'github': {
-        return `https://github.com/${reference.location}`;
-      }
-      case 'url': {
-        return reference.location;
-      }
-      case 'local': {
-        return undefined;
-      }
-      default: {
-        return undefined;
-      }
-    }
-  }
-
-  /**
-   * Convert a source to a repository URL
-   * @param source
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private sourceToUrl(source: any): string | undefined {
-    if (!source) {
-      return undefined;
-    }
-
-    // Check for explicit repository/homepage in metadata
-    if (source.metadata?.homepage) {
-      return source.metadata.homepage;
-    }
-
-    const url = source.url;
-    if (!url) {
-      return undefined;
-    }
-
-    switch (source.type) {
-      case 'github':
-      case 'awesome-copilot': {
-        // GitHub URL - extract repo path
-        // Could be: https://github.com/owner/repo or owner/repo
-        if (url.startsWith('https://github.com/')) {
-          // Remove /tree/branch or /blob/branch suffix if present
-          const cleanUrl = url.replace(/\/(tree|blob)\/[^/]+.*$/, '');
-          return cleanUrl;
-        } else if (/^[^/]+\/[^/]+$/.test(url)) {
-          // Short format: owner/repo
-          return `https://github.com/${url}`;
-        }
-        return url;
-      }
-      case 'gitlab': {
-        if (url.startsWith('https://gitlab.com/')) {
-          return url.replace(/\/-\/(tree|blob)\/[^/]+.*$/, '');
-        }
-        return url;
-      }
-      case 'http':
-      case 'url': {
-        return url;
-      }
-      case 'local':
-      case 'local-awesome-copilot':
-      case 'local-apm': {
-        return undefined;
-      }
-      default: {
-        return url;
-      }
-    }
-  }
-
-  /**
-   * Convert object to YAML format (simple implementation)
-   * @param obj
-   * @param indent
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private objectToYaml(obj: any, indent = 0): string {
-    const spaces = ' '.repeat(indent);
-    // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-    let yaml = '';
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined) {
-        continue;
-      }
-
-      if (Array.isArray(value)) {
-        if (value.length === 0) {
-          yaml += `${spaces}${key}: []\n`;
-        } else {
-          yaml += `${spaces}${key}:\n`;
-          for (const item of value) {
-            if (typeof item === 'object' && item !== null) {
-              yaml += `${spaces}- `;
-              // Get object keys and format inline for first property
-              const entries = Object.entries(item);
-              if (entries.length > 0) {
-                const [firstKey, firstValue] = entries[0];
-                // Check if first value is an object - if so, use recursive formatting
-                if (typeof firstValue === 'object' && firstValue !== null) {
-                  yaml += `${firstKey}:\n`;
-                  yaml += this.objectToYaml(firstValue, indent + 4);
-                } else {
-                  yaml += `${firstKey}: ${this.formatYamlValue(firstValue)}\n`;
-                }
-                // Add remaining properties with proper indentation
-                for (let i = 1; i < entries.length; i++) {
-                  const [k, v] = entries[i];
-                  if (typeof v === 'object' && v !== null) {
-                    yaml += `${spaces}  ${k}:\n`;
-                    yaml += this.objectToYaml(v, indent + 4);
-                  } else {
-                    yaml += `${spaces}  ${k}: ${this.formatYamlValue(v)}\n`;
-                  }
-                }
-              }
-            } else {
-              yaml += `${spaces}- ${item}\n`;
-            }
-          }
-        }
-      } else if (typeof value === 'object') {
-        yaml += `${spaces}${key}:\n`;
-        yaml += this.objectToYaml(value, indent + 2);
-      } else {
-        yaml += `${spaces}${key}: ${this.formatYamlValue(value)}\n`;
-      }
-    }
-
-    return yaml;
-  }
-
-  /**
-   * Format a value for YAML output
-   * @param value
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private formatYamlValue(value: any): string {
-    if (typeof value === 'string') {
-      // Quote strings that contain special characters
-      if (value.includes(':') || value.includes('#') || value.includes('\n')
-        || value.startsWith('*') || value.startsWith('&') || value.startsWith('!')) {
-        return '"' + value.replace(/"/g, '\\\\"') + '"';
-      }
-      return value;
-    } else if (typeof value === 'boolean') {
-      return value ? 'true' : 'false';
-    } else if (typeof value === 'number') {
-      return String(value);
-    }
-    return String(value);
-  }
-
-  /**
-
-    /**
-   * Select hub source type
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async selectSourceType(): Promise<'github' | 'url' | 'local' | undefined> {
-    const options: HubSourceOption[] = [
-      {
-        label: '$(github) GitHub Repository',
-        description: 'Import from a GitHub repository',
-        value: 'github'
-      },
-      // {
-      //     label: '$(link) HTTPS URL',
-      //     description: 'Import from a direct URL',
-      //     value: 'url'
-      // },
-      {
-        label: '$(file) Local File',
-        description: 'Import from a local hub-config.yml file',
-        value: 'local'
-      }
-    ];
-
-    const selected = await vscode.window.showQuickPick(options, {
-      placeHolder: 'Select hub source type',
-      ignoreFocusOut: true
-    });
-
-    return selected?.value;
-  }
-
-  /**
-   * Get hub reference based on source type
-   * @param sourceType
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getHubReference(sourceType: 'github' | 'url' | 'local'): Promise<HubReference | undefined> {
-    switch (sourceType) {
-      case 'github': {
-        const location = await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository (e.g., owner/repo)',
-          placeHolder: 'owner/repo',
-          validateInput: (value) => {
-            if (!value || !value.includes('/')) {
-              return 'Please enter a valid GitHub repository (owner/repo)';
-            }
-            return null;
-          },
-          ignoreFocusOut: true
-        });
-
-        if (!location) {
-          return undefined;
-        }
-
-        const ref = await vscode.window.showInputBox({
-          prompt: 'Enter branch, tag, or commit (optional, default: main)',
-          placeHolder: 'main',
-          ignoreFocusOut: true
-        });
-
-        return {
-          type: 'github',
-          location,
-          ref: ref || undefined
-        };
-      }
-
-      case 'url': {
-        const location = await vscode.window.showInputBox({
-          prompt: 'Enter HTTPS URL to hub-config.yml',
-          placeHolder: 'https://example.com/hub-config.yml',
-          validateInput: (value) => {
-            if (!value || !value.startsWith('https://')) {
-              return 'Please enter a valid HTTPS URL';
-            }
-            return null;
-          },
-          ignoreFocusOut: true
-        });
-
-        return location ? { type: 'url', location } : undefined;
-      }
-
-      case 'local': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          filters: {
-            'YAML Files': ['yml', 'yaml']
-          },
-          title: 'Select hub-config.yml file'
-        });
-
-        if (!uris || uris.length === 0) {
-          return undefined;
-        }
-
-        return {
-          type: 'local',
-          location: uris[0].fsPath
-        };
-      }
-    }
-  }
-
-  /**
-   * Get hub ID from user (optional)
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getHubId(): Promise<string | null | undefined> {
-    const hubId = await vscode.window.showInputBox({
-      prompt: 'Enter hub ID (optional, will auto-generate if empty)',
-      placeHolder: 'my-hub',
-      validateInput: (value) => {
-        if (value && !/^[a-z0-9-]+$/.test(value)) {
-          return 'Hub ID must contain only lowercase letters, numbers, and hyphens';
-        }
-        if (value && (value.startsWith('-') || value.endsWith('-'))) {
-          return 'Hub ID cannot start or end with a hyphen';
-        }
-        return null;
-      },
-      ignoreFocusOut: true
-    });
-
-    return hubId === undefined ? null : (hubId || '');
-  }
-
-  /**
-   * Show detailed information about a hub
-   * @param hubId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async showHubDetails(hubId: string): Promise<void> {
-    try {
-      const info = await this.hubManager.getHubInfo(hubId);
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _message = [
-        `**${info.config.metadata.name}**`,
-        '',
-        `**Description:** ${info.config.metadata.description}`,
-        `**Maintainer:** ${info.config.metadata.maintainer}`,
-        `**Version:** ${info.config.version}`,
-        `**Sources:** ${info.config.sources.length}`,
-        `**Profiles:** ${info.config.profiles.length}`,
-        '',
-        `**Hub ID:** ${info.id}`,
-        `**Source Type:** ${info.reference.type}`,
-        `**Last Modified:** ${info.metadata.lastModified.toLocaleString()}`,
-        `**Size:** ${(info.metadata.size / 1024).toFixed(2)} KB`
-      ].join('\n');
-
-      // Show in output channel or quick pick with actions
-      const action = await vscode.window.showInformationMessage(
-        `Hub: ${info.config.metadata.name}`,
-        'Sync',
-        'Delete',
-        'Close'
-      );
-
-      if (action === 'Sync') {
-        await this.syncHub(hubId);
-      } else if (action === 'Delete') {
-        await this.deleteHub(hubId);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to get hub details: ${message}`);
-    }
-  }
-
-  /**
-   * Sync all imported hubs
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async syncAllHubs(): Promise<void> {
-    const hubs = await this.hubManager.listHubs();
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Syncing all hubs',
-        cancellable: false
-      },
-      async (progress) => {
-        let completed = 0;
-        for (const hub of hubs) {
-          progress.report({
-            message: `Syncing ${hub.name} (${completed + 1}/${hubs.length})`,
-            increment: (100 / hubs.length)
-          });
-
-          try {
-            await this.hubManager.syncHub(hub.id);
-          } catch (error) {
-            vscode.window.showWarningMessage(
-              `Failed to sync ${hub.name}: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
-
-          completed++;
-        }
-
-        vscode.window.showInformationMessage(
-          `Synced ${completed} of ${hubs.length} hubs successfully`
-        );
-      }
-    );
   }
 }

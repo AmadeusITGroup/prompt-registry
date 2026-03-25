@@ -29,6 +29,24 @@ import {
  */
 export class TelemetryService {
   private static instance: TelemetryService;
+
+  public static getInstance(): TelemetryService {
+    if (!TelemetryService.instance) {
+      TelemetryService.instance = new TelemetryService();
+    }
+    return TelemetryService.instance;
+  }
+
+  /**
+   * Reset the singleton instance (for testing only).
+   */
+  public static resetInstance(): void {
+    if (TelemetryService.instance) {
+      TelemetryService.instance.dispose();
+    }
+    TelemetryService.instance = undefined!;
+  }
+
   private readonly telemetryLogger: vscode.TelemetryLogger;
   private disposables: vscode.Disposable[] = [];
 
@@ -49,21 +67,34 @@ export class TelemetryService {
     this.disposables.push(this.telemetryLogger);
   }
 
-  public static getInstance(): TelemetryService {
-    if (!TelemetryService.instance) {
-      TelemetryService.instance = new TelemetryService();
-    }
-    return TelemetryService.instance;
+  private trackBundleEvent(eventName: string, bundle: InstalledBundle): void {
+    this.telemetryLogger.logUsage(eventName, {
+      bundleId: bundle.bundleId,
+      version: bundle.version,
+      scope: bundle.scope,
+      sourceType: bundle.sourceType ?? 'unknown'
+    });
   }
 
-  /**
-   * Reset the singleton instance (for testing only).
-   */
-  public static resetInstance(): void {
-    if (TelemetryService.instance) {
-      TelemetryService.instance.dispose();
-    }
-    TelemetryService.instance = undefined!;
+  private trackProfileEvent(eventName: string, profile: Profile): void {
+    this.telemetryLogger.logUsage(eventName, {
+      profileId: profile.id,
+      name: profile.name
+    });
+  }
+
+  private trackSourceEvent(eventName: string, source: RegistrySource): void {
+    this.telemetryLogger.logUsage(eventName, {
+      sourceId: source.id,
+      type: source.type
+    });
+  }
+
+  private trackSourceSyncedEvent(eventName: string, event: SourceSyncedEvent): void {
+    this.telemetryLogger.logUsage(eventName, {
+      sourceId: event.sourceId,
+      bundleCount: event.bundleCount
+    });
   }
 
   /**
@@ -94,40 +125,6 @@ export class TelemetryService {
       registryManager.onAutoUpdatePreferenceChanged((event) => this.telemetryLogger.logUsage('autoUpdate.preferenceChanged', { bundleId: event.bundleId, enabled: event.enabled })),
       registryManager.onRepositoryBundlesChanged(() => this.telemetryLogger.logUsage('repository.bundlesChanged'))
     );
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private trackBundleEvent(eventName: string, bundle: InstalledBundle): void {
-    this.telemetryLogger.logUsage(eventName, {
-      bundleId: bundle.bundleId,
-      version: bundle.version,
-      scope: bundle.scope,
-      sourceType: bundle.sourceType ?? 'unknown'
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private trackProfileEvent(eventName: string, profile: Profile): void {
-    this.telemetryLogger.logUsage(eventName, {
-      profileId: profile.id,
-      name: profile.name
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private trackSourceEvent(eventName: string, source: RegistrySource): void {
-    this.telemetryLogger.logUsage(eventName, {
-      sourceId: source.id,
-      type: source.type
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private trackSourceSyncedEvent(eventName: string, event: SourceSyncedEvent): void {
-    this.telemetryLogger.logUsage(eventName, {
-      sourceId: event.sourceId,
-      bundleCount: event.bundleCount
-    });
   }
 
   /**

@@ -77,6 +77,112 @@ export class SchemaValidator {
   }
 
   /**
+   * Format AJV errors into user-friendly messages
+   * @param errors AJV error objects
+   * @returns Formatted error messages
+   */
+  private formatErrors(errors: Ajv.ErrorObject[]): string[] {
+    return errors.map((error) => {
+      const dataPath = error.dataPath || '';
+      const message = error.message || 'validation failed';
+      const params: any = error.params;
+
+      switch (error.keyword) {
+        case 'required': {
+          return `Missing required field: ${params.missingProperty}`;
+        }
+        case 'pattern': {
+          return `${dataPath}: ${message} (expected pattern: ${params.pattern})`;
+        }
+        case 'enum': {
+          return `${dataPath}: ${message} (allowed values: ${params.allowedValues?.join(', ') || 'unknown'})`;
+        }
+        case 'minLength': {
+          return `${dataPath}: ${message} (minimum ${params.limit} characters)`;
+        }
+        case 'maxLength': {
+          return `${dataPath}: ${message} (maximum ${params.limit} characters)`;
+        }
+        case 'minItems': {
+          return `${dataPath}: ${message} (minimum ${params.limit} items)`;
+        }
+        case 'maxItems': {
+          return `${dataPath}: ${message} (maximum ${params.limit} items)`;
+        }
+        case 'type': {
+          return `${dataPath}: must be ${params.type}`;
+        }
+        case 'additionalProperties': {
+          return `${dataPath}: has unexpected property '${params.additionalProperty}'`;
+        }
+        default: {
+          return `${dataPath}: ${message}`;
+        }
+      }
+    });
+  }
+
+  /**
+   * Validate that file references exist
+   * @param data Collection data
+   * @param workspaceRoot Root directory for resolving paths
+   * @returns Errors and warnings for missing files
+   */
+  private validateFileReferences(data: any, workspaceRoot: string): { errors: string[]; warnings: string[] } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (data.items && Array.isArray(data.items)) {
+      for (const item of data.items) {
+        if (item.path) {
+          const fullPath = path.join(workspaceRoot, item.path);
+          if (!fs.existsSync(fullPath)) {
+            errors.push(`Referenced file not found: ${item.path}`);
+          }
+        }
+      }
+    }
+
+    return { errors, warnings };
+  }
+
+  /**
+   * Generate warnings for best practices
+   * @param data Collection data
+   * @returns Warning messages
+   */
+  private generateWarnings(data: any): string[] {
+    const warnings: string[] = [];
+
+    // Warn about long descriptions
+    if (data.description && data.description.length > 300) {
+      warnings.push('Description is quite long (>300 characters). Consider keeping it concise.');
+    }
+
+    // Warn about empty collections
+    if (data.items && Array.isArray(data.items) && data.items.length === 0) {
+      warnings.push('Collection has no items.');
+    }
+
+    // Warn about too many items
+    if (data.items && Array.isArray(data.items) && data.items.length > 30) {
+      warnings.push('Collection has many items (>30). Consider splitting into multiple collections.');
+    }
+
+    // Warn about missing version
+    if (!data.version) {
+      warnings.push('No version specified. Consider adding a version for better tracking.');
+    }
+
+    // Warn about missing author
+    if (!data.author) {
+      warnings.push('No author specified. Consider adding author information.');
+    }
+
+    return warnings;
+  }
+
+  /**
    * Validate data against a JSON schema
    * @param data Data to validate
    * @param schemaPath Path to the JSON schema file
@@ -150,115 +256,6 @@ export class SchemaValidator {
   ): Promise<ValidationResult> {
     const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
     return this.validate(data, schemaPath, options);
-  }
-
-  /**
-   * Format AJV errors into user-friendly messages
-   * @param errors AJV error objects
-   * @returns Formatted error messages
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private formatErrors(errors: Ajv.ErrorObject[]): string[] {
-    return errors.map((error) => {
-      const dataPath = error.dataPath || '';
-      const message = error.message || 'validation failed';
-      const params: any = error.params;
-
-      switch (error.keyword) {
-        case 'required': {
-          return `Missing required field: ${params.missingProperty}`;
-        }
-        case 'pattern': {
-          return `${dataPath}: ${message} (expected pattern: ${params.pattern})`;
-        }
-        case 'enum': {
-          return `${dataPath}: ${message} (allowed values: ${params.allowedValues?.join(', ') || 'unknown'})`;
-        }
-        case 'minLength': {
-          return `${dataPath}: ${message} (minimum ${params.limit} characters)`;
-        }
-        case 'maxLength': {
-          return `${dataPath}: ${message} (maximum ${params.limit} characters)`;
-        }
-        case 'minItems': {
-          return `${dataPath}: ${message} (minimum ${params.limit} items)`;
-        }
-        case 'maxItems': {
-          return `${dataPath}: ${message} (maximum ${params.limit} items)`;
-        }
-        case 'type': {
-          return `${dataPath}: must be ${params.type}`;
-        }
-        case 'additionalProperties': {
-          return `${dataPath}: has unexpected property '${params.additionalProperty}'`;
-        }
-        default: {
-          return `${dataPath}: ${message}`;
-        }
-      }
-    });
-  }
-
-  /**
-   * Validate that file references exist
-   * @param data Collection data
-   * @param workspaceRoot Root directory for resolving paths
-   * @returns Errors and warnings for missing files
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateFileReferences(data: any, workspaceRoot: string): { errors: string[]; warnings: string[] } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    if (data.items && Array.isArray(data.items)) {
-      for (const item of data.items) {
-        if (item.path) {
-          const fullPath = path.join(workspaceRoot, item.path);
-          if (!fs.existsSync(fullPath)) {
-            errors.push(`Referenced file not found: ${item.path}`);
-          }
-        }
-      }
-    }
-
-    return { errors, warnings };
-  }
-
-  /**
-   * Generate warnings for best practices
-   * @param data Collection data
-   * @returns Warning messages
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateWarnings(data: any): string[] {
-    const warnings: string[] = [];
-
-    // Warn about long descriptions
-    if (data.description && data.description.length > 300) {
-      warnings.push('Description is quite long (>300 characters). Consider keeping it concise.');
-    }
-
-    // Warn about empty collections
-    if (data.items && Array.isArray(data.items) && data.items.length === 0) {
-      warnings.push('Collection has no items.');
-    }
-
-    // Warn about too many items
-    if (data.items && Array.isArray(data.items) && data.items.length > 30) {
-      warnings.push('Collection has many items (>30). Consider splitting into multiple collections.');
-    }
-
-    // Warn about missing version
-    if (!data.version) {
-      warnings.push('No version specified. Consider adding a version for better tracking.');
-    }
-
-    // Warn about missing author
-    if (!data.author) {
-      warnings.push('No author specified. Consider adding author information.');
-    }
-
-    return warnings;
   }
 
   /**

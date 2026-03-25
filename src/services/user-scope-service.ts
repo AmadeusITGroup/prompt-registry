@@ -273,6 +273,193 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
+   * Sync a skill from a bundle
+   * Skills are directories containing SKILL.md and optional subdirectories
+   * @param bundleId
+   * @param bundlePath
+   * @param promptDef
+   */
+  private async syncSkillFromBundle(bundleId: string, bundlePath: string, promptDef: any): Promise<void> {
+    try {
+      // Extract skill name from the path (e.g., skills/my-skill/SKILL.md -> my-skill)
+      const skillPath = promptDef.file;
+      const skillMatch = skillPath.match(/skills\/([^/]+)\/SKILL\.md/);
+
+      if (!skillMatch) {
+        this.logger.warn(`Invalid skill path: ${skillPath}`);
+        return;
+      }
+
+      const skillName = skillMatch[1];
+      const skillSourceDir = path.join(bundlePath, 'skills', skillName);
+
+      if (!fs.existsSync(skillSourceDir)) {
+        this.logger.warn(`Skill directory not found: ${skillSourceDir}`);
+        return;
+      }
+
+      // Sync skill to ~/.copilot/skills
+      await this.syncSkill(skillName, skillSourceDir, 'user');
+
+      this.logger.info(`✅ Synced skill: ${skillName}`);
+    } catch (error) {
+      this.logger.error(`Failed to sync skill from bundle ${bundleId}`, error as Error);
+    }
+  }
+
+  /**
+   * Determine Copilot file type and target path
+   * Uses shared utility for file type detection
+   * @param promptDef
+   * @param sourcePath
+   * @param bundleId
+   */
+  private determineCopilotFileType(
+    promptDef: any,
+    sourcePath: string,
+    bundleId: string
+  ): CopilotFile {
+    // Check if tags or filename indicate type
+    const tags = promptDef.tags || [];
+
+    // Use manifest type if provided, otherwise detect from file
+    let type: CopilotFileType;
+    type = promptDef.type ? promptDef.type as CopilotFileType : determineFileType(sourcePath, tags);
+
+    // Create target path: promptId.type.md directly in prompts directory
+    const targetFileName = getTargetFileName(promptDef.id, type);
+    const promptsDir = this.getCopilotPromptsDirectory();
+    const targetPath = path.join(promptsDir, targetFileName);
+
+    return {
+      bundleId,
+      type,
+      name: promptDef.name,
+      sourcePath,
+      targetPath
+    };
+  }
+
+  /**
+   * Create symlink (or copy if symlink fails) to Copilot directory
+   *
+   * Always removes and recreates symlinks to ensure they point to the correct target.
+   * Uses lstat() to detect symlinks (including broken ones) since fs.existsSync()
+   * returns false for broken symlinks.
+   * @param file
+   */
+  private async createCopilotFile(file: CopilotFile): Promise<void> {
+    try {
+      // Check if target already exists using lstat() to detect broken symlinks
+      // fs.existsSync() returns false for broken symlinks, but lstat() can still read them
+      const existingEntry = await checkPathExists(file.targetPath);
+
+      if (existingEntry.exists) {
+        if (existingEntry.isSymbolicLink) {
+          // Always remove existing symlink and recreate - simpler and more robust
+          await unlink(file.targetPath);
+          this.logger.debug(`Removed existing symlink: ${file.targetPath}`);
+        } else {
+          // It's a regular file - might be user's custom file, skip
+          this.logger.warn(`File already exists (not managed): ${file.targetPath}`);
+          return;
+        }
+      }
+
+      // Ensure parent directory exists before creating symlink/file
+      const targetDir = path.dirname(file.targetPath);
+      await this.ensureDirectory(targetDir);
+
+      // Try to create symlink first (preferred)
+      try {
+        await symlink(file.sourcePath, file.targetPath, 'file');
+        this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
+      } catch {
+        // Symlink failed (maybe Windows or permissions), fall back to copy
+        this.logger.debug('Symlink failed, copying file instead');
+        const content = await readFile(file.sourcePath, 'utf8');
+        await writeFile(file.targetPath, content, 'utf8');
+        this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
+      }
+
+      this.logger.info(`✅ Synced ${file.type}: ${file.name} → ${path.basename(file.targetPath)}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to create Copilot file: ${file.targetPath}`, {
+        message: errorMessage,
+        stack: errorStack,
+        bundleId: file.bundleId,
+        fileType: file.type
+      } as any);
+    }
+  }
+
+  /**
+   * Ensure directory exists
+   * @param dir
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async ensureDirectory(dir: string): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      this.logger.debug(`Created directory: ${dir}`);
+    }
+  }
+
+  /**
+   * Copy skill directory recursively
+   * @param sourceDir
+   * @param targetDir
+   */
+  private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
+    await this.ensureDirectory(targetDir);
+
+    const entries = await readdir(sourceDir);
+
+    for (const entry of entries) {
+      const sourcePath = path.join(sourceDir, entry);
+      const targetPath = path.join(targetDir, entry);
+
+      const stats = fs.statSync(sourcePath);
+
+      if (stats.isDirectory()) {
+        await this.copySkillDirectory(sourcePath, targetPath);
+      } else {
+        const fileContent = await readFile(sourcePath);
+        await writeFile(targetPath, fileContent);
+      }
+    }
+  }
+
+  /**
+   * Remove skill directory recursively
+   * @param dir
+   */
+  private async removeSkillDirectory(dir: string): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const entries = await readdir(dir);
+
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry);
+      const stats = await lstat(entryPath);
+
+      if (stats.isSymbolicLink()) {
+        await unlink(entryPath);
+      } else if (stats.isDirectory()) {
+        await this.removeSkillDirectory(entryPath);
+      } else {
+        await unlink(entryPath);
+      }
+    }
+
+    fs.rmdirSync(dir);
+  }
+
+  /**
    * Sync all prompts from installed bundles to Copilot directory
    */
   public async syncAllBundles(): Promise<void> {
@@ -364,132 +551,6 @@ export class UserScopeService implements IScopeService {
       }
     } catch (error) {
       this.logger.error(`Failed to sync bundle ${bundleId}`, error as Error);
-    }
-  }
-
-  /**
-   * Sync a skill from a bundle
-   * Skills are directories containing SKILL.md and optional subdirectories
-   * @param bundleId
-   * @param bundlePath
-   * @param promptDef
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async syncSkillFromBundle(bundleId: string, bundlePath: string, promptDef: any): Promise<void> {
-    try {
-      // Extract skill name from the path (e.g., skills/my-skill/SKILL.md -> my-skill)
-      const skillPath = promptDef.file;
-      const skillMatch = skillPath.match(/skills\/([^/]+)\/SKILL\.md/);
-
-      if (!skillMatch) {
-        this.logger.warn(`Invalid skill path: ${skillPath}`);
-        return;
-      }
-
-      const skillName = skillMatch[1];
-      const skillSourceDir = path.join(bundlePath, 'skills', skillName);
-
-      if (!fs.existsSync(skillSourceDir)) {
-        this.logger.warn(`Skill directory not found: ${skillSourceDir}`);
-        return;
-      }
-
-      // Sync skill to ~/.copilot/skills
-      await this.syncSkill(skillName, skillSourceDir, 'user');
-
-      this.logger.info(`✅ Synced skill: ${skillName}`);
-    } catch (error) {
-      this.logger.error(`Failed to sync skill from bundle ${bundleId}`, error as Error);
-    }
-  }
-
-  /**
-   * Determine Copilot file type and target path
-   * Uses shared utility for file type detection
-   * @param promptDef
-   * @param sourcePath
-   * @param bundleId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private determineCopilotFileType(
-    promptDef: any,
-    sourcePath: string,
-    bundleId: string
-  ): CopilotFile {
-    // Check if tags or filename indicate type
-    const tags = promptDef.tags || [];
-
-    // Use manifest type if provided, otherwise detect from file
-    let type: CopilotFileType;
-    type = promptDef.type ? promptDef.type as CopilotFileType : determineFileType(sourcePath, tags);
-
-    // Create target path: promptId.type.md directly in prompts directory
-    const targetFileName = getTargetFileName(promptDef.id, type);
-    const promptsDir = this.getCopilotPromptsDirectory();
-    const targetPath = path.join(promptsDir, targetFileName);
-
-    return {
-      bundleId,
-      type,
-      name: promptDef.name,
-      sourcePath,
-      targetPath
-    };
-  }
-
-  /**
-   * Create symlink (or copy if symlink fails) to Copilot directory
-   *
-   * Always removes and recreates symlinks to ensure they point to the correct target.
-   * Uses lstat() to detect symlinks (including broken ones) since fs.existsSync()
-   * returns false for broken symlinks.
-   * @param file
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async createCopilotFile(file: CopilotFile): Promise<void> {
-    try {
-      // Check if target already exists using lstat() to detect broken symlinks
-      // fs.existsSync() returns false for broken symlinks, but lstat() can still read them
-      const existingEntry = await checkPathExists(file.targetPath);
-
-      if (existingEntry.exists) {
-        if (existingEntry.isSymbolicLink) {
-          // Always remove existing symlink and recreate - simpler and more robust
-          await unlink(file.targetPath);
-          this.logger.debug(`Removed existing symlink: ${file.targetPath}`);
-        } else {
-          // It's a regular file - might be user's custom file, skip
-          this.logger.warn(`File already exists (not managed): ${file.targetPath}`);
-          return;
-        }
-      }
-
-      // Ensure parent directory exists before creating symlink/file
-      const targetDir = path.dirname(file.targetPath);
-      await this.ensureDirectory(targetDir);
-
-      // Try to create symlink first (preferred)
-      try {
-        await symlink(file.sourcePath, file.targetPath, 'file');
-        this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
-      } catch {
-        // Symlink failed (maybe Windows or permissions), fall back to copy
-        this.logger.debug('Symlink failed, copying file instead');
-        const content = await readFile(file.sourcePath, 'utf8');
-        await writeFile(file.targetPath, content, 'utf8');
-        this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
-      }
-
-      this.logger.info(`✅ Synced ${file.type}: ${file.name} → ${path.basename(file.targetPath)}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(`Failed to create Copilot file: ${file.targetPath}`, {
-        message: errorMessage,
-        stack: errorStack,
-        bundleId: file.bundleId,
-        fileType: file.type
-      } as any);
     }
   }
 
@@ -677,18 +738,6 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
-   * Ensure directory exists
-   * @param dir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async ensureDirectory(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      this.logger.debug(`Created directory: ${dir}`);
-    }
-  }
-
-  /**
    * Get the Copilot skills directory
    * Skills are stored in ~/.copilot/skills (user-level) following the Agent Skills specification
    * https://code.visualstudio.com/docs/copilot/customization/agent-skills
@@ -804,60 +853,6 @@ export class UserScopeService implements IScopeService {
     } catch (error) {
       this.logger.error(`Failed to remove skill ${skillName}`, error as Error);
     }
-  }
-
-  /**
-   * Copy skill directory recursively
-   * @param sourceDir
-   * @param targetDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
-    await this.ensureDirectory(targetDir);
-
-    const entries = await readdir(sourceDir);
-
-    for (const entry of entries) {
-      const sourcePath = path.join(sourceDir, entry);
-      const targetPath = path.join(targetDir, entry);
-
-      const stats = fs.statSync(sourcePath);
-
-      if (stats.isDirectory()) {
-        await this.copySkillDirectory(sourcePath, targetPath);
-      } else {
-        const fileContent = await readFile(sourcePath);
-        await writeFile(targetPath, fileContent);
-      }
-    }
-  }
-
-  /**
-   * Remove skill directory recursively
-   * @param dir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async removeSkillDirectory(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      return;
-    }
-
-    const entries = await readdir(dir);
-
-    for (const entry of entries) {
-      const entryPath = path.join(dir, entry);
-      const stats = await lstat(entryPath);
-
-      if (stats.isSymbolicLink()) {
-        await unlink(entryPath);
-      } else if (stats.isDirectory()) {
-        await this.removeSkillDirectory(entryPath);
-      } else {
-        await unlink(entryPath);
-      }
-    }
-
-    fs.rmdirSync(dir);
   }
 
   /**

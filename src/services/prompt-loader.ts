@@ -46,51 +46,10 @@ export class PromptLoader {
   }
 
   /**
-   * Get list of available prompts from all installed bundles
-   */
-  public async getAvailablePrompts(): Promise<PromptInfo[]> {
-    const prompts: PromptInfo[] = [];
-
-    try {
-      // Get bundles directory
-      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
-
-      if (!fs.existsSync(bundlesDir)) {
-        this.logger.debug('Bundles directory does not exist');
-        return [];
-      }
-
-      // Read all bundle directories
-      const bundleDirs = await readdir(bundlesDir);
-
-      for (const bundleId of bundleDirs) {
-        const bundlePath = path.join(bundlesDir, bundleId);
-
-        // Check if it's a directory
-        const stat = fs.statSync(bundlePath);
-        if (!stat.isDirectory()) {
-          continue;
-        }
-
-        // Load prompts from this bundle
-        const bundlePrompts = await this.getPromptsFromBundle(bundleId, bundlePath);
-        prompts.push(...bundlePrompts);
-      }
-
-      this.logger.debug(`Found ${prompts.length} available prompts`);
-      return prompts;
-    } catch (error) {
-      this.logger.error('Failed to get available prompts', error as Error);
-      return [];
-    }
-  }
-
-  /**
    * Get prompts from a specific bundle
    * @param bundleId
    * @param bundlePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getPromptsFromBundle(bundleId: string, bundlePath: string): Promise<PromptInfo[]> {
     const prompts: PromptInfo[] = [];
 
@@ -133,6 +92,46 @@ export class PromptLoader {
       return prompts;
     } catch (error) {
       this.logger.error(`Failed to load prompts from bundle ${bundleId}`, error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Get list of available prompts from all installed bundles
+   */
+  public async getAvailablePrompts(): Promise<PromptInfo[]> {
+    const prompts: PromptInfo[] = [];
+
+    try {
+      // Get bundles directory
+      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
+
+      if (!fs.existsSync(bundlesDir)) {
+        this.logger.debug('Bundles directory does not exist');
+        return [];
+      }
+
+      // Read all bundle directories
+      const bundleDirs = await readdir(bundlesDir);
+
+      for (const bundleId of bundleDirs) {
+        const bundlePath = path.join(bundlesDir, bundleId);
+
+        // Check if it's a directory
+        const stat = fs.statSync(bundlePath);
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        // Load prompts from this bundle
+        const bundlePrompts = await this.getPromptsFromBundle(bundleId, bundlePath);
+        prompts.push(...bundlePrompts);
+      }
+
+      this.logger.debug(`Found ${prompts.length} available prompts`);
+      return prompts;
+    } catch (error) {
+      this.logger.error('Failed to get available prompts', error as Error);
       return [];
     }
   }

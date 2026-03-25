@@ -110,32 +110,16 @@ export class HubManager {
   private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
 
   /**
-   * Clear cached authentication state so that the next call to
-   * getAuthenticationToken() performs a fresh authentication attempt.
-   * Used when re-triggering setup after a user previously declined auth.
-   */
-  public clearAuthCache(): void {
-    this.authToken = undefined;
-    this.authMethod = 'none';
-    this.logger.info('[HubManager] Authentication cache cleared');
-  }
-
-  /**
    * Initialize HubManager
    * @param storage HubStorage instance for persistence
    * @param validator SchemaValidator instance for validation
    * @param extensionPath Path to the extension directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubImported = this._onHubImported.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubDeleted = this._onHubDeleted.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubSynced = this._onHubSynced.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onFavoritesChanged = this._onFavoritesChanged.event;
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   constructor(
     storage: HubStorage,
     validator: SchemaValidator,
@@ -157,6 +141,360 @@ export class HubManager {
     this.validator = validator;
     this.hubSchemaPath = path.join(extensionPath, 'schemas', 'hub-config.schema.json');
     this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Cleanup resources linked to a hub (sources, profiles, favorites)
+   * Called when hub is deleted or switched away from
+   * @param hubId Hub identifier to cleanup
+   */
+  private async cleanupHubResources(hubId: string): Promise<void> {
+    this.logger.info(`Cleaning up resources for hub: ${hubId}`);
+
+    // 1. Remove favorites for this hub
+    const favorites = await this.getFavoriteProfiles();
+    if (favorites[hubId]) {
+      delete favorites[hubId];
+      await this.storage.saveFavoriteProfiles(favorites);
+      this._onFavoritesChanged.fire();
+      this.logger.info(`Removed favorites for hub: ${hubId}`);
+    }
+
+    // 2. Deactivate and remove sources linked to this hub
+    if (this.registryManager) {
+      const sources = await this.registryManager.listSources();
+      for (const source of sources) {
+        if (source.hubId === hubId) {
+          try {
+            await this.registryManager.removeSource(source.id);
+            this.logger.info(`Removed source ${source.id} linked to hub ${hubId}`);
+          } catch (error) {
+            this.logger.warn(`Failed to remove source ${source.id}`, error as Error);
+          }
+        }
+      }
+
+      // 3. Deactivate profiles linked to this hub
+      const profiles = await this.registryManager.listProfiles();
+      for (const profile of profiles) {
+        if (profile.hubId === hubId && profile.active) {
+          try {
+            await this.registryManager.updateProfile(profile.id, { active: false });
+            this.logger.info(`Deactivated profile ${profile.id} linked to hub ${hubId}`);
+          } catch (error) {
+            this.logger.warn(`Failed to deactivate profile ${profile.id}`, error as Error);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate hub reference
+   * @param reference Hub reference to validate
+   * @returns Validation result
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async validateReference(reference: HubReference): Promise<ValidationResult> {
+    const errors: string[] = [];
+
+    if (!reference.type) {
+      errors.push('Reference type is required');
+    }
+
+    if (!reference.location) {
+      errors.push('Reference location is required');
+    }
+
+    // Type-specific validation
+    switch (reference.type) {
+      case 'github': {
+        if (!reference.location.includes('/')) {
+          errors.push('Invalid GitHub location format. Expected: owner/repo');
+        }
+        break;
+      }
+      case 'url': {
+        try {
+          new URL(reference.location);
+        } catch {
+          errors.push('Invalid URL format');
+        }
+        break;
+      }
+      case 'local': {
+        // Local path validation is done during fetch
+        break;
+      }
+      default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
+        errors.push(`Unsupported reference type: ${reference.type}`);
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings: []
+    };
+  }
+
+  /**
+   * Fetch hub configuration from source
+   * @param reference Hub reference
+   * @returns Hub configuration
+   */
+  private async fetchHubConfig(reference: HubReference): Promise<HubConfig> {
+    switch (reference.type) {
+      case 'local': {
+        return this.fetchFromLocal(reference.location);
+      }
+      case 'url': {
+        return this.fetchFromUrl(reference.location);
+      }
+      case 'github': {
+        return this.fetchFromGitHub(reference.location, reference.ref);
+      }
+      default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
+        throw new Error(`Unsupported reference type: ${reference.type}`);
+      }
+    }
+  }
+
+  /**
+   * Fetch hub config from local file
+   * @param filePath Local file path
+   * @returns Hub configuration
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async fetchFromLocal(filePath: string): Promise<HubConfig> {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      return yaml.load(content) as HubConfig;
+    } catch (error) {
+      throw new Error(`Failed to load hub config from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get authentication token using fallback chain:
+   * 1. VSCode GitHub API (if user is logged in)
+   * 2. gh CLI (if installed and authenticated)
+   * 3. Explicit token from source configuration
+   */
+  private async getAuthenticationToken(): Promise<string | undefined> {
+    // Return cached token if already resolved
+    if (this.authToken !== undefined) {
+      this.logger.debug(`[HubManager] Using cached token (method: ${this.authMethod})`);
+      return this.authToken;
+    }
+
+    this.logger.info('[HubManager] Attempting authentication...');
+
+    // Try VSCode GitHub authentication first
+    try {
+      this.logger.debug('[HubManager] Trying VSCode GitHub authentication...');
+      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+      if (session) {
+        this.authToken = session.accessToken;
+        this.authMethod = 'vscode';
+        this.logger.info('[HubManager] ✓ Using VSCode GitHub authentication');
+        this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
+        return this.authToken;
+      }
+      this.logger.debug('[HubManager] VSCode auth session not found');
+    } catch (error) {
+      this.logger.warn(`[HubManager] VSCode auth failed: ${error}`);
+    }
+
+    // Try gh CLI authentication
+    try {
+      this.logger.debug('[HubManager] Trying gh CLI authentication...');
+      const { stdout } = await execAsync('gh auth token');
+      const token = stdout.trim();
+      if (token && token.length > 0) {
+        this.authToken = token;
+        this.authMethod = 'gh-cli';
+        this.logger.info('[HubManager] ✓ Using gh CLI authentication');
+        this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
+        return this.authToken;
+      }
+      this.logger.debug('[HubManager] gh CLI returned empty token');
+    } catch (error) {
+      this.logger.warn(`[HubManager] gh CLI auth failed: ${error}`);
+    }
+
+    // No authentication available
+    this.authMethod = 'none';
+    this.logger.warn('[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+    return undefined;
+  }
+
+  /**
+   * Fetch hub config from URL
+   * Handles redirects (301/302) by following the Location header
+   * @param url URL to fetch from
+   * @param redirectDepth Current redirect depth (for loop prevention)
+   * @returns Hub configuration
+   */
+  private async fetchFromUrl(url: string, redirectDepth = 0): Promise<HubConfig> {
+    /**
+     * Maximum redirect depth to prevent infinite loops.
+     */
+    const MAX_REDIRECTS = 10;
+    if (redirectDepth >= MAX_REDIRECTS) {
+      this.logger.error(`[HubManager] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+      throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+    }
+
+    // Prepare headers with authentication for GitHub URLs
+    const headers: { [key: string]: string } = {};
+
+    // Get authentication token using fallback chain
+    const token = await this.getAuthenticationToken();
+    if (token) {
+      // Use Bearer token format for OAuth tokens (recommended)
+      headers.Authorization = `token ${token}`;
+      this.logger.debug(`[HubManager] Request to ${url} with auth (method: ${this.authMethod})`);
+    } else {
+      this.logger.debug(`[HubManager] Request to ${url} WITHOUT auth`);
+    }
+
+    // Log headers (sanitized)
+    const sanitizedHeaders = { ...headers };
+    if (sanitizedHeaders.Authorization) {
+      sanitizedHeaders.Authorization = sanitizedHeaders.Authorization.substring(0, 15) + '...';
+    }
+    this.logger.debug(`[HubManager] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
+
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https') ? https : http;
+      const options: any = { headers };
+      protocol.get(url, options, (res) => {
+        // Handle redirects (301/302)
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            this.logger.debug(`[HubManager] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
+            this.fetchFromUrl(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
+            return;
+          }
+        }
+
+        if (res.statusCode !== 200) {
+          this.logger.error(`[HubManager] Failed to fetch hub config: HTTP ${res.statusCode}`, undefined);
+          reject(new Error(`Failed to fetch hub config: HTTP ${res.statusCode}`));
+          return;
+        }
+
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          try {
+            this.logger.debug(`[HubManager] Successfully fetched hub config, ${data.length} bytes`);
+            const config = yaml.load(data) as HubConfig;
+            resolve(config);
+          } catch (error) {
+            this.logger.error(`[HubManager] Failed to parse hub config`, error as Error);
+            reject(new Error(`Failed to parse hub config: ${error instanceof Error ? error.message : String(error)}`));
+          }
+        });
+      }).on('error', (error) => {
+        this.logger.error(`[HubManager] Network error fetching hub config`, error);
+        reject(new Error(`Failed to fetch hub config: ${error.message}`));
+      });
+    });
+  }
+
+  /**
+   * Fetch hub config from GitHub
+   * @param location GitHub repository (owner/repo)
+   * @param ref Git reference (branch, tag, or commit)
+   * @returns Hub configuration
+   */
+  private async fetchFromGitHub(location: string, ref = 'main'): Promise<HubConfig> {
+    const branch = ref;
+    // Add timestamp to bypass GitHub raw content cache
+    const timestamp = Date.now();
+    const url = `https://raw.githubusercontent.com/${location}/${branch}/hub-config.yml?t=${timestamp}`;
+
+    return this.fetchFromUrl(url);
+  }
+
+  /**
+   * Generate hub ID from config
+   * @param config Hub configuration
+   * @returns Generated hub ID
+   */
+  private generateHubId(config: HubConfig): string {
+    // Use metadata name, sanitized
+    let id = config.metadata.name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    // Add timestamp to ensure uniqueness
+    const timestamp = Date.now().toString().slice(-6);
+    id = `${id}-${timestamp}`;
+
+    return id;
+  }
+
+  /**
+   * Check if a source is a duplicate based on URL and config
+   * Compares URL, type, branch, and collectionsPath to determine if sources are identical
+   * @param source Source to check
+   * @param existingSources List of existing sources
+   * @returns The existing duplicate source or undefined
+   */
+  private findDuplicateSource(
+    source: HubSource,
+    existingSources: RegistrySource[]
+  ): RegistrySource | undefined {
+    return existingSources.find((existing: RegistrySource) => {
+      // Must have same type and URL
+      if (existing.type !== source.type || existing.url !== source.url) {
+        return false;
+      }
+
+      // For sources with config, compare relevant fields
+      const existingConfig = existing.config || {};
+      const sourceConfig = source.config || {};
+
+      // Compare branch (for git-based sources)
+      const existingBranch = existingConfig.branch || 'main';
+      const sourceBranch = sourceConfig.branch || 'main';
+      if (existingBranch !== sourceBranch) {
+        return false;
+      }
+
+      // Compare collectionsPath (for awesome-copilot sources)
+      const existingPath = existingConfig.collectionsPath || 'collections';
+      const sourcePath = sourceConfig.collectionsPath || 'collections';
+      if (existingPath !== sourcePath) {
+        return false;
+      }
+
+      // If all criteria match, it's a duplicate
+      return true;
+    });
+  }
+
+  /**
+   * Clear cached authentication state so that the next call to
+   * getAuthenticationToken() performs a fresh authentication attempt.
+   * Used when re-triggering setup after a user previously declined auth.
+   */
+  public clearAuthCache(): void {
+    this.authToken = undefined;
+    this.authMethod = 'none';
+    this.logger.info('[HubManager] Authentication cache cleared');
   }
 
   /**
@@ -300,53 +638,6 @@ export class HubManager {
   }
 
   /**
-   * Cleanup resources linked to a hub (sources, profiles, favorites)
-   * Called when hub is deleted or switched away from
-   * @param hubId Hub identifier to cleanup
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async cleanupHubResources(hubId: string): Promise<void> {
-    this.logger.info(`Cleaning up resources for hub: ${hubId}`);
-
-    // 1. Remove favorites for this hub
-    const favorites = await this.getFavoriteProfiles();
-    if (favorites[hubId]) {
-      delete favorites[hubId];
-      await this.storage.saveFavoriteProfiles(favorites);
-      this._onFavoritesChanged.fire();
-      this.logger.info(`Removed favorites for hub: ${hubId}`);
-    }
-
-    // 2. Deactivate and remove sources linked to this hub
-    if (this.registryManager) {
-      const sources = await this.registryManager.listSources();
-      for (const source of sources) {
-        if (source.hubId === hubId) {
-          try {
-            await this.registryManager.removeSource(source.id);
-            this.logger.info(`Removed source ${source.id} linked to hub ${hubId}`);
-          } catch (error) {
-            this.logger.warn(`Failed to remove source ${source.id}`, error as Error);
-          }
-        }
-      }
-
-      // 3. Deactivate profiles linked to this hub
-      const profiles = await this.registryManager.listProfiles();
-      for (const profile of profiles) {
-        if (profile.hubId === hubId && profile.active) {
-          try {
-            await this.registryManager.updateProfile(profile.id, { active: false });
-            this.logger.info(`Deactivated profile ${profile.id} linked to hub ${hubId}`);
-          } catch (error) {
-            this.logger.warn(`Failed to deactivate profile ${profile.id}`, error as Error);
-          }
-        }
-      }
-    }
-  }
-
-  /**
    * Sync hub from remote source
    * @param hubId Hub identifier to sync
    */
@@ -397,80 +688,6 @@ export class HubManager {
   }
 
   /**
-   * Validate hub reference
-   * @param reference Hub reference to validate
-   * @returns Validation result
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async validateReference(reference: HubReference): Promise<ValidationResult> {
-    const errors: string[] = [];
-
-    if (!reference.type) {
-      errors.push('Reference type is required');
-    }
-
-    if (!reference.location) {
-      errors.push('Reference location is required');
-    }
-
-    // Type-specific validation
-    switch (reference.type) {
-      case 'github': {
-        if (!reference.location.includes('/')) {
-          errors.push('Invalid GitHub location format. Expected: owner/repo');
-        }
-        break;
-      }
-      case 'url': {
-        try {
-          new URL(reference.location);
-        } catch {
-          errors.push('Invalid URL format');
-        }
-        break;
-      }
-      case 'local': {
-        // Local path validation is done during fetch
-        break;
-      }
-      default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
-        errors.push(`Unsupported reference type: ${reference.type}`);
-      }
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings: []
-    };
-  }
-
-  /**
-   * Fetch hub configuration from source
-   * @param reference Hub reference
-   * @returns Hub configuration
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async fetchHubConfig(reference: HubReference): Promise<HubConfig> {
-    switch (reference.type) {
-      case 'local': {
-        return this.fetchFromLocal(reference.location);
-      }
-      case 'url': {
-        return this.fetchFromUrl(reference.location);
-      }
-      case 'github': {
-        return this.fetchFromGitHub(reference.location, reference.ref);
-      }
-      default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
-        throw new Error(`Unsupported reference type: ${reference.type}`);
-      }
-    }
-  }
-
-  /**
    * Verify if a hub is accessible without importing it
    * Used to validate default hubs before offering them in the first-run selector
    * @param reference Hub reference to verify
@@ -494,194 +711,6 @@ export class HubManager {
       this.logger.debug(`Hub verification failed: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
-  }
-
-  /**
-   * Fetch hub config from local file
-   * @param filePath Local file path
-   * @returns Hub configuration
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async fetchFromLocal(filePath: string): Promise<HubConfig> {
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      return yaml.load(content) as HubConfig;
-    } catch (error) {
-      throw new Error(`Failed to load hub config from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  /**
-   * Get authentication token using fallback chain:
-   * 1. VSCode GitHub API (if user is logged in)
-   * 2. gh CLI (if installed and authenticated)
-   * 3. Explicit token from source configuration
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getAuthenticationToken(): Promise<string | undefined> {
-    // Return cached token if already resolved
-    if (this.authToken !== undefined) {
-      this.logger.debug(`[HubManager] Using cached token (method: ${this.authMethod})`);
-      return this.authToken;
-    }
-
-    this.logger.info('[HubManager] Attempting authentication...');
-
-    // Try VSCode GitHub authentication first
-    try {
-      this.logger.debug('[HubManager] Trying VSCode GitHub authentication...');
-      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-      if (session) {
-        this.authToken = session.accessToken;
-        this.authMethod = 'vscode';
-        this.logger.info('[HubManager] ✓ Using VSCode GitHub authentication');
-        this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
-        return this.authToken;
-      }
-      this.logger.debug('[HubManager] VSCode auth session not found');
-    } catch (error) {
-      this.logger.warn(`[HubManager] VSCode auth failed: ${error}`);
-    }
-
-    // Try gh CLI authentication
-    try {
-      this.logger.debug('[HubManager] Trying gh CLI authentication...');
-      const { stdout } = await execAsync('gh auth token');
-      const token = stdout.trim();
-      if (token && token.length > 0) {
-        this.authToken = token;
-        this.authMethod = 'gh-cli';
-        this.logger.info('[HubManager] ✓ Using gh CLI authentication');
-        this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
-        return this.authToken;
-      }
-      this.logger.debug('[HubManager] gh CLI returned empty token');
-    } catch (error) {
-      this.logger.warn(`[HubManager] gh CLI auth failed: ${error}`);
-    }
-
-    // No authentication available
-    this.authMethod = 'none';
-    this.logger.warn('[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
-    return undefined;
-  }
-
-  /**
-   * Fetch hub config from URL
-   * Handles redirects (301/302) by following the Location header
-   * @param url URL to fetch from
-   * @param redirectDepth Current redirect depth (for loop prevention)
-   * @returns Hub configuration
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async fetchFromUrl(url: string, redirectDepth = 0): Promise<HubConfig> {
-    /**
-     * Maximum redirect depth to prevent infinite loops.
-     */
-    const MAX_REDIRECTS = 10;
-    if (redirectDepth >= MAX_REDIRECTS) {
-      this.logger.error(`[HubManager] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
-      throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
-    }
-
-    // Prepare headers with authentication for GitHub URLs
-    const headers: { [key: string]: string } = {};
-
-    // Get authentication token using fallback chain
-    const token = await this.getAuthenticationToken();
-    if (token) {
-      // Use Bearer token format for OAuth tokens (recommended)
-      headers.Authorization = `token ${token}`;
-      this.logger.debug(`[HubManager] Request to ${url} with auth (method: ${this.authMethod})`);
-    } else {
-      this.logger.debug(`[HubManager] Request to ${url} WITHOUT auth`);
-    }
-
-    // Log headers (sanitized)
-    const sanitizedHeaders = { ...headers };
-    if (sanitizedHeaders.Authorization) {
-      sanitizedHeaders.Authorization = sanitizedHeaders.Authorization.substring(0, 15) + '...';
-    }
-    this.logger.debug(`[HubManager] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
-
-    return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? https : http;
-      const options: any = { headers };
-      protocol.get(url, options, (res) => {
-        // Handle redirects (301/302)
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          const redirectUrl = res.headers.location;
-          if (redirectUrl) {
-            this.logger.debug(`[HubManager] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
-            this.fetchFromUrl(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
-            return;
-          }
-        }
-
-        if (res.statusCode !== 200) {
-          this.logger.error(`[HubManager] Failed to fetch hub config: HTTP ${res.statusCode}`, undefined);
-          reject(new Error(`Failed to fetch hub config: HTTP ${res.statusCode}`));
-          return;
-        }
-
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => {
-          try {
-            this.logger.debug(`[HubManager] Successfully fetched hub config, ${data.length} bytes`);
-            const config = yaml.load(data) as HubConfig;
-            resolve(config);
-          } catch (error) {
-            this.logger.error(`[HubManager] Failed to parse hub config`, error as Error);
-            reject(new Error(`Failed to parse hub config: ${error instanceof Error ? error.message : String(error)}`));
-          }
-        });
-      }).on('error', (error) => {
-        this.logger.error(`[HubManager] Network error fetching hub config`, error);
-        reject(new Error(`Failed to fetch hub config: ${error.message}`));
-      });
-    });
-  }
-
-  /**
-   * Fetch hub config from GitHub
-   * @param location GitHub repository (owner/repo)
-   * @param ref Git reference (branch, tag, or commit)
-   * @returns Hub configuration
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async fetchFromGitHub(location: string, ref = 'main'): Promise<HubConfig> {
-    const branch = ref;
-    // Add timestamp to bypass GitHub raw content cache
-    const timestamp = Date.now();
-    const url = `https://raw.githubusercontent.com/${location}/${branch}/hub-config.yml?t=${timestamp}`;
-
-    return this.fetchFromUrl(url);
-  }
-
-  /**
-   * Generate hub ID from config
-   * @param config Hub configuration
-   * @returns Generated hub ID
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateHubId(config: HubConfig): string {
-    // Use metadata name, sanitized
-    let id = config.metadata.name
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-
-    // Add timestamp to ensure uniqueness
-    const timestamp = Date.now().toString().slice(-6);
-    id = `${id}-${timestamp}`;
-
-    return id;
   }
 
   /**
@@ -807,47 +836,6 @@ export class HubManager {
     // Set or clear active hub
     await this.storage.setActiveHubId(hubId);
     this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
-  }
-
-  /**
-   * Check if a source is a duplicate based on URL and config
-   * Compares URL, type, branch, and collectionsPath to determine if sources are identical
-   * @param source Source to check
-   * @param existingSources List of existing sources
-   * @returns The existing duplicate source or undefined
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private findDuplicateSource(
-    source: HubSource,
-    existingSources: RegistrySource[]
-  ): RegistrySource | undefined {
-    return existingSources.find((existing: RegistrySource) => {
-      // Must have same type and URL
-      if (existing.type !== source.type || existing.url !== source.url) {
-        return false;
-      }
-
-      // For sources with config, compare relevant fields
-      const existingConfig = existing.config || {};
-      const sourceConfig = source.config || {};
-
-      // Compare branch (for git-based sources)
-      const existingBranch = existingConfig.branch || 'main';
-      const sourceBranch = sourceConfig.branch || 'main';
-      if (existingBranch !== sourceBranch) {
-        return false;
-      }
-
-      // Compare collectionsPath (for awesome-copilot sources)
-      const existingPath = existingConfig.collectionsPath || 'collections';
-      const sourcePath = sourceConfig.collectionsPath || 'collections';
-      if (existingPath !== sourcePath) {
-        return false;
-      }
-
-      // If all criteria match, it's a duplicate
-      return true;
-    });
   }
 
   /**
@@ -1095,9 +1083,8 @@ export class HubManager {
     try {
       this.logger.info(`[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`);
 
-      // Verify hub and profile exist
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _profile = await this.getHubProfile(hubId, profileId);
+      // Verify hub and profile exist (throws if not found)
+      await this.getHubProfile(hubId, profileId);
 
       // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
       // This will uninstall bundles from previously active profiles
@@ -1149,8 +1136,6 @@ export class HubManager {
       await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
       // Install bundles if requested and RegistryManager is available
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _installResults: { bundleId: string; success: boolean; error?: string }[] = [];
       if (options.installBundles && this.registryManager) {
         this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
 
@@ -1246,9 +1231,8 @@ export class HubManager {
    */
   public async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
     try {
-      // Verify profile exists
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _profile = await this.getHubProfile(hubId, profileId);
+      // Verify profile exists (throws if not found)
+      await this.getHubProfile(hubId, profileId);
 
       // Get current activation state to track removed bundles
       const currentState = await this.storage.getProfileActivationState(hubId, profileId);

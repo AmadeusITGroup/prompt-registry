@@ -34,6 +34,54 @@ export class PromptExecutor {
   }
 
   /**
+   * Build chat messages for the language model
+   * @param promptContent
+   * @param userInput
+   * @param context
+   * @param context.selection
+   * @param context.fileName
+   * @param context.language
+   */
+  private buildMessages(
+    promptContent: string,
+    userInput: string,
+    context?: {
+      selection?: string;
+      fileName?: string;
+      language?: string;
+    }
+  ): vscode.LanguageModelChatMessage[] {
+    const messages: vscode.LanguageModelChatMessage[] = [
+      // System prompt (the loaded prompt content)
+      vscode.LanguageModelChatMessage.User(promptContent)
+    ];
+
+    // Add context if available
+    if (context) {
+      let contextMessage = '';
+
+      if (context.selection) {
+        contextMessage += `\n\n## Current Selection\n\`\`\`${context.language || ''}\n${context.selection}\n\`\`\`\n`;
+      }
+
+      if (context.fileName) {
+        contextMessage += `\n## Current File\n${context.fileName}\n`;
+      }
+
+      if (contextMessage) {
+        messages.push(vscode.LanguageModelChatMessage.User(contextMessage));
+      }
+    }
+
+    // User's input
+    if (userInput && userInput.trim()) {
+      messages.push(vscode.LanguageModelChatMessage.User(userInput));
+    }
+
+    return messages;
+  }
+
+  /**
    * Execute a prompt with the language model
    * @param options
    */
@@ -95,55 +143,6 @@ export class PromptExecutor {
       stream.markdown('\n\n❌ **Error executing prompt**\n\n');
       stream.markdown(`${(error as Error).message}\n`);
     }
-  }
-
-  /**
-   * Build chat messages for the language model
-   * @param promptContent
-   * @param userInput
-   * @param context
-   * @param context.selection
-   * @param context.fileName
-   * @param context.language
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private buildMessages(
-    promptContent: string,
-    userInput: string,
-    context?: {
-      selection?: string;
-      fileName?: string;
-      language?: string;
-    }
-  ): vscode.LanguageModelChatMessage[] {
-    const messages: vscode.LanguageModelChatMessage[] = [
-      // System prompt (the loaded prompt content)
-      vscode.LanguageModelChatMessage.User(promptContent)
-    ];
-
-    // Add context if available
-    if (context) {
-      let contextMessage = '';
-
-      if (context.selection) {
-        contextMessage += `\n\n## Current Selection\n\`\`\`${context.language || ''}\n${context.selection}\n\`\`\`\n`;
-      }
-
-      if (context.fileName) {
-        contextMessage += `\n## Current File\n${context.fileName}\n`;
-      }
-
-      if (contextMessage) {
-        messages.push(vscode.LanguageModelChatMessage.User(contextMessage));
-      }
-    }
-
-    // User's input
-    if (userInput && userInput.trim()) {
-      messages.push(vscode.LanguageModelChatMessage.User(userInput));
-    }
-
-    return messages;
   }
 
   /**

@@ -169,6 +169,241 @@ export class ProfileCommands {
     this.logger = Logger.getInstance();
   }
 
+  // ===== Helper Methods =====
+
+  /**
+   * Select bundles for profile
+   */
+  private async selectBundles(): Promise<ProfileBundle[]> {
+    try {
+      // Search all available bundles
+      const allBundles = await this.registryManager.searchBundles({});
+
+      if (allBundles.length === 0) {
+        vscode.window.showWarningMessage('No bundles available. Add a source first.');
+        return [];
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        allBundles.map((b) => ({
+          label: b.name,
+          description: `v${b.version} • ${b.author}`,
+          detail: b.description,
+          picked: false,
+          bundle: b
+        })),
+        {
+          placeHolder: 'Select bundles to add to profile',
+          canPickMany: true,
+          title: 'Bundle Selection',
+          ignoreFocusOut: true
+        }
+      );
+
+      if (!selected || selected.length === 0) {
+        return [];
+      }
+
+      // Ask if bundles are required or optional
+      const profileBundles: ProfileBundle[] = [];
+
+      for (const item of selected) {
+        const required = await vscode.window.showQuickPick(
+          [
+            { label: '✓ Required', value: true, description: 'Bundle must be installed' },
+            { label: '○ Optional', value: false, description: 'Bundle can be installed later' }
+          ],
+          {
+            placeHolder: `Is "${item.bundle.name}" required?`,
+            title: 'Bundle Requirement',
+            ignoreFocusOut: true
+          }
+        );
+
+        if (required !== undefined) {
+          profileBundles.push({
+            id: item.bundle.id,
+            version: 'latest',
+            required: required.value
+          });
+        }
+      }
+
+      return profileBundles;
+    } catch (error) {
+      this.logger.error('Failed to select bundles', error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Select an icon from the expanded list
+   * @param title
+   */
+  private async selectIcon(title: string): Promise<string | undefined> {
+    const items = PROFILE_ICONS.map((i) => ({
+      label: `${i.icon} ${i.label}`,
+      description: i.tags,
+      detail: 'Search by keywords',
+      iconChar: i.icon
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select an icon (type to search by keywords)',
+      title: title,
+      matchOnDescription: true,
+      ignoreFocusOut: true
+    });
+
+    return selected ? selected.iconChar : undefined;
+  }
+
+  /**
+   * Generate profile ID from name
+   * @param name
+   */
+  private generateProfileId(name: string): string {
+    return generateSanitizedId(name);
+  }
+
+  /**
+   * Rename profile
+   * @param profileId
+   */
+  private async renameProfile(profileId: string): Promise<void> {
+    const profiles = await this.registryManager.listProfiles();
+    const profile = profiles.find((p) => p.id === profileId);
+
+    if (!profile) {
+      return;
+    }
+
+    const newName = await vscode.window.showInputBox({
+      prompt: 'Enter new profile name',
+      value: profile.name,
+      validateInput: (value) => {
+        if (!value || value.trim().length === 0) {
+          return 'Profile name is required';
+        }
+        return undefined;
+      },
+      ignoreFocusOut: true
+    });
+
+    if (newName && newName !== profile.name) {
+      await this.registryManager.updateProfile(profileId, { name: newName });
+      vscode.window.showInformationMessage(`Profile renamed to "${newName}"`);
+    }
+  }
+
+  /**
+   * Update profile description
+   * @param profileId
+   */
+  private async updateDescription(profileId: string): Promise<void> {
+    const profiles = await this.registryManager.listProfiles();
+    const profile = profiles.find((p) => p.id === profileId);
+
+    if (!profile) {
+      return;
+    }
+
+    const newDescription = await vscode.window.showInputBox({
+      prompt: 'Enter new description',
+      value: profile.description,
+      ignoreFocusOut: true
+    });
+
+    if (newDescription !== undefined && newDescription !== profile.description) {
+      await this.registryManager.updateProfile(profileId, { description: newDescription });
+      vscode.window.showInformationMessage('Profile description updated');
+    }
+  }
+
+  /**
+   * Change profile icon
+   * @param profileId
+   */
+  private async changeIcon(profileId: string): Promise<void> {
+    const selectedIcon = await this.selectIcon('Change Profile Icon');
+
+    if (selectedIcon) {
+      await this.registryManager.updateProfile(profileId, { icon: selectedIcon });
+      vscode.window.showInformationMessage('Profile icon updated');
+    }
+  }
+
+  /**
+   * Manage profile bundles
+   * @param profileId
+   */
+  private async manageBundles(profileId: string): Promise<void> {
+    const action = await vscode.window.showQuickPick([
+      { label: '$(add) Add Bundles', value: 'add' },
+      { label: '$(remove) Remove Bundles', value: 'remove' }
+    ], {
+      placeHolder: 'Bundle Management',
+      title: 'Manage Profile Bundles',
+      ignoreFocusOut: true
+    });
+
+    if (!action) {
+      return;
+    }
+
+    if (action.value === 'add') {
+      const newBundles = await this.selectBundles();
+      if (newBundles.length > 0) {
+        const profiles = await this.registryManager.listProfiles();
+        const profile = profiles.find((p) => p.id === profileId);
+        if (profile) {
+          const updatedBundles = [...profile.bundles, ...newBundles];
+          await this.registryManager.updateProfile(profileId, { bundles: updatedBundles });
+          vscode.window.showInformationMessage(`Added ${newBundles.length} bundle(s)`);
+        }
+      }
+    } else {
+      // Remove bundles
+      const profiles = await this.registryManager.listProfiles();
+      const profile = profiles.find((p) => p.id === profileId);
+
+      if (profile && profile.bundles.length > 0) {
+        const bundleDetails = await Promise.all(
+          profile.bundles.map(async (pb) => {
+            try {
+              const bundle = await this.registryManager.getBundleDetails(pb.id);
+              return { bundle, profileBundle: pb };
+            } catch {
+              return { bundle: null, profileBundle: pb };
+            }
+          })
+        );
+
+        const toRemove = await vscode.window.showQuickPick(
+          bundleDetails.map((bd) => ({
+            label: bd.bundle?.name || bd.profileBundle.id,
+            description: `v${bd.profileBundle.version}`,
+            detail: bd.profileBundle.required ? 'Required' : 'Optional',
+            profileBundle: bd.profileBundle
+          })),
+          {
+            placeHolder: 'Select bundles to remove',
+            canPickMany: true,
+            title: 'Remove Bundles',
+            ignoreFocusOut: true
+          }
+        );
+
+        if (toRemove && toRemove.length > 0) {
+          const idsToRemove = new Set(toRemove.map((r) => r.profileBundle.id));
+          const updatedBundles = profile.bundles.filter((b) => !idsToRemove.has(b.id));
+          await this.registryManager.updateProfile(profileId, { bundles: updatedBundles });
+          vscode.window.showInformationMessage(`Removed ${toRemove.length} bundle(s)`);
+        }
+      }
+    }
+  }
+
   /**
    * Create a new profile
    */
@@ -728,248 +963,6 @@ export class ProfileCommands {
     } catch (error) {
       this.logger.error('Failed to list profiles', error as Error);
       vscode.window.showErrorMessage(`Failed to list profiles: ${(error as Error).message}`);
-    }
-  }
-
-  // ===== Helper Methods =====
-
-  /**
-   * Select bundles for profile
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async selectBundles(): Promise<ProfileBundle[]> {
-    try {
-      // Search all available bundles
-      const allBundles = await this.registryManager.searchBundles({});
-
-      if (allBundles.length === 0) {
-        vscode.window.showWarningMessage('No bundles available. Add a source first.');
-        return [];
-      }
-
-      const selected = await vscode.window.showQuickPick(
-        allBundles.map((b) => ({
-          label: b.name,
-          description: `v${b.version} • ${b.author}`,
-          detail: b.description,
-          picked: false,
-          bundle: b
-        })),
-        {
-          placeHolder: 'Select bundles to add to profile',
-          canPickMany: true,
-          title: 'Bundle Selection',
-          ignoreFocusOut: true
-        }
-      );
-
-      if (!selected || selected.length === 0) {
-        return [];
-      }
-
-      // Ask if bundles are required or optional
-      const profileBundles: ProfileBundle[] = [];
-
-      for (const item of selected) {
-        const required = await vscode.window.showQuickPick(
-          [
-            { label: '✓ Required', value: true, description: 'Bundle must be installed' },
-            { label: '○ Optional', value: false, description: 'Bundle can be installed later' }
-          ],
-          {
-            placeHolder: `Is "${item.bundle.name}" required?`,
-            title: 'Bundle Requirement',
-            ignoreFocusOut: true
-          }
-        );
-
-        if (required !== undefined) {
-          profileBundles.push({
-            id: item.bundle.id,
-            version: 'latest',
-            required: required.value
-          });
-        }
-      }
-
-      return profileBundles;
-    } catch (error) {
-      this.logger.error('Failed to select bundles', error as Error);
-      return [];
-    }
-  }
-
-  /**
-   * Select an icon from the expanded list
-   * @param title
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async selectIcon(title: string): Promise<string | undefined> {
-    const items = PROFILE_ICONS.map((i) => ({
-      label: `${i.icon} ${i.label}`,
-      description: i.tags,
-      detail: 'Search by keywords',
-      iconChar: i.icon
-    }));
-
-    const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select an icon (type to search by keywords)',
-      title: title,
-      matchOnDescription: true,
-      ignoreFocusOut: true
-    });
-
-    return selected ? selected.iconChar : undefined;
-  }
-
-  /**
-   * Generate profile ID from name
-   * @param name
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateProfileId(name: string): string {
-    return generateSanitizedId(name);
-  }
-
-  /**
-   * Rename profile
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async renameProfile(profileId: string): Promise<void> {
-    const profiles = await this.registryManager.listProfiles();
-    const profile = profiles.find((p) => p.id === profileId);
-
-    if (!profile) {
-      return;
-    }
-
-    const newName = await vscode.window.showInputBox({
-      prompt: 'Enter new profile name',
-      value: profile.name,
-      validateInput: (value) => {
-        if (!value || value.trim().length === 0) {
-          return 'Profile name is required';
-        }
-        return undefined;
-      },
-      ignoreFocusOut: true
-    });
-
-    if (newName && newName !== profile.name) {
-      await this.registryManager.updateProfile(profileId, { name: newName });
-      vscode.window.showInformationMessage(`Profile renamed to "${newName}"`);
-    }
-  }
-
-  /**
-   * Update profile description
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async updateDescription(profileId: string): Promise<void> {
-    const profiles = await this.registryManager.listProfiles();
-    const profile = profiles.find((p) => p.id === profileId);
-
-    if (!profile) {
-      return;
-    }
-
-    const newDescription = await vscode.window.showInputBox({
-      prompt: 'Enter new description',
-      value: profile.description,
-      ignoreFocusOut: true
-    });
-
-    if (newDescription !== undefined && newDescription !== profile.description) {
-      await this.registryManager.updateProfile(profileId, { description: newDescription });
-      vscode.window.showInformationMessage('Profile description updated');
-    }
-  }
-
-  /**
-   * Change profile icon
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async changeIcon(profileId: string): Promise<void> {
-    const selectedIcon = await this.selectIcon('Change Profile Icon');
-
-    if (selectedIcon) {
-      await this.registryManager.updateProfile(profileId, { icon: selectedIcon });
-      vscode.window.showInformationMessage('Profile icon updated');
-    }
-  }
-
-  /**
-   * Manage profile bundles
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async manageBundles(profileId: string): Promise<void> {
-    const action = await vscode.window.showQuickPick([
-      { label: '$(add) Add Bundles', value: 'add' },
-      { label: '$(remove) Remove Bundles', value: 'remove' }
-    ], {
-      placeHolder: 'Bundle Management',
-      title: 'Manage Profile Bundles',
-      ignoreFocusOut: true
-    });
-
-    if (!action) {
-      return;
-    }
-
-    if (action.value === 'add') {
-      const newBundles = await this.selectBundles();
-      if (newBundles.length > 0) {
-        const profiles = await this.registryManager.listProfiles();
-        const profile = profiles.find((p) => p.id === profileId);
-        if (profile) {
-          const updatedBundles = [...profile.bundles, ...newBundles];
-          await this.registryManager.updateProfile(profileId, { bundles: updatedBundles });
-          vscode.window.showInformationMessage(`Added ${newBundles.length} bundle(s)`);
-        }
-      }
-    } else {
-      // Remove bundles
-      const profiles = await this.registryManager.listProfiles();
-      const profile = profiles.find((p) => p.id === profileId);
-
-      if (profile && profile.bundles.length > 0) {
-        const bundleDetails = await Promise.all(
-          profile.bundles.map(async (pb) => {
-            try {
-              const bundle = await this.registryManager.getBundleDetails(pb.id);
-              return { bundle, profileBundle: pb };
-            } catch {
-              return { bundle: null, profileBundle: pb };
-            }
-          })
-        );
-
-        const toRemove = await vscode.window.showQuickPick(
-          bundleDetails.map((bd) => ({
-            label: bd.bundle?.name || bd.profileBundle.id,
-            description: `v${bd.profileBundle.version}`,
-            detail: bd.profileBundle.required ? 'Required' : 'Optional',
-            profileBundle: bd.profileBundle
-          })),
-          {
-            placeHolder: 'Select bundles to remove',
-            canPickMany: true,
-            title: 'Remove Bundles',
-            ignoreFocusOut: true
-          }
-        );
-
-        if (toRemove && toRemove.length > 0) {
-          const idsToRemove = new Set(toRemove.map((r) => r.profileBundle.id));
-          const updatedBundles = profile.bundles.filter((b) => !idsToRemove.has(b.id));
-          await this.registryManager.updateProfile(profileId, { bundles: updatedBundles });
-          vscode.window.showInformationMessage(`Removed ${toRemove.length} bundle(s)`);
-        }
-      }
     }
   }
 }

@@ -41,6 +41,29 @@ export class LocalModificationWarningService {
   }
 
   /**
+   * Build the warning message for the dialog
+   * @param bundleId - ID of the bundle
+   * @param modifiedFiles - Array of modified file information
+   * @returns Formatted warning message
+   */
+  private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
+    const fileCount = modifiedFiles.length;
+    const fileWord = fileCount === 1 ? 'file has' : 'files have';
+
+    let message = `The bundle "${bundleId}" has ${fileCount} ${fileWord} been modified locally:\n\n`;
+
+    // List modified files with their modification type
+    for (const file of modifiedFiles) {
+      const typeIndicator = file.modificationType === 'missing' ? ' (missing)' : '';
+      message += `  • ${file.path}${typeIndicator}\n`;
+    }
+
+    message += '\nUpdating will override your local changes. What would you like to do?';
+
+    return message;
+  }
+
+  /**
    * Check for modifications to a bundle's files
    * @param bundleId - ID of the bundle to check
    * @returns Array of modified file information
@@ -131,29 +154,5 @@ export class LocalModificationWarningService {
 
     // Show warning dialog and return result
     return await this.showWarningDialog(bundleId, modifiedFiles, bundleRepoUrl);
-  }
-
-  /**
-   * Build the warning message for the dialog
-   * @param bundleId - ID of the bundle
-   * @param modifiedFiles - Array of modified file information
-   * @returns Formatted warning message
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
-    const fileCount = modifiedFiles.length;
-    const fileWord = fileCount === 1 ? 'file has' : 'files have';
-
-    let message = `The bundle "${bundleId}" has ${fileCount} ${fileWord} been modified locally:\n\n`;
-
-    // List modified files with their modification type
-    for (const file of modifiedFiles) {
-      const typeIndicator = file.modificationType === 'missing' ? ' (missing)' : '';
-      message += `  • ${file.path}${typeIndicator}\n`;
-    }
-
-    message += '\nUpdating will override your local changes. What would you like to do?';
-
-    return message;
   }
 }

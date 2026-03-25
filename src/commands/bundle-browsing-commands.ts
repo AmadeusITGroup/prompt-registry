@@ -26,6 +26,29 @@ export class BundleBrowsingCommands {
     // Logger removed as it was unused - ErrorHandler provides logging
   }
 
+  // ===== Private Helper Methods =====
+
+  /**
+   * Format bundle info for display
+   * @param bundle
+   * @param isInstalled
+   */
+  private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
+    const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
+
+    if (bundle.tags && bundle.tags.length > 0) {
+      parts.push(`Tags: ${bundle.tags.join(', ')}`);
+    }
+
+    if (isInstalled) {
+      parts.push(`Status: ✓ Installed`);
+    } else {
+      parts.push(`Status: Not installed`);
+    }
+
+    return parts.join('\n');
+  }
+
   /**
    * View bundle details
    * @param bundleId
@@ -335,29 +358,5 @@ export class BundleBrowsingCommands {
         userMessagePrefix: 'Failed to load bundles'
       });
     }
-  }
-
-  // ===== Private Helper Methods =====
-
-  /**
-   * Format bundle info for display
-   * @param bundle
-   * @param isInstalled
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
-    const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
-
-    if (bundle.tags && bundle.tags.length > 0) {
-      parts.push(`Tags: ${bundle.tags.join(', ')}`);
-    }
-
-    if (isInstalled) {
-      parts.push(`Status: ✓ Installed`);
-    } else {
-      parts.push(`Status: Not installed`);
-    }
-
-    return parts.join('\n');
   }
 }

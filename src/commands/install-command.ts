@@ -31,6 +31,52 @@ export class InstallCommand {
     this.platformDetector = PlatformDetector.getInstance();
   }
 
+  private async selectInstallationScope(): Promise<InstallationScope | undefined> {
+    const scopeItems: vscode.QuickPickItem[] = [
+      {
+        label: '👤 User',
+        description: 'Install for current user across all workspaces',
+        detail: 'Recommended for personal use',
+        picked: true
+      },
+      {
+        label: '📁 Workspace',
+        description: 'Install for current workspace only',
+        detail: 'Shared with team members'
+      },
+      {
+        label: '📂 Project',
+        description: 'Install for current project only',
+        detail: 'Project-specific configuration'
+      }
+    ];
+
+    const selectedItem = await vscode.window.showQuickPick(scopeItems, {
+      title: 'Select Installation Scope',
+      placeHolder: 'Choose where to install Prompt Registry components',
+      ignoreFocusOut: true
+    });
+
+    if (!selectedItem) {
+      return undefined;
+    }
+
+    switch (selectedItem.label) {
+      case '👤 User': {
+        return InstallationScope.USER;
+      }
+      case '📁 Workspace': {
+        return InstallationScope.WORKSPACE;
+      }
+      case '📂 Project': {
+        return InstallationScope.PROJECT;
+      }
+      default: {
+        return InstallationScope.USER;
+      }
+    }
+  }
+
   /**
    * Execute the install command
    */
@@ -161,53 +207,6 @@ export class InstallCommand {
           this.logger.show();
         }
       });
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async selectInstallationScope(): Promise<InstallationScope | undefined> {
-    const scopeItems: vscode.QuickPickItem[] = [
-      {
-        label: '👤 User',
-        description: 'Install for current user across all workspaces',
-        detail: 'Recommended for personal use',
-        picked: true
-      },
-      {
-        label: '📁 Workspace',
-        description: 'Install for current workspace only',
-        detail: 'Shared with team members'
-      },
-      {
-        label: '📂 Project',
-        description: 'Install for current project only',
-        detail: 'Project-specific configuration'
-      }
-    ];
-
-    const selectedItem = await vscode.window.showQuickPick(scopeItems, {
-      title: 'Select Installation Scope',
-      placeHolder: 'Choose where to install Prompt Registry components',
-      ignoreFocusOut: true
-    });
-
-    if (!selectedItem) {
-      return undefined;
-    }
-
-    switch (selectedItem.label) {
-      case '👤 User': {
-        return InstallationScope.USER;
-      }
-      case '📁 Workspace': {
-        return InstallationScope.WORKSPACE;
-      }
-      case '📂 Project': {
-        return InstallationScope.PROJECT;
-      }
-      default: {
-        return InstallationScope.USER;
-      }
     }
   }
 }

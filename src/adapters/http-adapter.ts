@@ -169,6 +169,21 @@ export class HttpAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Resolve relative URLs to absolute
+   * @param url
+   */
+  private resolveUrl(url: string): string {
+    // If already absolute, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // Resolve relative URL based on source URL
+    const baseUrl = this.source.url.replace(/\/[^/]*$/, ''); // Remove last segment
+    return `${baseUrl}/${url.replace(/^\//, '')}`;
+  }
+
+  /**
    * Check if URL is valid HTTP/HTTPS URL
    * @param url
    */
@@ -232,22 +247,6 @@ export class HttpAdapter extends RepositoryAdapter {
     } catch (error) {
       throw new Error(`Failed to fetch bundles from HTTP registry: ${error}`);
     }
-  }
-
-  /**
-   * Resolve relative URLs to absolute
-   * @param url
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private resolveUrl(url: string): string {
-    // If already absolute, return as-is
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    // Resolve relative URL based on source URL
-    const baseUrl = this.source.url.replace(/\/[^/]*$/, ''); // Remove last segment
-    return `${baseUrl}/${url.replace(/^\//, '')}`;
   }
 
   /**

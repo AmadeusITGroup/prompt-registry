@@ -62,6 +62,41 @@ export abstract class CliWrapper {
   protected abstract getDisplayName(): string;
 
   /**
+   * Validate working directory exists and is a directory
+   * @param cwd
+   */
+  protected validateCwd(cwd: string): void {
+    if (!cwd || cwd.trim() === '') {
+      throw new Error('Working directory cannot be empty');
+    }
+
+    if (!fs.existsSync(cwd)) {
+      throw new Error(`Working directory does not exist: ${cwd}`);
+    }
+
+    const stats = fs.statSync(cwd);
+    if (!stats.isDirectory()) {
+      throw new Error(`Path is not a directory: ${cwd}`);
+    }
+  }
+
+  /**
+   * Format process error into user-friendly message
+   * @param err
+   * @param cmdName
+   */
+  protected formatProcessError(err: Error, cmdName: string): string {
+    if (err.message.includes('ENOENT')) {
+      return `${cmdName} not found. Please install it first.`;
+    } else if (err.message.includes('EACCES') || err.message.includes('permission')) {
+      return 'Permission denied. Please check directory permissions.';
+    } else if (err.message.includes('network') || err.message.includes('ENOTFOUND')) {
+      return 'Network error. Please check your internet connection.';
+    }
+    return `Failed to run ${cmdName} install: ${err.message}`;
+  }
+
+  /**
    * Check if the CLI tool is available in the system
    */
   public async isAvailable(): Promise<boolean> {
@@ -98,26 +133,6 @@ export abstract class CliWrapper {
         resolve(undefined);
       });
     });
-  }
-
-  /**
-   * Validate working directory exists and is a directory
-   * @param cwd
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected validateCwd(cwd: string): void {
-    if (!cwd || cwd.trim() === '') {
-      throw new Error('Working directory cannot be empty');
-    }
-
-    if (!fs.existsSync(cwd)) {
-      throw new Error(`Working directory does not exist: ${cwd}`);
-    }
-
-    const stats = fs.statSync(cwd);
-    if (!stats.isDirectory()) {
-      throw new Error(`Path is not a directory: ${cwd}`);
-    }
   }
 
   /**
@@ -276,22 +291,5 @@ export abstract class CliWrapper {
     return useProgress
       ? await this.installWithProgress(cwd)
       : await this.installInTerminal(cwd);
-  }
-
-  /**
-   * Format process error into user-friendly message
-   * @param err
-   * @param cmdName
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected formatProcessError(err: Error, cmdName: string): string {
-    if (err.message.includes('ENOENT')) {
-      return `${cmdName} not found. Please install it first.`;
-    } else if (err.message.includes('EACCES') || err.message.includes('permission')) {
-      return 'Permission denied. Please check directory permissions.';
-    } else if (err.message.includes('network') || err.message.includes('ENOTFOUND')) {
-      return 'Network error. Please check your internet connection.';
-    }
-    return `Failed to run ${cmdName} install: ${err.message}`;
   }
 }

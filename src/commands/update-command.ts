@@ -26,6 +26,50 @@ export class UpdateCommand {
     this.installationManager = InstallationManager.getInstance();
   }
 
+  private async selectUpdateOption(availableUpdates: any[]): Promise<string | undefined> {
+    if (availableUpdates.length === 1) {
+      // Only one scope has updates, ask for confirmation
+      const update = availableUpdates[0];
+      const confirm = await vscode.window.showInformationMessage(
+        `Update available for ${update.scope} scope: ${update.currentVersion} → ${update.latestVersion}`,
+        'Update Now',
+        'Cancel'
+      );
+
+      return confirm === 'Update Now' ? update.scope : undefined;
+    }
+
+    // Multiple scopes have updates, show selection
+    const quickPickItems: vscode.QuickPickItem[] = [
+      {
+        label: '🔄 Update All',
+        description: `Update all ${availableUpdates.length} scopes`,
+        detail: 'Recommended'
+      },
+      ...availableUpdates.map((update) => ({
+        label: `📁 Update ${update.scope}`,
+        description: `${update.currentVersion} → ${update.latestVersion}`,
+        detail: update.scope
+      }))
+    ];
+
+    const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
+      title: 'Select Update Option',
+      placeHolder: 'Choose which installations to update',
+      ignoreFocusOut: true
+    });
+
+    if (!selectedItem) {
+      return undefined;
+    }
+
+    if (selectedItem.label === '🔄 Update All') {
+      return 'all';
+    }
+
+    return selectedItem.detail;
+  }
+
   /**
    * Execute the update command
    */
@@ -164,50 +208,5 @@ export class UpdateCommand {
         }
       });
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async selectUpdateOption(availableUpdates: any[]): Promise<string | undefined> {
-    if (availableUpdates.length === 1) {
-      // Only one scope has updates, ask for confirmation
-      const update = availableUpdates[0];
-      const confirm = await vscode.window.showInformationMessage(
-        `Update available for ${update.scope} scope: ${update.currentVersion} → ${update.latestVersion}`,
-        'Update Now',
-        'Cancel'
-      );
-
-      return confirm === 'Update Now' ? update.scope : undefined;
-    }
-
-    // Multiple scopes have updates, show selection
-    const quickPickItems: vscode.QuickPickItem[] = [
-      {
-        label: '🔄 Update All',
-        description: `Update all ${availableUpdates.length} scopes`,
-        detail: 'Recommended'
-      },
-      ...availableUpdates.map((update) => ({
-        label: `📁 Update ${update.scope}`,
-        description: `${update.currentVersion} → ${update.latestVersion}`,
-        detail: update.scope
-      }))
-    ];
-
-    const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
-      title: 'Select Update Option',
-      placeHolder: 'Choose which installations to update',
-      ignoreFocusOut: true
-    });
-
-    if (!selectedItem) {
-      return undefined;
-    }
-
-    if (selectedItem.label === '🔄 Update All') {
-      return 'all';
-    }
-
-    return selectedItem.detail;
   }
 }

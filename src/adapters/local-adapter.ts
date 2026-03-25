@@ -77,22 +77,9 @@ export class LocalAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Check if path is valid local filesystem path
-   * @param url
-   */
-  public isValidUrl(url: string): boolean {
-    // Accept file:// URLs or absolute paths
-    return url.startsWith('file://')
-      || path.isAbsolute(url)
-      || url.startsWith('~/')
-      || url.startsWith('./');
-  }
-
-  /**
    * Check if directory exists and is accessible
    * @param dirPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async directoryExists(dirPath: string): Promise<boolean> {
     try {
       await access(dirPath, fs.constants.R_OK);
@@ -107,7 +94,6 @@ export class LocalAdapter extends RepositoryAdapter {
    * Read and parse JSON file
    * @param filePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readJsonFile(filePath: string): Promise<any> {
     try {
       const content = await readFile(filePath, 'utf8');
@@ -122,7 +108,6 @@ export class LocalAdapter extends RepositoryAdapter {
    * Read and parse YAML file
    * @param filePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readYamlFile(filePath: string): Promise<any> {
     try {
       const content = await readFile(filePath, 'utf8');
@@ -136,7 +121,6 @@ export class LocalAdapter extends RepositoryAdapter {
   /**
    * Get list of bundle directories in local path
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getBundleDirectories(): Promise<string[]> {
     const localPath = this.getLocalPath();
 
@@ -192,7 +176,6 @@ export class LocalAdapter extends RepositoryAdapter {
    * Calculate directory size recursively
    * @param dirPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async calculateDirectorySize(dirPath: string): Promise<number> {
     let totalSize = 0;
 
@@ -220,7 +203,6 @@ export class LocalAdapter extends RepositoryAdapter {
    * Format bytes to human-readable size
    * @param bytes
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private formatSize(bytes: number): string {
     const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
@@ -232,6 +214,18 @@ export class LocalAdapter extends RepositoryAdapter {
     }
 
     return `${size.toFixed(2)} ${units[unitIndex]}`;
+  }
+
+  /**
+   * Check if path is valid local filesystem path
+   * @param url
+   */
+  public isValidUrl(url: string): boolean {
+    // Accept file:// URLs or absolute paths
+    return url.startsWith('file://')
+      || path.isAbsolute(url)
+      || url.startsWith('~/')
+      || url.startsWith('./');
   }
 
   /**
@@ -446,13 +440,10 @@ export class LocalAdapter extends RepositoryAdapter {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-          let totalSize = 0;
 
           // Collect data chunks
           archive.on('data', (chunk: Buffer) => {
             chunks.push(chunk);
-            totalSize += chunk.length;
           });
 
           // Resolve when archive is finalized

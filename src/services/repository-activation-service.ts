@@ -73,25 +73,6 @@ export interface MissingBundleInstallResult {
  */
 export class RepositoryActivationService {
   private static readonly instances: Map<string, RepositoryActivationService> = new Map();
-  private readonly logger: Logger;
-  private readonly DECLINED_KEY = 'repositoryActivation.declined';
-  private readonly workspaceRoot: string;
-  private readonly bundleInstaller?: IBundleInstaller;
-  private readonly setupStateManager?: SetupStateManager;
-
-  constructor(
-    private readonly lockfileManager: LockfileManager,
-    private readonly hubManager: HubManager,
-    private readonly storage: RegistryStorage,
-    workspaceRoot: string,
-    bundleInstaller?: IBundleInstaller,
-    setupStateManager?: SetupStateManager
-  ) {
-    this.logger = Logger.getInstance();
-    this.workspaceRoot = workspaceRoot;
-    this.bundleInstaller = bundleInstaller;
-    this.setupStateManager = setupStateManager;
-  }
 
   /**
    * Get or create a RepositoryActivationService instance for a workspace.
@@ -154,6 +135,72 @@ export class RepositoryActivationService {
     } else {
       // Reset all instances
       RepositoryActivationService.instances.clear();
+    }
+  }
+
+  private readonly logger: Logger;
+  private readonly DECLINED_KEY = 'repositoryActivation.declined';
+  private readonly workspaceRoot: string;
+  private readonly bundleInstaller?: IBundleInstaller;
+  private readonly setupStateManager?: SetupStateManager;
+
+  constructor(
+    private readonly lockfileManager: LockfileManager,
+    private readonly hubManager: HubManager,
+    private readonly storage: RegistryStorage,
+    workspaceRoot: string,
+    bundleInstaller?: IBundleInstaller,
+    setupStateManager?: SetupStateManager
+  ) {
+    this.logger = Logger.getInstance();
+    this.workspaceRoot = workspaceRoot;
+    this.bundleInstaller = bundleInstaller;
+    this.setupStateManager = setupStateManager;
+  }
+
+  /**
+   * Check if user previously declined activation for this repository
+   * @param repositoryPath - Path to the repository
+   * @returns True if previously declined
+   */
+  private async wasDeclined(repositoryPath: string): Promise<boolean> {
+    const declined = await this.getDeclinedRepositories();
+    return declined.includes(repositoryPath);
+  }
+
+  /**
+   * Get list of declined repositories from global state
+   * @returns Array of repository paths
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async getDeclinedRepositories(): Promise<string[]> {
+    const context = this.storage.getContext();
+    return context.globalState.get<string[]>(this.DECLINED_KEY, []);
+  }
+
+  /**
+   * Extract repository path from lockfile path
+   * @param lockfilePath - Full path to lockfile
+   * @returns Repository root path
+   */
+  private getRepositoryPath(lockfilePath: string): string {
+    return path.dirname(lockfilePath);
+  }
+
+  /**
+   * Check if setup is complete before proceeding with source/hub detection.
+   * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
+   */
+  private async isSetupComplete(): Promise<boolean> {
+    if (!this.setupStateManager) {
+      this.logger.debug('SetupStateManager not available, proceeding with detection');
+      return true;
+    }
+    try {
+      return await this.setupStateManager.isComplete();
+    } catch (error) {
+      this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
+      return true;
     }
   }
 
@@ -366,54 +413,5 @@ export class RepositoryActivationService {
     }
 
     return result;
-  }
-
-  /**
-   * Check if user previously declined activation for this repository
-   * @param repositoryPath - Path to the repository
-   * @returns True if previously declined
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async wasDeclined(repositoryPath: string): Promise<boolean> {
-    const declined = await this.getDeclinedRepositories();
-    return declined.includes(repositoryPath);
-  }
-
-  /**
-   * Get list of declined repositories from global state
-   * @returns Array of repository paths
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async getDeclinedRepositories(): Promise<string[]> {
-    const context = this.storage.getContext();
-    return context.globalState.get<string[]>(this.DECLINED_KEY, []);
-  }
-
-  /**
-   * Extract repository path from lockfile path
-   * @param lockfilePath - Full path to lockfile
-   * @returns Repository root path
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getRepositoryPath(lockfilePath: string): string {
-    return path.dirname(lockfilePath);
-  }
-
-  /**
-   * Check if setup is complete before proceeding with source/hub detection.
-   * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async isSetupComplete(): Promise<boolean> {
-    if (!this.setupStateManager) {
-      this.logger.debug('SetupStateManager not available, proceeding with detection');
-      return true;
-    }
-    try {
-      return await this.setupStateManager.isComplete();
-    } catch (error) {
-      this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
-      return true;
-    }
   }
 }

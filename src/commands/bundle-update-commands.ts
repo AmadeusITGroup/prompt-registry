@@ -45,6 +45,227 @@ export class BundleUpdateCommands {
     this.bundleNotifications = bundleNotifications ?? null;
   }
 
+  // ===== Private Helper Methods =====
+
+  /**
+   * Get bundle display name, falling back to bundleId if details unavailable.
+   * Delegates to shared utility for consistency across the codebase.
+   * @param bundleId
+   */
+  private async getBundleDisplayName(bundleId: string): Promise<string> {
+    return getBundleDisplayName(bundleId, this.registryManager);
+  }
+
+  /**
+   * Standardized error handling wrapper for command operations.
+   * Delegates to ErrorHandler.withErrorHandling with command-specific defaults.
+   * @param operation
+   * @param operationName
+   * @param fallbackValue
+   */
+  private async withErrorHandling<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    fallbackValue?: T
+  ): Promise<T> {
+    const result = await ErrorHandler.withErrorHandling(operation, {
+      operation: operationName,
+      showUserMessage: true,
+      logLevel: 'error',
+      fallbackValue
+    });
+
+    // For command handlers, errors are surfaced to the user via
+    // ErrorHandler and should not be rethrown to avoid breaking
+    // the command pipeline.
+    return result as T;
+  }
+
+  /**
+   * Check for available updates with progress indicator
+   */
+  private async checkForAvailableUpdates(): Promise<BundleUpdate[]> {
+    return await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Checking for updates...',
+        cancellable: false
+      },
+      async () => {
+        return await this.registryManager.checkUpdates();
+      }
+    );
+  }
+
+  /**
+   * Confirm batch update with user
+   * @param updateCount
+   */
+  private async confirmBatchUpdate(updateCount: number): Promise<boolean> {
+    const confirmation = await vscode.window.showInformationMessage(
+      `${updateCount} bundle update(s) available. Update all now?`,
+      { modal: true },
+      'Update All', 'Cancel'
+    );
+    return confirmation === 'Update All';
+  }
+
+  /**
+   * Perform batch update with controlled concurrency and progress reporting
+   * @param updates
+   */
+  private async performBatchUpdate(updates: BundleUpdate[]): Promise<{
+    successful: string[];
+    failed: { bundleId: string; error: string }[];
+  }> {
+    const successful: string[] = [];
+    const failed: { bundleId: string; error: string }[] = [];
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Updating bundles...',
+        cancellable: false
+      },
+      async (progress) => {
+        const totalUpdates = updates.length;
+        let completed = 0;
+
+        // Process in batches for controlled concurrency
+        for (let i = 0; i < updates.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
+          const batch = updates.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
+
+          // Update progress
+          progress.report({
+            message: `Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1}...`,
+            increment: 0
+          });
+
+          // Process batch in parallel
+          const results = await this.processBatch(batch);
+
+          // Collect results and update progress
+          this.collectBatchResults(results, batch, successful, failed, progress, completed, totalUpdates);
+          completed += batch.length;
+        }
+      }
+    );
+
+    return { successful, failed };
+  }
+
+  /**
+   * Process a batch of updates in parallel
+   * @param batch
+   */
+  private async processBatch(batch: BundleUpdate[]): Promise<PromiseSettledResult<{
+    bundleId: string;
+    bundleName: string;
+    success: boolean;
+    error?: string;
+  }>[]> {
+    return await Promise.allSettled(
+      batch.map(async (update) => {
+        try {
+          // Get bundle name for better logging
+          const bundleName = await this.getBundleDisplayName(update.bundleId);
+
+          this.logger.info(`Updating ${bundleName} (${update.currentVersion} → ${update.latestVersion})`);
+
+          // Perform update using RegistryManager
+          await this.registryManager.updateBundle(update.bundleId, update.latestVersion);
+
+          return { bundleId: update.bundleId, bundleName, success: true };
+        } catch (error) {
+          const errorObj = toError(error);
+          this.logger.error(`Failed to update ${update.bundleId}`, errorObj);
+          return {
+            bundleId: update.bundleId,
+            bundleName: update.bundleId,
+            success: false,
+            error: errorObj.message
+          };
+        }
+      })
+    );
+  }
+
+  /**
+   * Collect batch results and update progress
+   * @param results
+   * @param batch
+   * @param successful
+   * @param failed
+   * @param progress
+   * @param completed
+   * @param totalUpdates
+   */
+  private collectBatchResults(
+    results: PromiseSettledResult<{
+      bundleId: string;
+      bundleName: string;
+      success: boolean;
+      error?: string;
+    }>[],
+    batch: BundleUpdate[],
+    successful: string[],
+    failed: { bundleId: string; error: string }[],
+    progress: vscode.Progress<{ message?: string; increment?: number }>,
+    completed: number,
+    totalUpdates: number
+  ): void {
+    results.forEach((result, index) => {
+      const update = batch[index];
+      const currentCompleted = completed + index + 1;
+
+      if (result.status === 'fulfilled' && result.value.success) {
+        successful.push(result.value.bundleName);
+        progress.report({
+          message: `✓ ${result.value.bundleName} (${currentCompleted}/${totalUpdates})`,
+          increment: (100 / totalUpdates)
+        });
+      } else {
+        const errorMsg = result.status === 'fulfilled'
+          ? result.value.error
+          : result.reason?.message || 'Unknown error';
+        failed.push({
+          bundleId: update.bundleId,
+          error: errorMsg!
+        });
+        progress.report({
+          message: `✗ ${update.bundleId} (${currentCompleted}/${totalUpdates})`,
+          increment: (100 / totalUpdates)
+        });
+      }
+    });
+  }
+
+  /**
+   * Show batch update summary notification
+   * @param successful
+   * @param failed
+   */
+  private async showBatchUpdateSummary(
+    successful: string[],
+    failed: { bundleId: string; error: string }[]
+  ): Promise<void> {
+    // Use injected notification service if available
+    if (this.bundleNotifications) {
+      await this.bundleNotifications.showBatchUpdateSummary(successful, failed);
+    } else {
+      // Fallback to basic notification if service not initialized
+      const parts: string[] = [];
+      if (successful.length > 0) {
+        parts.push(`✅ ${successful.length} updated`);
+      }
+      if (failed.length > 0) {
+        parts.push(`❌ ${failed.length} failed`);
+      }
+      const message = `Batch update complete: ${parts.join(', ')}`;
+      await vscode.window.showInformationMessage(message);
+    }
+  }
+
   /**
    * Check for updates on a single bundle and show update dialog
    * @param bundleId
@@ -274,234 +495,5 @@ export class BundleUpdateCommands {
 
       vscode.window.showInformationMessage(`✅ Auto-update disabled for ${bundleId}`);
     }, 'disable auto-update');
-  }
-
-  // ===== Private Helper Methods =====
-
-  /**
-   * Get bundle display name, falling back to bundleId if details unavailable.
-   * Delegates to shared utility for consistency across the codebase.
-   * @param bundleId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getBundleDisplayName(bundleId: string): Promise<string> {
-    return getBundleDisplayName(bundleId, this.registryManager);
-  }
-
-  /**
-   * Standardized error handling wrapper for command operations.
-   * Delegates to ErrorHandler.withErrorHandling with command-specific defaults.
-   * @param operation
-   * @param operationName
-   * @param fallbackValue
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async withErrorHandling<T>(
-    operation: () => Promise<T>,
-    operationName: string,
-    fallbackValue?: T
-  ): Promise<T> {
-    const result = await ErrorHandler.withErrorHandling(operation, {
-      operation: operationName,
-      showUserMessage: true,
-      logLevel: 'error',
-      fallbackValue
-    });
-
-    // For command handlers, errors are surfaced to the user via
-    // ErrorHandler and should not be rethrown to avoid breaking
-    // the command pipeline.
-    return result as T;
-  }
-
-  /**
-   * Check for available updates with progress indicator
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async checkForAvailableUpdates(): Promise<BundleUpdate[]> {
-    return await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Checking for updates...',
-        cancellable: false
-      },
-      async () => {
-        return await this.registryManager.checkUpdates();
-      }
-    );
-  }
-
-  /**
-   * Confirm batch update with user
-   * @param updateCount
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async confirmBatchUpdate(updateCount: number): Promise<boolean> {
-    const confirmation = await vscode.window.showInformationMessage(
-      `${updateCount} bundle update(s) available. Update all now?`,
-      { modal: true },
-      'Update All', 'Cancel'
-    );
-    return confirmation === 'Update All';
-  }
-
-  /**
-   * Perform batch update with controlled concurrency and progress reporting
-   * @param updates
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async performBatchUpdate(updates: BundleUpdate[]): Promise<{
-    successful: string[];
-    failed: { bundleId: string; error: string }[];
-  }> {
-    const successful: string[] = [];
-    const failed: { bundleId: string; error: string }[] = [];
-
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Updating bundles...',
-        cancellable: false
-      },
-      async (progress) => {
-        const totalUpdates = updates.length;
-        let completed = 0;
-
-        // Process in batches for controlled concurrency
-        for (let i = 0; i < updates.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
-          const batch = updates.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
-
-          // Update progress
-          progress.report({
-            message: `Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1}...`,
-            increment: 0
-          });
-
-          // Process batch in parallel
-          const results = await this.processBatch(batch);
-
-          // Collect results and update progress
-          this.collectBatchResults(results, batch, successful, failed, progress, completed, totalUpdates);
-          completed += batch.length;
-        }
-      }
-    );
-
-    return { successful, failed };
-  }
-
-  /**
-   * Process a batch of updates in parallel
-   * @param batch
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async processBatch(batch: BundleUpdate[]): Promise<PromiseSettledResult<{
-    bundleId: string;
-    bundleName: string;
-    success: boolean;
-    error?: string;
-  }>[]> {
-    return await Promise.allSettled(
-      batch.map(async (update) => {
-        try {
-          // Get bundle name for better logging
-          const bundleName = await this.getBundleDisplayName(update.bundleId);
-
-          this.logger.info(`Updating ${bundleName} (${update.currentVersion} → ${update.latestVersion})`);
-
-          // Perform update using RegistryManager
-          await this.registryManager.updateBundle(update.bundleId, update.latestVersion);
-
-          return { bundleId: update.bundleId, bundleName, success: true };
-        } catch (error) {
-          const errorObj = toError(error);
-          this.logger.error(`Failed to update ${update.bundleId}`, errorObj);
-          return {
-            bundleId: update.bundleId,
-            bundleName: update.bundleId,
-            success: false,
-            error: errorObj.message
-          };
-        }
-      })
-    );
-  }
-
-  /**
-   * Collect batch results and update progress
-   * @param results
-   * @param batch
-   * @param successful
-   * @param failed
-   * @param progress
-   * @param completed
-   * @param totalUpdates
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private collectBatchResults(
-    results: PromiseSettledResult<{
-      bundleId: string;
-      bundleName: string;
-      success: boolean;
-      error?: string;
-    }>[],
-    batch: BundleUpdate[],
-    successful: string[],
-    failed: { bundleId: string; error: string }[],
-    progress: vscode.Progress<{ message?: string; increment?: number }>,
-    completed: number,
-    totalUpdates: number
-  ): void {
-    results.forEach((result, index) => {
-      const update = batch[index];
-      const currentCompleted = completed + index + 1;
-
-      if (result.status === 'fulfilled' && result.value.success) {
-        successful.push(result.value.bundleName);
-        progress.report({
-          message: `✓ ${result.value.bundleName} (${currentCompleted}/${totalUpdates})`,
-          increment: (100 / totalUpdates)
-        });
-      } else {
-        const errorMsg = result.status === 'fulfilled'
-          ? result.value.error
-          : result.reason?.message || 'Unknown error';
-        failed.push({
-          bundleId: update.bundleId,
-          error: errorMsg!
-        });
-        progress.report({
-          message: `✗ ${update.bundleId} (${currentCompleted}/${totalUpdates})`,
-          increment: (100 / totalUpdates)
-        });
-      }
-    });
-  }
-
-  /**
-   * Show batch update summary notification
-   * @param successful
-   * @param failed
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async showBatchUpdateSummary(
-    successful: string[],
-    failed: { bundleId: string; error: string }[]
-  ): Promise<void> {
-    // Use injected notification service if available
-    if (this.bundleNotifications) {
-      await this.bundleNotifications.showBatchUpdateSummary(successful, failed);
-    } else {
-      // Fallback to basic notification if service not initialized
-      const parts: string[] = [];
-      if (successful.length > 0) {
-        parts.push(`✅ ${successful.length} updated`);
-      }
-      if (failed.length > 0) {
-        parts.push(`❌ ${failed.length} failed`);
-      }
-      const message = `Batch update complete: ${parts.join(', ')}`;
-      await vscode.window.showInformationMessage(message);
-    }
   }
 }

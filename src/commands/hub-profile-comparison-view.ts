@@ -56,6 +56,18 @@ export class HubProfileComparisonView {
   constructor(private readonly hubManager: HubManager) {}
 
   /**
+   * Pad string to the right
+   * @param str
+   * @param length
+   */
+  private padRight(str: string, length: number): string {
+    if (str.length >= length) {
+      return str.substring(0, length - 3) + '...';
+    }
+    return str + ' '.repeat(length - str.length);
+  }
+
+  /**
    * Get comparison data for a profile
    * @param hubId
    * @param profileId
@@ -381,18 +393,5 @@ export class HubProfileComparisonView {
     }
 
     return lines.join('\n');
-  }
-
-  /**
-   * Pad string to the right
-   * @param str
-   * @param length
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private padRight(str: string, length: number): string {
-    if (str.length >= length) {
-      return str.substring(0, length - 3) + '...';
-    }
-    return str + ' '.repeat(length - str.length);
   }
 }

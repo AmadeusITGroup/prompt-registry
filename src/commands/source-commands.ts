@@ -31,6 +31,311 @@ export class SourceCommands {
     this.logger = Logger.getInstance();
   }
 
+  // ===== Helper Methods =====
+
+  /**
+   * Get source URL based on type
+   * @param type
+   */
+  private async getSourceUrl(type: SourceType): Promise<string | undefined> {
+    switch (type) {
+      case 'github': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL',
+          placeHolder: 'https://github.com/owner/repo',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'gitlab': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitLab repository URL',
+          placeHolder: 'https://gitlab.com/owner/repo',
+          validateInput: (value) => {
+            if (!value || value.trim().length === 0) {
+              return 'URL is required';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'http': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter HTTP registry URL',
+          placeHolder: 'https://registry.example.com',
+          validateInput: (value) => {
+            if (!value || !/^https?:\/\//.test(value)) {
+              return 'Please enter a valid HTTP/HTTPS URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local registry directory'
+        });
+
+        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+      }
+
+      case 'awesome-copilot': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL (or press Enter for official awesome-copilot)',
+          placeHolder: 'https://github.com/github/awesome-copilot',
+          value: 'https://github.com/github/awesome-copilot',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local-awesome-copilot': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local awesome-copilot collections directory'
+        });
+
+        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+      }
+
+      case 'apm': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL',
+          placeHolder: 'https://github.com/owner/repo',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local-apm': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local APM package directory'
+        });
+
+        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+      }
+
+      case 'olaf': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL containing OLAF skills',
+          placeHolder: 'https://github.com/owner/repo',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local-olaf': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local OLAF skills directory',
+          openLabel: 'Select Directory'
+        });
+
+        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+      }
+
+      case 'skills': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL containing skills (e.g., anthropics/skills)',
+          placeHolder: 'https://github.com/anthropics/skills',
+          value: 'https://github.com/anthropics/skills',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local-skills': {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local skills directory (must contain skills/ folder)',
+          openLabel: 'Select Directory'
+        });
+
+        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+      }
+
+      default: {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * Generate source ID from name
+   * @param name
+   */
+  private generateSourceId(name: string): string {
+    return generateSanitizedId(name);
+  }
+
+  /**
+   * Rename source
+   * @param sourceId
+   */
+  private async renameSource(sourceId: string): Promise<void> {
+    const sources = await this.registryManager.listSources();
+    const source = sources.find((s) => s.id === sourceId);
+
+    if (!source) {
+      return;
+    }
+
+    const newName = await vscode.window.showInputBox({
+      prompt: 'Enter new source name',
+      value: source.name,
+      validateInput: (value) => {
+        if (!value || value.trim().length === 0) {
+          return 'Source name is required';
+        }
+        return undefined;
+      },
+      ignoreFocusOut: true
+    });
+
+    if (newName && newName !== source.name) {
+      await this.registryManager.updateSource(sourceId, { name: newName });
+      vscode.window.showInformationMessage(`Source renamed to "${newName}"`);
+    }
+  }
+
+  /**
+   * Change source URL
+   * @param sourceId
+   */
+  private async changeSourceUrl(sourceId: string): Promise<void> {
+    const sources = await this.registryManager.listSources();
+    const source = sources.find((s) => s.id === sourceId);
+
+    if (!source) {
+      return;
+    }
+
+    const newUrl = await this.getSourceUrl(source.type);
+
+    if (newUrl && newUrl !== source.url) {
+      await this.registryManager.updateSource(sourceId, { url: newUrl });
+      vscode.window.showInformationMessage('Source URL updated');
+    }
+  }
+
+  /**
+   * Configure access token
+   * @param sourceId
+   */
+  private async configureToken(sourceId: string): Promise<void> {
+    const token = await vscode.window.showInputBox({
+      prompt: 'Enter access token (leave empty to remove)',
+      password: true,
+      placeHolder: 'Access token',
+      ignoreFocusOut: true
+    });
+
+    if (token !== undefined) {
+      await this.registryManager.updateSource(sourceId, {
+        token: token.trim() || undefined,
+        private: !!token.trim()
+      });
+      vscode.window.showInformationMessage('Token configuration updated');
+    }
+  }
+
+  /**
+   * Change source priority
+   * @param sourceId
+   */
+  private async changePriority(sourceId: string): Promise<void> {
+    const sources = await this.registryManager.listSources();
+    const source = sources.find((s) => s.id === sourceId);
+
+    if (!source) {
+      return;
+    }
+
+    const newPriority = await vscode.window.showInputBox({
+      prompt: 'Enter new priority (1 = highest)',
+      value: source.priority.toString(),
+      validateInput: (value) => {
+        const num = Number.parseInt(value, 10);
+        if (Number.isNaN(num) || num < 1) {
+          return 'Priority must be a positive number';
+        }
+        return undefined;
+      },
+      ignoreFocusOut: true
+    });
+
+    if (newPriority) {
+      await this.registryManager.updateSource(sourceId, { priority: Number.parseInt(newPriority, 10) });
+      vscode.window.showInformationMessage('Source priority updated');
+    }
+  }
+
+  /**
+   * Extract source ID from tree item or string parameter
+   * Context menu passes tree item object, command palette passes string
+   * @param sourceIdOrItem
+   */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
+    if (!sourceIdOrItem) {
+      return undefined;
+    }
+
+    // Handle tree item object from context menu
+    if (typeof sourceIdOrItem === 'object' && 'data' in sourceIdOrItem) {
+      return sourceIdOrItem.data?.id;
+    }
+
+    // Handle direct string ID
+    if (typeof sourceIdOrItem === 'string') {
+      return sourceIdOrItem;
+    }
+
+    return undefined;
+  }
+
   /**
    * Add a new registry source
    */
@@ -727,293 +1032,6 @@ export class SourceCommands {
     }
   }
 
-  // ===== Helper Methods =====
-
-  /**
-   * Get source URL based on type
-   * @param type
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getSourceUrl(type: SourceType): Promise<string | undefined> {
-    switch (type) {
-      case 'github': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL',
-          placeHolder: 'https://github.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'gitlab': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitLab repository URL',
-          placeHolder: 'https://gitlab.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || value.trim().length === 0) {
-              return 'URL is required';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'http': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter HTTP registry URL',
-          placeHolder: 'https://registry.example.com',
-          validateInput: (value) => {
-            if (!value || !/^https?:\/\//.test(value)) {
-              return 'Please enter a valid HTTP/HTTPS URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local registry directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
-      case 'awesome-copilot': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL (or press Enter for official awesome-copilot)',
-          placeHolder: 'https://github.com/github/awesome-copilot',
-          value: 'https://github.com/github/awesome-copilot',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local-awesome-copilot': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local awesome-copilot collections directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
-      case 'apm': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL',
-          placeHolder: 'https://github.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local-apm': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local APM package directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
-      case 'olaf': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL containing OLAF skills',
-          placeHolder: 'https://github.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local-olaf': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local OLAF skills directory',
-          openLabel: 'Select Directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
-      case 'skills': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL containing skills (e.g., anthropics/skills)',
-          placeHolder: 'https://github.com/anthropics/skills',
-          value: 'https://github.com/anthropics/skills',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local-skills': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local skills directory (must contain skills/ folder)',
-          openLabel: 'Select Directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
-      default: {
-        return undefined;
-      }
-    }
-  }
-
-  /**
-   * Generate source ID from name
-   * @param name
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateSourceId(name: string): string {
-    return generateSanitizedId(name);
-  }
-
-  /**
-   * Rename source
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async renameSource(sourceId: string): Promise<void> {
-    const sources = await this.registryManager.listSources();
-    const source = sources.find((s) => s.id === sourceId);
-
-    if (!source) {
-      return;
-    }
-
-    const newName = await vscode.window.showInputBox({
-      prompt: 'Enter new source name',
-      value: source.name,
-      validateInput: (value) => {
-        if (!value || value.trim().length === 0) {
-          return 'Source name is required';
-        }
-        return undefined;
-      },
-      ignoreFocusOut: true
-    });
-
-    if (newName && newName !== source.name) {
-      await this.registryManager.updateSource(sourceId, { name: newName });
-      vscode.window.showInformationMessage(`Source renamed to "${newName}"`);
-    }
-  }
-
-  /**
-   * Change source URL
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async changeSourceUrl(sourceId: string): Promise<void> {
-    const sources = await this.registryManager.listSources();
-    const source = sources.find((s) => s.id === sourceId);
-
-    if (!source) {
-      return;
-    }
-
-    const newUrl = await this.getSourceUrl(source.type);
-
-    if (newUrl && newUrl !== source.url) {
-      await this.registryManager.updateSource(sourceId, { url: newUrl });
-      vscode.window.showInformationMessage('Source URL updated');
-    }
-  }
-
-  /**
-   * Configure access token
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async configureToken(sourceId: string): Promise<void> {
-    const token = await vscode.window.showInputBox({
-      prompt: 'Enter access token (leave empty to remove)',
-      password: true,
-      placeHolder: 'Access token',
-      ignoreFocusOut: true
-    });
-
-    if (token !== undefined) {
-      await this.registryManager.updateSource(sourceId, {
-        token: token.trim() || undefined,
-        private: !!token.trim()
-      });
-      vscode.window.showInformationMessage('Token configuration updated');
-    }
-  }
-
-  /**
-   * Change source priority
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async changePriority(sourceId: string): Promise<void> {
-    const sources = await this.registryManager.listSources();
-    const source = sources.find((s) => s.id === sourceId);
-
-    if (!source) {
-      return;
-    }
-
-    const newPriority = await vscode.window.showInputBox({
-      prompt: 'Enter new priority (1 = highest)',
-      value: source.priority.toString(),
-      validateInput: (value) => {
-        const num = Number.parseInt(value, 10);
-        if (Number.isNaN(num) || num < 1) {
-          return 'Priority must be a positive number';
-        }
-        return undefined;
-      },
-      ignoreFocusOut: true
-    });
-
-    if (newPriority) {
-      await this.registryManager.updateSource(sourceId, { priority: Number.parseInt(newPriority, 10) });
-      vscode.window.showInformationMessage('Source priority updated');
-    }
-  }
-
   /**
    * Toggle source enabled/disabled
    * @param sourceId
@@ -1074,29 +1092,5 @@ export class SourceCommands {
       this.logger.error('Failed to toggle source', error as Error);
       vscode.window.showErrorMessage(`Failed to toggle source: ${(error as Error).message}`);
     }
-  }
-
-  /**
-   * Extract source ID from tree item or string parameter
-   * Context menu passes tree item object, command palette passes string
-   * @param sourceIdOrItem
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/no-redundant-type-constituents -- existing code structure; union type kept for documentation clarity
-  private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
-    if (!sourceIdOrItem) {
-      return undefined;
-    }
-
-    // Handle tree item object from context menu
-    if (typeof sourceIdOrItem === 'object' && 'data' in sourceIdOrItem) {
-      return sourceIdOrItem.data?.id;
-    }
-
-    // Handle direct string ID
-    if (typeof sourceIdOrItem === 'string') {
-      return sourceIdOrItem;
-    }
-
-    return undefined;
   }
 }

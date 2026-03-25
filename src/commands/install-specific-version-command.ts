@@ -20,6 +20,14 @@ import {
  */
 export class InstallSpecificVersionCommand {
   private static instance: InstallSpecificVersionCommand;
+
+  public static getInstance(): InstallSpecificVersionCommand {
+    if (!InstallSpecificVersionCommand.instance) {
+      InstallSpecificVersionCommand.instance = new InstallSpecificVersionCommand();
+    }
+    return InstallSpecificVersionCommand.instance;
+  }
+
   private readonly logger: Logger;
   private readonly githubService: GitHubService;
   private readonly platformDetector: PlatformDetector;
@@ -32,11 +40,70 @@ export class InstallSpecificVersionCommand {
     this.installationManager = InstallationManager.getInstance();
   }
 
-  public static getInstance(): InstallSpecificVersionCommand {
-    if (!InstallSpecificVersionCommand.instance) {
-      InstallSpecificVersionCommand.instance = new InstallSpecificVersionCommand();
-    }
-    return InstallSpecificVersionCommand.instance;
+  /**
+   * Perform the actual installation
+   * @param version
+   * @param scope
+   */
+  private async performInstallation(version: string, scope: InstallationScope): Promise<void> {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Installing Prompt Registry ${version}...`,
+      cancellable: false
+    }, async (progress) => {
+      try {
+        // Update progress - getting release information
+        progress.report({ increment: 10, message: 'Getting release information...' });
+
+        const release = await this.githubService.getReleaseByVersionPreference(version);
+
+        // Update progress - detecting platform
+        progress.report({ increment: 15, message: 'Detecting platform...' });
+
+        const platform = await this.platformDetector.detectPlatform();
+        const bundle = this.githubService.findPlatformBundle(release, platform.platform);
+
+        if (!bundle) {
+          throw new Error(`No compatible bundle found for platform: ${platform.platform}`);
+        }
+
+        // Update progress - downloading bundle
+        progress.report({ increment: 25, message: `Downloading ${bundle.filename}...` });
+
+        const bundleData = await this.githubService.downloadBundle(bundle, (downloadProgress) => {
+          progress.report({ increment: 0, message: `Downloading... ${Math.round(downloadProgress)}%` });
+        });
+
+        // Update progress - installing
+        progress.report({ increment: 25, message: 'Installing bundle...' });
+
+        const result = await this.installationManager.installBundle(
+          bundleData,
+          bundle,
+          scope,
+          (installProgress: number, message: string) => {
+            progress.report({ increment: 0, message: message || `Installing... ${Math.round(installProgress)}%` });
+          }
+        );
+
+        if (result.success) {
+          const scopeText = scope === InstallationScope.USER
+            ? 'user'
+            : (scope === InstallationScope.WORKSPACE ? 'workspace' : 'project');
+
+          vscode.window.showInformationMessage(
+            `Prompt Registry ${version} installed successfully! (${scopeText} scope)\nPath: ${result.installedPath}`
+          );
+
+          this.logger.info(`Installation completed: ${result.installedPath}`);
+        } else {
+          throw new Error(result.error || 'Installation failed for unknown reason');
+        }
+      } catch (error) {
+        this.logger.error('Installation process failed', error as Error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -118,74 +185,5 @@ export class InstallSpecificVersionCommand {
       this.logger.error('Install specific version command failed', error as Error);
       vscode.window.showErrorMessage(`Installation failed: ${(error as Error).message}`);
     }
-  }
-
-  /**
-   * Perform the actual installation
-   * @param version
-   * @param scope
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async performInstallation(version: string, scope: InstallationScope): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Installing Prompt Registry ${version}...`,
-      cancellable: false
-    }, async (progress) => {
-      try {
-        // Update progress - getting release information
-        progress.report({ increment: 10, message: 'Getting release information...' });
-
-        const release = await this.githubService.getReleaseByVersionPreference(version);
-
-        // Update progress - detecting platform
-        progress.report({ increment: 15, message: 'Detecting platform...' });
-
-        const platform = await this.platformDetector.detectPlatform();
-        const bundle = this.githubService.findPlatformBundle(release, platform.platform);
-
-        if (!bundle) {
-          throw new Error(`No compatible bundle found for platform: ${platform.platform}`);
-        }
-
-        // Update progress - downloading bundle
-        progress.report({ increment: 25, message: `Downloading ${bundle.filename}...` });
-
-        const bundleData = await this.githubService.downloadBundle(bundle, (downloadProgress) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-          const _currentProgress = 25 + (downloadProgress * 0.5); // Download takes 50% of remaining progress
-          progress.report({ increment: 0, message: `Downloading... ${Math.round(downloadProgress)}%` });
-        });
-
-        // Update progress - installing
-        progress.report({ increment: 25, message: 'Installing bundle...' });
-
-        const result = await this.installationManager.installBundle(
-          bundleData,
-          bundle,
-          scope,
-          (installProgress: number, message: string) => {
-            progress.report({ increment: 0, message: message || `Installing... ${Math.round(installProgress)}%` });
-          }
-        );
-
-        if (result.success) {
-          const scopeText = scope === InstallationScope.USER
-            ? 'user'
-            : (scope === InstallationScope.WORKSPACE ? 'workspace' : 'project');
-
-          vscode.window.showInformationMessage(
-            `Prompt Registry ${version} installed successfully! (${scopeText} scope)\nPath: ${result.installedPath}`
-          );
-
-          this.logger.info(`Installation completed: ${result.installedPath}`);
-        } else {
-          throw new Error(result.error || 'Installation failed for unknown reason');
-        }
-      } catch (error) {
-        this.logger.error('Installation process failed', error as Error);
-        throw error;
-      }
-    });
   }
 }

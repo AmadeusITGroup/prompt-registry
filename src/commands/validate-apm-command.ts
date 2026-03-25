@@ -28,6 +28,80 @@ export class ValidateApmCommand {
     this.schemaValidator = new SchemaValidator(context.extensionPath);
   }
 
+  private async validateManifest(fileUri: vscode.Uri): Promise<ValidationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    let manifest: any = null;
+
+    try {
+      const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+      const content = new TextDecoder().decode(contentBytes);
+      manifest = yaml.load(content);
+
+      if (!manifest || typeof manifest !== 'object') {
+        errors.push('Empty or invalid YAML file');
+        return { errors, warnings, manifest: null };
+      }
+
+      // Use SchemaValidator
+      const validationResult = await this.schemaValidator.validateApm(manifest);
+
+      errors.push(...validationResult.errors);
+      warnings.push(...validationResult.warnings);
+
+      return { errors, warnings, manifest };
+    } catch (error) {
+      if (error instanceof yaml.YAMLException) {
+        errors.push(`Failed to parse YAML: ${error.message}`);
+      } else {
+        errors.push(`Failed to validate: ${(error as Error).message}`);
+      }
+      return { errors, warnings, manifest: null };
+    }
+  }
+
+  private async scanPrompts(dirUri: vscode.Uri, fileList: string[] = []): Promise<string[]> {
+    const PROMPT_EXTENSIONS = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md'];
+
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+
+      for (const [name, type] of entries) {
+        const entryUri = vscode.Uri.joinPath(dirUri, name);
+
+        if (type === vscode.FileType.Directory && !name.startsWith('.')) {
+          await this.scanPrompts(entryUri, fileList);
+        } else {
+          if (PROMPT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+            fileList.push(entryUri.fsPath);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return fileList;
+  }
+
+  private log(message: string, type?: 'error' | 'warning' | 'success'): void {
+    let prefix = '';
+    switch (type) {
+      case 'error': {
+        prefix = '❌ ';
+        break;
+      }
+      case 'warning': {
+        prefix = '⚠️  ';
+        break;
+      }
+      case 'success': {
+        prefix = '✅ ';
+        break;
+      }
+    }
+    this.outputChannel.appendLine(prefix + message);
+  }
+
   public async execute(): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
@@ -92,83 +166,6 @@ export class ValidateApmCommand {
     } catch {
       this.log('\n⚠️  .apm directory not found (no prompts)', 'warning');
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async validateManifest(fileUri: vscode.Uri): Promise<ValidationResult> {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    let manifest: any = null;
-
-    try {
-      const contentBytes = await vscode.workspace.fs.readFile(fileUri);
-      const content = new TextDecoder().decode(contentBytes);
-      manifest = yaml.load(content);
-
-      if (!manifest || typeof manifest !== 'object') {
-        errors.push('Empty or invalid YAML file');
-        return { errors, warnings, manifest: null };
-      }
-
-      // Use SchemaValidator
-      const validationResult = await this.schemaValidator.validateApm(manifest);
-
-      errors.push(...validationResult.errors);
-      warnings.push(...validationResult.warnings);
-
-      return { errors, warnings, manifest };
-    } catch (error) {
-      if (error instanceof yaml.YAMLException) {
-        errors.push(`Failed to parse YAML: ${error.message}`);
-      } else {
-        errors.push(`Failed to validate: ${(error as Error).message}`);
-      }
-      return { errors, warnings, manifest: null };
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async scanPrompts(dirUri: vscode.Uri, fileList: string[] = []): Promise<string[]> {
-    const PROMPT_EXTENSIONS = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md'];
-
-    try {
-      const entries = await vscode.workspace.fs.readDirectory(dirUri);
-
-      for (const [name, type] of entries) {
-        const entryUri = vscode.Uri.joinPath(dirUri, name);
-
-        if (type === vscode.FileType.Directory && !name.startsWith('.')) {
-          await this.scanPrompts(entryUri, fileList);
-        } else {
-          if (PROMPT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-            fileList.push(entryUri.fsPath);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return fileList;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private log(message: string, type?: 'error' | 'warning' | 'success'): void {
-    let prefix = '';
-    switch (type) {
-      case 'error': {
-        prefix = '❌ ';
-        break;
-      }
-      case 'warning': {
-        prefix = '⚠️  ';
-        break;
-      }
-      case 'success': {
-        prefix = '✅ ';
-        break;
-      }
-    }
-    this.outputChannel.appendLine(prefix + message);
   }
 
   public dispose(): void {

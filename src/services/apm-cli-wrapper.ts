@@ -76,6 +76,89 @@ export class ApmCliWrapper {
   }
 
   /**
+   * Validate a target directory path
+   * Security: Prevents path traversal and injection
+   * @param targetPath
+   */
+  private validateTargetPath(targetPath: string): boolean {
+    if (!targetPath || targetPath.trim().length === 0) {
+      return false;
+    }
+
+    // Check for path traversal
+    if (targetPath.includes('..')) {
+      return false;
+    }
+
+    // Normalize and check it's an absolute path
+    const normalized = path.normalize(targetPath);
+    if (!path.isAbsolute(normalized)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Execute an APM command
+   * Security: Uses safe argument passing
+   * @param args
+   * @param cwd
+   * @param token
+   */
+  private async executeCommand(args: string[], cwd: string, token?: string): Promise<{ stdout: string; stderr: string }> {
+    // Validate args don't contain dangerous characters
+    for (const arg of args) {
+      if (DANGEROUS_PATTERNS.some((p) => p.test(arg))) {
+        throw new Error(`Invalid command argument: ${arg}`);
+      }
+    }
+
+    // Determine command to run (apm, uvx apm, or local uv tool run apm)
+    const status = await this.runtime.getStatus();
+    let command = 'apm';
+
+    if (status.localUvPath) {
+      // Use local uv
+      command = `"${status.localUvPath}" tool run apm`;
+    } else if (!status.installed && status.uvxAvailable) {
+      command = 'uvx apm';
+    } else if (!status.installed) {
+      // Fallback to trying 'apm' which will likely fail
+    }
+
+    const fullCommand = `${command} ${args.join(' ')}`;
+    this.logger.debug(`[ApmCli] Executing: ${fullCommand} in ${cwd}`);
+
+    return execAsync(fullCommand, {
+      cwd,
+      timeout: COMMAND_TIMEOUT,
+      env: this.getSafeEnvironment(token)
+    });
+  }
+
+  /**
+   * Get safe environment for command execution
+   * @param explicitToken
+   */
+  private getSafeEnvironment(explicitToken?: string): NodeJS.ProcessEnv {
+    const env = { ...process.env };
+
+    // Pass GitHub token if available
+    // Priority: explicit token > env.GITHUB_TOKEN > env.GH_TOKEN
+    const token = explicitToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) {
+      env.GITHUB_TOKEN = token;
+    }
+
+    // Remove potentially dangerous variables
+    delete env.LD_PRELOAD;
+    delete env.DYLD_INSERT_LIBRARIES;
+
+    return env;
+  }
+
+  /**
    * Check if APM runtime is available
    */
   public async isRuntimeAvailable(): Promise<boolean> {
@@ -129,31 +212,6 @@ export class ApmCliWrapper {
 
     // Must have at least one slash but not start with one
     if (!ref.includes('/') || ref.startsWith('/')) {
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Validate a target directory path
-   * Security: Prevents path traversal and injection
-   * @param targetPath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateTargetPath(targetPath: string): boolean {
-    if (!targetPath || targetPath.trim().length === 0) {
-      return false;
-    }
-
-    // Check for path traversal
-    if (targetPath.includes('..')) {
-      return false;
-    }
-
-    // Normalize and check it's an absolute path
-    const normalized = path.normalize(targetPath);
-    if (!path.isAbsolute(normalized)) {
       return false;
     }
 
@@ -234,67 +292,6 @@ dependencies:
         error: `Failed to install package: ${(error as Error).message}`
       };
     }
-  }
-
-  /**
-   * Execute an APM command
-   * Security: Uses safe argument passing
-   * @param args
-   * @param cwd
-   * @param token
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async executeCommand(args: string[], cwd: string, token?: string): Promise<{ stdout: string; stderr: string }> {
-    // Validate args don't contain dangerous characters
-    for (const arg of args) {
-      if (DANGEROUS_PATTERNS.some((p) => p.test(arg))) {
-        throw new Error(`Invalid command argument: ${arg}`);
-      }
-    }
-
-    // Determine command to run (apm, uvx apm, or local uv tool run apm)
-    const status = await this.runtime.getStatus();
-    let command = 'apm';
-
-    if (status.localUvPath) {
-      // Use local uv
-      command = `"${status.localUvPath}" tool run apm`;
-    } else if (!status.installed && status.uvxAvailable) {
-      command = 'uvx apm';
-    } else if (!status.installed) {
-      // Fallback to trying 'apm' which will likely fail
-    }
-
-    const fullCommand = `${command} ${args.join(' ')}`;
-    this.logger.debug(`[ApmCli] Executing: ${fullCommand} in ${cwd}`);
-
-    return execAsync(fullCommand, {
-      cwd,
-      timeout: COMMAND_TIMEOUT,
-      env: this.getSafeEnvironment(token)
-    });
-  }
-
-  /**
-   * Get safe environment for command execution
-   * @param explicitToken
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getSafeEnvironment(explicitToken?: string): NodeJS.ProcessEnv {
-    const env = { ...process.env };
-
-    // Pass GitHub token if available
-    // Priority: explicit token > env.GITHUB_TOKEN > env.GH_TOKEN
-    const token = explicitToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-    if (token) {
-      env.GITHUB_TOKEN = token;
-    }
-
-    // Remove potentially dangerous variables
-    delete env.LD_PRELOAD;
-    delete env.DYLD_INSERT_LIBRARIES;
-
-    return env;
   }
 
   /**

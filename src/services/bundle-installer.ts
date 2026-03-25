@@ -84,8 +84,6 @@ const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
 const symlink = promisify(fs.symlink);
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-const _readlink = promisify(fs.readlink);
 
 /**
  * Bundle Installer
@@ -104,31 +102,9 @@ export class BundleInstaller {
   }
 
   /**
-   * Get the UserScopeService instance
-   * Used by BundleScopeCommands for scope migration
-   */
-  public getUserScopeService(): UserScopeService {
-    return this.copilotSync;
-  }
-
-  /**
-   * Create a RepositoryScopeService for the current workspace
-   * Used by BundleScopeCommands for scope migration
-   * @returns RepositoryScopeService or undefined if no workspace is open
-   */
-  public createRepositoryScopeService(): RepositoryScopeService | undefined {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) {
-      return undefined;
-    }
-    return new RepositoryScopeService(workspaceRoot, this.storage);
-  }
-
-  /**
    * Get the appropriate scope service for the given scope
    * @param scope
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getScopeService(scope: InstallationScope): IScopeService {
     if (scope === 'repository') {
       const workspaceRoot = getWorkspaceRoot();
@@ -145,7 +121,6 @@ export class BundleInstaller {
    * @param installDir
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async collectFileEntries(installDir: string, workspaceRoot: string): Promise<LockfileFileEntry[]> {
     const entries: LockfileFileEntry[] = [];
 
@@ -171,6 +146,651 @@ export class BundleInstaller {
 
     await collectFromDir(installDir);
     return entries;
+  }
+
+  /**
+   * Update lockfile when installing a bundle at repository scope
+   * @param bundle
+   * @param installed
+   * @param options
+   * @param sourceType
+   */
+  private async updateLockfileOnInstall(
+    bundle: Bundle,
+    installed: InstalledBundle,
+    options: InstallOptions,
+    sourceType?: string
+  ): Promise<void> {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+      this.logger.warn('Cannot update lockfile: no workspace root');
+      return;
+    }
+
+    try {
+      const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+
+      // For repository scope, collect files from .github/ directories (where they are synced)
+      // not from the bundle cache directory
+      const files = await this.collectRepositoryFileEntries(workspaceRoot, installed.installPath);
+
+      // Create source entry
+      const source: LockfileSourceEntry = {
+        type: sourceType || installed.sourceType || 'unknown',
+        url: bundle.downloadUrl || bundle.manifestUrl || ''
+      };
+
+      await lockfileManager.createOrUpdate({
+        bundleId: bundle.id,
+        version: bundle.version,
+        sourceId: bundle.sourceId,
+        sourceType: sourceType || installed.sourceType || 'unknown',
+        commitMode: options.commitMode ?? 'commit',
+        files,
+        source
+      });
+
+      this.logger.debug(`Updated lockfile for bundle ${bundle.id}`);
+    } catch (error) {
+      this.logger.error('Failed to update lockfile on install', error as Error);
+      // Don't fail the installation if lockfile update fails
+    }
+  }
+
+  /**
+   * Collect file entries from .github/ directories for repository scope lockfile
+   * This collects the actual synced files, not the bundle cache files
+   * @param workspaceRoot
+   * @param bundlePath
+   */
+  private async collectRepositoryFileEntries(workspaceRoot: string, bundlePath: string): Promise<LockfileFileEntry[]> {
+    const entries: LockfileFileEntry[] = [];
+
+    // Read the deployment manifest to know which files were installed
+    const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
+    if (!fs.existsSync(manifestPath)) {
+      this.logger.warn('No deployment manifest found, falling back to bundle cache files');
+      return this.collectFileEntries(bundlePath, workspaceRoot);
+    }
+
+    try {
+      const manifestContent = await readFile(manifestPath, 'utf8');
+      const manifest = yaml.load(manifestContent) as DeploymentManifest;
+
+      if (!manifest.prompts || manifest.prompts.length === 0) {
+        return entries;
+      }
+
+      // Collect files from .github/ directories based on manifest
+      for (const promptDef of manifest.prompts) {
+        const promptId = normalizePromptId(promptDef.id);
+        const fileType = determineFileType(promptDef.file, promptDef.tags);
+        const targetDir = getRepositoryTargetDirectory(fileType);
+
+        if (fileType === 'skill') {
+          // For skills, collect all files in the skill directory
+          const skillDir = path.join(workspaceRoot, targetDir, promptId);
+          if (fs.existsSync(skillDir)) {
+            await this.collectFromDirectory(skillDir, workspaceRoot, entries);
+          }
+        } else {
+          // For other file types, collect the single file
+          const targetFileName = getTargetFileName(promptId, fileType);
+          const targetPath = path.join(workspaceRoot, targetDir, targetFileName);
+
+          if (fs.existsSync(targetPath)) {
+            const relativePath = path.relative(workspaceRoot, targetPath);
+            const checksum = await calculateFileChecksum(targetPath);
+            entries.push({ path: relativePath, checksum });
+          }
+        }
+      }
+
+      return entries;
+    } catch (error) {
+      this.logger.warn('Failed to parse manifest, falling back to bundle cache files', error as Error);
+      return this.collectFileEntries(bundlePath, workspaceRoot);
+    }
+  }
+
+  /**
+   * Recursively collect files from a directory
+   * @param dir
+   * @param workspaceRoot
+   * @param entries
+   */
+  private async collectFromDirectory(dir: string, workspaceRoot: string, entries: LockfileFileEntry[]): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const files = await readdir(dir);
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      const stats = await stat(filePath);
+
+      if (stats.isDirectory()) {
+        await this.collectFromDirectory(filePath, workspaceRoot, entries);
+      } else {
+        const relativePath = path.relative(workspaceRoot, filePath);
+        const checksum = await calculateFileChecksum(filePath);
+        entries.push({ path: relativePath, checksum });
+      }
+    }
+  }
+
+  /**
+   * Update lockfile when uninstalling a bundle at repository scope
+   * @param bundleId
+   */
+  private async updateLockfileOnUninstall(bundleId: string): Promise<void> {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+      this.logger.warn('Cannot update lockfile: no workspace root');
+      return;
+    }
+
+    try {
+      const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+      await lockfileManager.remove(bundleId);
+      this.logger.debug(`Removed bundle ${bundleId} from lockfile`);
+    } catch (error) {
+      this.logger.error('Failed to update lockfile on uninstall', error as Error);
+      // Don't fail the uninstallation if lockfile update fails
+    }
+  }
+
+  // ===== Helper Methods =====
+
+  /**
+   * Create temporary directory
+   */
+  private async createTempDir(): Promise<string> {
+    const tempBase = path.join(this.context.globalStorageUri.fsPath, 'temp');
+    await ensureDirectory(tempBase);
+
+    const tempDir = path.join(tempBase, `bundle-${Date.now()}`);
+    await mkdir(tempDir, { recursive: true });
+
+    return tempDir;
+  }
+
+  /**
+   * Extract bundle archive
+   * @param bundleFile
+   * @param extractDir
+   */
+  private async extractBundle(bundleFile: string, extractDir: string): Promise<void> {
+    await ensureDirectory(extractDir);
+
+    try {
+      // Use adm-zip for extraction
+      const zip = new AdmZip(bundleFile);
+      zip.extractAllTo(extractDir, true);
+    } catch (error) {
+      throw new Error(`Failed to extract bundle: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Validate bundle structure
+   * @param extractDir
+   * @param bundle
+   */
+  private async validateBundle(extractDir: string, bundle: Bundle): Promise<DeploymentManifest> {
+    // Check if deployment-manifest.yml exists
+    const manifestPath = path.join(extractDir, 'deployment-manifest.yml');
+
+    if (!fs.existsSync(manifestPath)) {
+      // For local bundles (like awesome-copilot), deployment-manifest.yml is optional
+      // Create a minimal manifest from the bundle info
+      this.logger.info(`No deployment-manifest.yml found for ${bundle.id}, creating minimal manifest`);
+      return {
+        common: {
+          directories: [],
+          files: [],
+          include_patterns: ['**/*'],
+          exclude_patterns: []
+        },
+        bundle_settings: {
+          include_common_in_environment_bundles: true,
+          create_common_bundle: true,
+          compression: 'none' as any,
+          naming: {
+            environment_bundle: bundle.id
+          }
+        },
+        metadata: {
+          manifest_version: '1.0',
+          description: bundle.description || bundle.name || bundle.id,
+          author: 'awesome-copilot',
+          last_updated: new Date().toISOString()
+        }
+      } as DeploymentManifest;
+    }
+
+    this.logger.debug(`Validating manifest: ${manifestPath}`);
+
+    // Validate manifest content (parse YAML)
+    const manifestContent = await readFile(manifestPath, 'utf8');
+    const manifest = yaml.load(manifestContent) as any;
+
+    // Basic validation
+    if (!manifest.id || !manifest.version || !manifest.name) {
+      throw new Error('Invalid deployment manifest - missing required fields');
+    }
+
+    // Verify ID matches
+    // For GitHub bundles, the manifest may contain just the collection ID (e.g., "test2")
+    // while bundle.id is the full computed ID (e.g., "owner-repo-test2-v1.0.0" or "owner-repo-test2-1.0.0")
+    // Accept both exact match and suffix match for backward compatibility
+    // Handle both with and without 'v' prefix in version
+    if (!isManifestIdMatch(manifest.id, manifest.version, bundle.id)) {
+      throw new Error(`Bundle ID mismatch: expected ${bundle.id}, got ${manifest.id}`);
+    }
+
+    // Verify version matches (allow "latest" to match any)
+    if (bundle.version !== 'latest' && manifest.version !== bundle.version) {
+      throw new Error(`Bundle version mismatch: expected ${bundle.version}, got ${manifest.version}`);
+    }
+
+    this.logger.debug('Bundle manifest validation passed');
+
+    return manifest as DeploymentManifest;
+  }
+
+  /**
+   * Get installation directory for bundle
+   * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
+   * Repository scope bundles are installed in the workspace's bundle storage
+   * @param bundleId
+   * @param scope
+   * @param sourceType
+   * @param sourceName
+   * @param _bundleName
+   */
+  private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, _bundleName?: string): string {
+    // Check if this is an OLAF bundle
+    const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
+
+    if (isOlafBundle) {
+      // OLAF bundles must be installed in workspace .olaf/external-skills directory
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
+      }
+
+      const workspacePath = workspaceFolders[0].uri.fsPath;
+
+      // Use source name for directory organization, fallback to 'default' if not provided
+      const sourceDir = sourceName || 'default';
+
+      // For OLAF bundles with multiple skills, install directly to the source directory
+      // The ZIP contains skill folders that will be copied directly here
+      // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
+      this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
+      return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
+    }
+
+    // Repository scope: install in extension global storage (NOT in the workspace)
+    // The bundle cache/storage should remain in extension storage.
+    // Only the actual content files (prompts, agents, etc.) are synced to .github/ directories
+    // by RepositoryScopeService.syncBundle()
+    if (scope === 'repository') {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('Repository scope requires an open workspace. Please open a workspace and try again.');
+      }
+
+      // Use global storage for bundle cache, same as user scope
+      // This prevents polluting the repository with internal extension files
+      this.logger.info(`[BundleInstaller] Installing repository scope bundle to global storage: bundles/${bundleId}`);
+      return path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);
+    }
+
+    // Standard bundle installation
+    if (scope === 'user') {
+      // User scope: global storage
+      return path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);
+    } else {
+      // Workspace scope: workspace storage
+      const workspaceStorage = this.context.storageUri?.fsPath;
+      if (!workspaceStorage) {
+        throw new Error('Workspace storage not available');
+      }
+      return path.join(workspaceStorage, 'bundles', bundleId);
+    }
+  }
+
+  /**
+   * Copy bundle files to installation directory
+   * @param sourceDir
+   * @param targetDir
+   */
+  private async copyBundleFiles(sourceDir: string, targetDir: string): Promise<void> {
+    const files = await readdir(sourceDir);
+
+    for (const file of files) {
+      const sourcePath = path.join(sourceDir, file);
+      const targetPath = path.join(targetDir, file);
+
+      const stats = await stat(sourcePath);
+
+      if (stats.isDirectory()) {
+        await ensureDirectory(targetPath);
+        await this.copyBundleFiles(sourcePath, targetPath);
+      } else {
+        const content = await readFile(sourcePath);
+        await writeFile(targetPath, content);
+      }
+    }
+  }
+
+  /**
+   * Copy OLAF skill folders from extracted bundle to installation directory
+   * Only copies directories (skill folders), skipping deployment-manifest.yml
+   * Each skill folder is copied directly to the target directory
+   * @param sourceDir
+   * @param targetDir
+   */
+  private async copyOlafSkillFolders(sourceDir: string, targetDir: string): Promise<void> {
+    const files = await readdir(sourceDir);
+
+    for (const file of files) {
+      const sourcePath = path.join(sourceDir, file);
+      const stats = await stat(sourcePath);
+
+      // Only copy directories (skill folders), skip files like deployment-manifest.yml
+      if (stats.isDirectory()) {
+        const targetPath = path.join(targetDir, file);
+        this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
+        await ensureDirectory(targetPath);
+        await this.copyBundleFiles(sourcePath, targetPath);
+      } else {
+        this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
+      }
+    }
+  }
+
+  /**
+   * Check if a path is the .github directory or a subdirectory of it.
+   * Used to prevent accidental removal of the .github folder which may contain
+   * unrelated files like workflows, CODEOWNERS, etc.
+   * @param dirPath - The directory path to check
+   * @returns true if the path is .github or ends with /.github
+   */
+  private isGitHubDirectory(dirPath: string): boolean {
+    const normalizedPath = path.normalize(dirPath);
+    const baseName = path.basename(normalizedPath);
+
+    // Check if the directory itself is named .github
+    // This handles both "/path/to/.github" and ".github"
+    return baseName === '.github';
+  }
+
+  /**
+   * Remove directory recursively
+   * Handles symbolic links safely by removing only the link, not the target
+   * @param dir
+   */
+  private async removeDirectory(dir: string): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const files = await readdir(dir);
+
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      const stats = await lstat(filePath); // Use lstat to detect symbolic links
+
+      if (stats.isSymbolicLink()) {
+        // For symbolic links, remove only the link, not the target
+        await unlink(filePath);
+        this.logger.debug(`Removed symbolic link: ${filePath}`);
+      } else if (stats.isDirectory()) {
+        await this.removeDirectory(filePath);
+      } else {
+        await unlink(filePath);
+      }
+    }
+
+    await rmdir(dir);
+  }
+
+  /**
+   * Extract skill name from a skills bundle
+   * Looks for the first directory under skills/ in the extracted bundle
+   * @param extractDir
+   */
+  private async extractSkillNameFromBundle(extractDir: string): Promise<string> {
+    const skillsDir = path.join(extractDir, 'skills');
+
+    if (!fs.existsSync(skillsDir)) {
+      throw new Error('Skills directory not found in bundle');
+    }
+
+    const entries = await readdir(skillsDir, { withFileTypes: true });
+    const skillDirs = entries.filter((e) => e.isDirectory());
+
+    if (skillDirs.length === 0) {
+      throw new Error('No skill directories found in bundle');
+    }
+
+    // Return the first skill directory name
+    return skillDirs[0].name;
+  }
+
+  /**
+   * Copy directory recursively
+   * @param sourceDir
+   * @param targetDir
+   */
+  private async copyDirectory(sourceDir: string, targetDir: string): Promise<void> {
+    await ensureDirectory(targetDir);
+
+    const entries = await readdir(sourceDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyDirectory(sourcePath, targetPath);
+      } else if (entry.isFile()) {
+        const content = await readFile(sourcePath);
+        await writeFile(targetPath, content);
+      }
+    }
+  }
+
+  /**
+   * Clean up temporary directory
+   * @param tempDir
+   */
+  private async cleanupTempDir(tempDir: string): Promise<void> {
+    try {
+      await this.removeDirectory(tempDir);
+    } catch (error) {
+      this.logger.warn('Failed to cleanup temp directory', error as Error);
+      // Don't fail the installation if cleanup fails
+    }
+  }
+
+  /**
+   * Install MCP servers from manifest
+   * @param bundleId
+   * @param bundleVersion
+   * @param installPath
+   * @param manifest
+   * @param scope
+   * @param commitMode
+   */
+  private async installMcpServers(
+    bundleId: string,
+    bundleVersion: string,
+    installPath: string,
+    manifest: DeploymentManifest,
+    scope: InstallationScope,
+    commitMode?: RepositoryCommitMode
+  ): Promise<void> {
+    if (!manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0) {
+      this.logger.debug(`No MCP servers to install for bundle ${bundleId}`);
+      return;
+    }
+
+    this.logger.info(`Installing MCP servers for bundle ${bundleId}`);
+
+    try {
+      // Handle repository scope with workspace-specific installation
+      if (scope === 'repository') {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+          this.logger.warn(`Cannot install MCP servers for repository scope: no workspace root`);
+          return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
+        const result = await this.mcpManager.installServersToWorkspace(
+          bundleId,
+          bundleVersion,
+          workspaceRoot,
+          manifest.mcpServers,
+          {
+            commitMode: commitMode ?? 'commit',
+            overwrite: false,
+            skipOnConflict: false,
+            createBackup: true
+          }
+        );
+
+        if (result.success) {
+          this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers to workspace`);
+        } else {
+          this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+        }
+
+        if (result.warnings && result.warnings.length > 0) {
+          this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
+        }
+        return;
+      }
+
+      // Handle user/workspace scope with existing logic
+      const result = await this.mcpManager.installServers(
+        bundleId,
+        bundleVersion,
+        installPath,
+        manifest.mcpServers,
+        {
+          scope,
+          overwrite: false,
+          skipOnConflict: false,
+          createBackup: true
+        }
+      );
+
+      if (result.success) {
+        this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers`);
+      } else {
+        this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+      }
+
+      if (result.warnings && result.warnings.length > 0) {
+        this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to install MCP servers for bundle ${bundleId}`, error as Error);
+      // Don't fail the entire bundle installation if MCP installation fails
+    }
+  }
+
+  /**
+   * Uninstall MCP servers for a bundle
+   * @param bundleId
+   * @param scope
+   */
+  private async uninstallMcpServers(bundleId: string, scope: InstallationScope): Promise<void> {
+    this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
+
+    try {
+      // Handle repository scope with workspace-specific uninstallation
+      if (scope === 'repository') {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+          this.logger.warn(`Cannot uninstall MCP servers for repository scope: no workspace root`);
+          return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
+        const result = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
+
+        if (!result.success) {
+          this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
+        } else if (result.serversRemoved > 0) {
+          this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers from workspace`);
+        } else {
+          this.logger.debug(`No MCP servers found for bundle ${bundleId} in workspace`);
+        }
+        return;
+      }
+
+      // Handle user/workspace scope with existing logic
+      const result = await this.mcpManager.uninstallServers(bundleId, scope);
+
+      if (!result.success) {
+        this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
+      } else if (result.serversRemoved > 0) {
+        this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers`);
+      } else {
+        this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
+      // Don't fail the entire bundle uninstallation if MCP uninstallation fails
+    }
+  }
+
+  /**
+   * Prompt user to confirm overwriting an existing skill
+   * @param skillName Name of the skill
+   * @param existingPath Path to the existing skill
+   * @param existingIsSymlink Whether the existing skill is a symlink
+   * @returns True if user confirms overwrite, false otherwise
+   */
+  private async promptOverwriteSkill(skillName: string, existingPath: string, existingIsSymlink: boolean): Promise<boolean> {
+    const symlinkInfo = existingIsSymlink ? ' (symlink)' : '';
+    const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;
+
+    const result = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      'Overwrite',
+      'Cancel'
+    );
+
+    return result === 'Overwrite';
+  }
+
+  /**
+   * Get the UserScopeService instance
+   * Used by BundleScopeCommands for scope migration
+   */
+  public getUserScopeService(): UserScopeService {
+    return this.copilotSync;
+  }
+
+  /**
+   * Create a RepositoryScopeService for the current workspace
+   * Used by BundleScopeCommands for scope migration
+   * @returns RepositoryScopeService or undefined if no workspace is open
+   */
+  public createRepositoryScopeService(): RepositoryScopeService | undefined {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return undefined;
+    }
+    return new RepositoryScopeService(workspaceRoot, this.storage);
   }
 
   /**
@@ -498,328 +1118,6 @@ export class BundleInstaller {
   }
 
   /**
-   * Update lockfile when installing a bundle at repository scope
-   * @param bundle
-   * @param installed
-   * @param options
-   * @param sourceType
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async updateLockfileOnInstall(
-    bundle: Bundle,
-    installed: InstalledBundle,
-    options: InstallOptions,
-    sourceType?: string
-  ): Promise<void> {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) {
-      this.logger.warn('Cannot update lockfile: no workspace root');
-      return;
-    }
-
-    try {
-      const lockfileManager = LockfileManager.getInstance(workspaceRoot);
-
-      // For repository scope, collect files from .github/ directories (where they are synced)
-      // not from the bundle cache directory
-      const files = await this.collectRepositoryFileEntries(workspaceRoot, installed.installPath);
-
-      // Create source entry
-      const source: LockfileSourceEntry = {
-        type: sourceType || installed.sourceType || 'unknown',
-        url: bundle.downloadUrl || bundle.manifestUrl || ''
-      };
-
-      await lockfileManager.createOrUpdate({
-        bundleId: bundle.id,
-        version: bundle.version,
-        sourceId: bundle.sourceId,
-        sourceType: sourceType || installed.sourceType || 'unknown',
-        commitMode: options.commitMode ?? 'commit',
-        files,
-        source
-      });
-
-      this.logger.debug(`Updated lockfile for bundle ${bundle.id}`);
-    } catch (error) {
-      this.logger.error('Failed to update lockfile on install', error as Error);
-      // Don't fail the installation if lockfile update fails
-    }
-  }
-
-  /**
-   * Collect file entries from .github/ directories for repository scope lockfile
-   * This collects the actual synced files, not the bundle cache files
-   * @param workspaceRoot
-   * @param bundlePath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async collectRepositoryFileEntries(workspaceRoot: string, bundlePath: string): Promise<LockfileFileEntry[]> {
-    const entries: LockfileFileEntry[] = [];
-
-    // Read the deployment manifest to know which files were installed
-    const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
-    if (!fs.existsSync(manifestPath)) {
-      this.logger.warn('No deployment manifest found, falling back to bundle cache files');
-      return this.collectFileEntries(bundlePath, workspaceRoot);
-    }
-
-    try {
-      const manifestContent = await readFile(manifestPath, 'utf8');
-      const manifest = yaml.load(manifestContent) as DeploymentManifest;
-
-      if (!manifest.prompts || manifest.prompts.length === 0) {
-        return entries;
-      }
-
-      // Collect files from .github/ directories based on manifest
-      for (const promptDef of manifest.prompts) {
-        const promptId = normalizePromptId(promptDef.id);
-        const fileType = determineFileType(promptDef.file, promptDef.tags);
-        const targetDir = getRepositoryTargetDirectory(fileType);
-
-        if (fileType === 'skill') {
-          // For skills, collect all files in the skill directory
-          const skillDir = path.join(workspaceRoot, targetDir, promptId);
-          if (fs.existsSync(skillDir)) {
-            await this.collectFromDirectory(skillDir, workspaceRoot, entries);
-          }
-        } else {
-          // For other file types, collect the single file
-          const targetFileName = getTargetFileName(promptId, fileType);
-          const targetPath = path.join(workspaceRoot, targetDir, targetFileName);
-
-          if (fs.existsSync(targetPath)) {
-            const relativePath = path.relative(workspaceRoot, targetPath);
-            const checksum = await calculateFileChecksum(targetPath);
-            entries.push({ path: relativePath, checksum });
-          }
-        }
-      }
-
-      return entries;
-    } catch (error) {
-      this.logger.warn('Failed to parse manifest, falling back to bundle cache files', error as Error);
-      return this.collectFileEntries(bundlePath, workspaceRoot);
-    }
-  }
-
-  /**
-   * Recursively collect files from a directory
-   * @param dir
-   * @param workspaceRoot
-   * @param entries
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async collectFromDirectory(dir: string, workspaceRoot: string, entries: LockfileFileEntry[]): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      return;
-    }
-
-    const files = await readdir(dir);
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      const stats = await stat(filePath);
-
-      if (stats.isDirectory()) {
-        await this.collectFromDirectory(filePath, workspaceRoot, entries);
-      } else {
-        const relativePath = path.relative(workspaceRoot, filePath);
-        const checksum = await calculateFileChecksum(filePath);
-        entries.push({ path: relativePath, checksum });
-      }
-    }
-  }
-
-  /**
-   * Update lockfile when uninstalling a bundle at repository scope
-   * @param bundleId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async updateLockfileOnUninstall(bundleId: string): Promise<void> {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) {
-      this.logger.warn('Cannot update lockfile: no workspace root');
-      return;
-    }
-
-    try {
-      const lockfileManager = LockfileManager.getInstance(workspaceRoot);
-      await lockfileManager.remove(bundleId);
-      this.logger.debug(`Removed bundle ${bundleId} from lockfile`);
-    } catch (error) {
-      this.logger.error('Failed to update lockfile on uninstall', error as Error);
-      // Don't fail the uninstallation if lockfile update fails
-    }
-  }
-
-  // ===== Helper Methods =====
-
-  /**
-   * Create temporary directory
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async createTempDir(): Promise<string> {
-    const tempBase = path.join(this.context.globalStorageUri.fsPath, 'temp');
-    await ensureDirectory(tempBase);
-
-    const tempDir = path.join(tempBase, `bundle-${Date.now()}`);
-    await mkdir(tempDir, { recursive: true });
-
-    return tempDir;
-  }
-
-  /**
-   * Extract bundle archive
-   * @param bundleFile
-   * @param extractDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async extractBundle(bundleFile: string, extractDir: string): Promise<void> {
-    await ensureDirectory(extractDir);
-
-    try {
-      // Use adm-zip for extraction
-      const zip = new AdmZip(bundleFile);
-      zip.extractAllTo(extractDir, true);
-    } catch (error) {
-      throw new Error(`Failed to extract bundle: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Validate bundle structure
-   * @param extractDir
-   * @param bundle
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async validateBundle(extractDir: string, bundle: Bundle): Promise<DeploymentManifest> {
-    // Check if deployment-manifest.yml exists
-    const manifestPath = path.join(extractDir, 'deployment-manifest.yml');
-
-    if (!fs.existsSync(manifestPath)) {
-      // For local bundles (like awesome-copilot), deployment-manifest.yml is optional
-      // Create a minimal manifest from the bundle info
-      this.logger.info(`No deployment-manifest.yml found for ${bundle.id}, creating minimal manifest`);
-      return {
-        common: {
-          directories: [],
-          files: [],
-          include_patterns: ['**/*'],
-          exclude_patterns: []
-        },
-        bundle_settings: {
-          include_common_in_environment_bundles: true,
-          create_common_bundle: true,
-          compression: 'none' as any,
-          naming: {
-            environment_bundle: bundle.id
-          }
-        },
-        metadata: {
-          manifest_version: '1.0',
-          description: bundle.description || bundle.name || bundle.id,
-          author: 'awesome-copilot',
-          last_updated: new Date().toISOString()
-        }
-      } as DeploymentManifest;
-    }
-
-    this.logger.debug(`Validating manifest: ${manifestPath}`);
-
-    // Validate manifest content (parse YAML)
-    const manifestContent = await readFile(manifestPath, 'utf8');
-    const manifest = yaml.load(manifestContent) as any;
-
-    // Basic validation
-    if (!manifest.id || !manifest.version || !manifest.name) {
-      throw new Error('Invalid deployment manifest - missing required fields');
-    }
-
-    // Verify ID matches
-    // For GitHub bundles, the manifest may contain just the collection ID (e.g., "test2")
-    // while bundle.id is the full computed ID (e.g., "owner-repo-test2-v1.0.0" or "owner-repo-test2-1.0.0")
-    // Accept both exact match and suffix match for backward compatibility
-    // Handle both with and without 'v' prefix in version
-    if (!isManifestIdMatch(manifest.id, manifest.version, bundle.id)) {
-      throw new Error(`Bundle ID mismatch: expected ${bundle.id}, got ${manifest.id}`);
-    }
-
-    // Verify version matches (allow "latest" to match any)
-    if (bundle.version !== 'latest' && manifest.version !== bundle.version) {
-      throw new Error(`Bundle version mismatch: expected ${bundle.version}, got ${manifest.version}`);
-    }
-
-    this.logger.debug('Bundle manifest validation passed');
-
-    return manifest as DeploymentManifest;
-  }
-
-  /**
-   * Get installation directory for bundle
-   * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
-   * Repository scope bundles are installed in the workspace's bundle storage
-   * @param bundleId
-   * @param scope
-   * @param sourceType
-   * @param sourceName
-   * @param _bundleName
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, _bundleName?: string): string {
-    // Check if this is an OLAF bundle
-    const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
-
-    if (isOlafBundle) {
-      // OLAF bundles must be installed in workspace .olaf/external-skills directory
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
-      }
-
-      const workspacePath = workspaceFolders[0].uri.fsPath;
-
-      // Use source name for directory organization, fallback to 'default' if not provided
-      const sourceDir = sourceName || 'default';
-
-      // For OLAF bundles with multiple skills, install directly to the source directory
-      // The ZIP contains skill folders that will be copied directly here
-      // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
-      this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
-      return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
-    }
-
-    // Repository scope: install in extension global storage (NOT in the workspace)
-    // The bundle cache/storage should remain in extension storage.
-    // Only the actual content files (prompts, agents, etc.) are synced to .github/ directories
-    // by RepositoryScopeService.syncBundle()
-    if (scope === 'repository') {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        throw new Error('Repository scope requires an open workspace. Please open a workspace and try again.');
-      }
-
-      // Use global storage for bundle cache, same as user scope
-      // This prevents polluting the repository with internal extension files
-      this.logger.info(`[BundleInstaller] Installing repository scope bundle to global storage: bundles/${bundleId}`);
-      return path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);
-    }
-
-    // Standard bundle installation
-    if (scope === 'user') {
-      // User scope: global storage
-      return path.join(this.context.globalStorageUri.fsPath, 'bundles', bundleId);
-    } else {
-      // Workspace scope: workspace storage
-      const workspaceStorage = this.context.storageUri?.fsPath;
-      if (!workspaceStorage) {
-        throw new Error('Workspace storage not available');
-      }
-      return path.join(workspaceStorage, 'bundles', bundleId);
-    }
-  }
-
-  /**
    * Get the installation path for a bundle (public accessor)
    * Used by RegistryManager to construct InstalledBundle objects from lockfile data
    * @param bundleId - The bundle ID
@@ -828,326 +1126,6 @@ export class BundleInstaller {
    */
   public getInstallPath(bundleId: string, scope: InstallationScope): string {
     return this.getInstallDirectory(bundleId, scope);
-  }
-
-  /**
-   * Copy bundle files to installation directory
-   * @param sourceDir
-   * @param targetDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async copyBundleFiles(sourceDir: string, targetDir: string): Promise<void> {
-    const files = await readdir(sourceDir);
-
-    for (const file of files) {
-      const sourcePath = path.join(sourceDir, file);
-      const targetPath = path.join(targetDir, file);
-
-      const stats = await stat(sourcePath);
-
-      if (stats.isDirectory()) {
-        await ensureDirectory(targetPath);
-        await this.copyBundleFiles(sourcePath, targetPath);
-      } else {
-        const content = await readFile(sourcePath);
-        await writeFile(targetPath, content);
-      }
-    }
-  }
-
-  /**
-   * Copy OLAF skill folders from extracted bundle to installation directory
-   * Only copies directories (skill folders), skipping deployment-manifest.yml
-   * Each skill folder is copied directly to the target directory
-   * @param sourceDir
-   * @param targetDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async copyOlafSkillFolders(sourceDir: string, targetDir: string): Promise<void> {
-    const files = await readdir(sourceDir);
-
-    for (const file of files) {
-      const sourcePath = path.join(sourceDir, file);
-      const stats = await stat(sourcePath);
-
-      // Only copy directories (skill folders), skip files like deployment-manifest.yml
-      if (stats.isDirectory()) {
-        const targetPath = path.join(targetDir, file);
-        this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
-        await ensureDirectory(targetPath);
-        await this.copyBundleFiles(sourcePath, targetPath);
-      } else {
-        this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
-      }
-    }
-  }
-
-  /**
-   * Check if a path is the .github directory or a subdirectory of it.
-   * Used to prevent accidental removal of the .github folder which may contain
-   * unrelated files like workflows, CODEOWNERS, etc.
-   * @param dirPath - The directory path to check
-   * @returns true if the path is .github or ends with /.github
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private isGitHubDirectory(dirPath: string): boolean {
-    const normalizedPath = path.normalize(dirPath);
-    const baseName = path.basename(normalizedPath);
-
-    // Check if the directory itself is named .github
-    // This handles both "/path/to/.github" and ".github"
-    return baseName === '.github';
-  }
-
-  /**
-   * Remove directory recursively
-   * Handles symbolic links safely by removing only the link, not the target
-   * @param dir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async removeDirectory(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      return;
-    }
-
-    const files = await readdir(dir);
-
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      const stats = await lstat(filePath); // Use lstat to detect symbolic links
-
-      if (stats.isSymbolicLink()) {
-        // For symbolic links, remove only the link, not the target
-        await unlink(filePath);
-        this.logger.debug(`Removed symbolic link: ${filePath}`);
-      } else if (stats.isDirectory()) {
-        await this.removeDirectory(filePath);
-      } else {
-        await unlink(filePath);
-      }
-    }
-
-    await rmdir(dir);
-  }
-
-  /**
-   * Extract skill name from a skills bundle
-   * Looks for the first directory under skills/ in the extracted bundle
-   * @param extractDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async extractSkillNameFromBundle(extractDir: string): Promise<string> {
-    const skillsDir = path.join(extractDir, 'skills');
-
-    if (!fs.existsSync(skillsDir)) {
-      throw new Error('Skills directory not found in bundle');
-    }
-
-    const entries = await readdir(skillsDir, { withFileTypes: true });
-    const skillDirs = entries.filter((e) => e.isDirectory());
-
-    if (skillDirs.length === 0) {
-      throw new Error('No skill directories found in bundle');
-    }
-
-    // Return the first skill directory name
-    return skillDirs[0].name;
-  }
-
-  /**
-   * Copy directory recursively
-   * @param sourceDir
-   * @param targetDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async copyDirectory(sourceDir: string, targetDir: string): Promise<void> {
-    await ensureDirectory(targetDir);
-
-    const entries = await readdir(sourceDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const sourcePath = path.join(sourceDir, entry.name);
-      const targetPath = path.join(targetDir, entry.name);
-
-      if (entry.isDirectory()) {
-        await this.copyDirectory(sourcePath, targetPath);
-      } else if (entry.isFile()) {
-        const content = await readFile(sourcePath);
-        await writeFile(targetPath, content);
-      }
-    }
-  }
-
-  /**
-   * Clean up temporary directory
-   * @param tempDir
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async cleanupTempDir(tempDir: string): Promise<void> {
-    try {
-      await this.removeDirectory(tempDir);
-    } catch (error) {
-      this.logger.warn('Failed to cleanup temp directory', error as Error);
-      // Don't fail the installation if cleanup fails
-    }
-  }
-
-  /**
-   * Install MCP servers from manifest
-   * @param bundleId
-   * @param bundleVersion
-   * @param installPath
-   * @param manifest
-   * @param scope
-   * @param commitMode
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async installMcpServers(
-    bundleId: string,
-    bundleVersion: string,
-    installPath: string,
-    manifest: DeploymentManifest,
-    scope: InstallationScope,
-    commitMode?: RepositoryCommitMode
-  ): Promise<void> {
-    if (!manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0) {
-      this.logger.debug(`No MCP servers to install for bundle ${bundleId}`);
-      return;
-    }
-
-    this.logger.info(`Installing MCP servers for bundle ${bundleId}`);
-
-    try {
-      // Handle repository scope with workspace-specific installation
-      if (scope === 'repository') {
-        const workspaceRoot = getWorkspaceRoot();
-        if (!workspaceRoot) {
-          this.logger.warn(`Cannot install MCP servers for repository scope: no workspace root`);
-          return;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const result = await this.mcpManager.installServersToWorkspace(
-          bundleId,
-          bundleVersion,
-          workspaceRoot,
-          manifest.mcpServers,
-          {
-            commitMode: commitMode ?? 'commit',
-            overwrite: false,
-            skipOnConflict: false,
-            createBackup: true
-          }
-        );
-
-        if (result.success) {
-          this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers to workspace`);
-        } else {
-          this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
-        }
-
-        if (result.warnings && result.warnings.length > 0) {
-          this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
-        }
-        return;
-      }
-
-      // Handle user/workspace scope with existing logic
-      const result = await this.mcpManager.installServers(
-        bundleId,
-        bundleVersion,
-        installPath,
-        manifest.mcpServers,
-        {
-          scope,
-          overwrite: false,
-          skipOnConflict: false,
-          createBackup: true
-        }
-      );
-
-      if (result.success) {
-        this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers`);
-      } else {
-        this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
-      }
-
-      if (result.warnings && result.warnings.length > 0) {
-        this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to install MCP servers for bundle ${bundleId}`, error as Error);
-      // Don't fail the entire bundle installation if MCP installation fails
-    }
-  }
-
-  /**
-   * Uninstall MCP servers for a bundle
-   * @param bundleId
-   * @param scope
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async uninstallMcpServers(bundleId: string, scope: InstallationScope): Promise<void> {
-    this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
-
-    try {
-      // Handle repository scope with workspace-specific uninstallation
-      if (scope === 'repository') {
-        const workspaceRoot = getWorkspaceRoot();
-        if (!workspaceRoot) {
-          this.logger.warn(`Cannot uninstall MCP servers for repository scope: no workspace root`);
-          return;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const result = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
-
-        if (!result.success) {
-          this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
-        } else if (result.serversRemoved > 0) {
-          this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers from workspace`);
-        } else {
-          this.logger.debug(`No MCP servers found for bundle ${bundleId} in workspace`);
-        }
-        return;
-      }
-
-      // Handle user/workspace scope with existing logic
-      const result = await this.mcpManager.uninstallServers(bundleId, scope);
-
-      if (!result.success) {
-        this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
-      } else if (result.serversRemoved > 0) {
-        this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers`);
-      } else {
-        this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
-      // Don't fail the entire bundle uninstallation if MCP uninstallation fails
-    }
-  }
-
-  /**
-   * Prompt user to confirm overwriting an existing skill
-   * @param skillName Name of the skill
-   * @param existingPath Path to the existing skill
-   * @param existingIsSymlink Whether the existing skill is a symlink
-   * @returns True if user confirms overwrite, false otherwise
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async promptOverwriteSkill(skillName: string, existingPath: string, existingIsSymlink: boolean): Promise<boolean> {
-    const symlinkInfo = existingIsSymlink ? ' (symlink)' : '';
-    const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;
-
-    const result = await vscode.window.showWarningMessage(
-      message,
-      { modal: true },
-      'Overwrite',
-      'Cancel'
-    );
-
-    return result === 'Overwrite';
   }
 
   /**

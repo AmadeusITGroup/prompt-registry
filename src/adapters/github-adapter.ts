@@ -52,15 +52,6 @@ interface GitHubRelease {
   published_at: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars -- name reflects domain terminology; kept for clarity
-interface _GitHubContent {
-  name: string;
-  path: string;
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
-  download_url: string;
-  type: string;
-}
-
 /**
  * GitHub repository adapter implementation
  */
@@ -536,59 +527,6 @@ export class GitHubAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch bundles from GitHub releases
-   * Scans all releases in the repository and creates Bundle objects for those
-   * that contain both a deployment manifest and a bundle archive.
-   *
-   * Uses parallel manifest downloads with caching for improved performance.
-   * @returns Promise resolving to array of Bundle objects
-   * @throws Error if GitHub API request fails or authentication issues occur
-   */
-  public async fetchBundles(): Promise<Bundle[]> {
-    const { owner, repo } = this.parseGitHubUrl();
-    const url = `${this.apiBase}/repos/${owner}/${repo}/releases`;
-
-    try {
-      const releases: GitHubRelease[] = await this.makeRequest(url);
-
-      // Filter releases that have both manifest and bundle assets
-      const validReleases = releases.filter((release) => {
-        const hasManifest = release.assets.some((a) =>
-          a.name === 'deployment-manifest.yml'
-          || a.name === 'deployment-manifest.yaml'
-          || a.name === 'deployment-manifest.json'
-        );
-        const hasBundle = release.assets.some((a) =>
-          a.name.endsWith('.zip')
-          || a.name.endsWith('.tar.gz')
-        );
-        return hasManifest && hasBundle;
-      });
-
-      // Download manifests in parallel with concurrency limit
-      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
-      const bundles: Bundle[] = [];
-
-      for (let i = 0; i < validReleases.length; i += concurrency) {
-        const batch = validReleases.slice(i, i + concurrency);
-        const batchResults = await Promise.allSettled(
-          batch.map((release) => this.processSingleRelease(release, owner, repo))
-        );
-
-        for (const result of batchResults) {
-          if (result.status === 'fulfilled' && result.value) {
-            bundles.push(result.value);
-          }
-        }
-      }
-
-      return bundles;
-    } catch (error) {
-      throw new Error(`Failed to fetch bundles from GitHub: ${error}`);
-    }
-  }
-
-  /**
    * Process a single release to create a Bundle object.
    * Downloads and parses the manifest, using cache to avoid duplicate downloads.
    * @param release - GitHub release object
@@ -596,7 +534,6 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param repo - Repository name
    * @returns Bundle object or null if processing fails
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async processSingleRelease(
     release: GitHubRelease,
     owner: string,
@@ -673,7 +610,6 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param filename - Manifest filename (for determining parse format)
    * @returns Parsed manifest object
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchManifestWithCache(url: string, filename: string): Promise<any> {
     // Check cache first
     if (this.manifestCache.has(url)) {
@@ -699,6 +635,118 @@ export class GitHubAdapter extends RepositoryAdapter {
     this.logger.debug(`[GitHubAdapter] Cached manifest for ${url}`);
 
     return manifest;
+  }
+
+  /**
+   * Extract description from release body
+   * @param body
+   */
+  private extractDescription(body: string): string {
+    if (!body) {
+      return '';
+    }
+
+    // Take first paragraph
+    const lines = body.split('\n');
+    const descLines = [];
+
+    for (const line of lines) {
+      if (line.trim() === '' && descLines.length > 0) {
+        break;
+      }
+      if (line.trim()) {
+        descLines.push(line.trim());
+      }
+    }
+
+    return descLines.join(' ').substring(0, 200);
+  }
+
+  /**
+   * Extract environments from release body
+   * @param body
+   */
+  private extractEnvironments(body: string): string[] {
+    const envs = [];
+    const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
+    const match = body?.match(envRegex);
+
+    if (match) {
+      const envString = match[1];
+      envs.push(...envString.split(/[,\s]+/).filter((e) => e.trim()));
+    }
+
+    return envs.length > 0 ? envs : ['vscode']; // Default to vscode
+  }
+
+  /**
+   * Extract tags from release body
+   * @param body
+   */
+  private extractTags(body: string): string[] {
+    const tags = [];
+    const tagRegex = /(?:tags?):\s*([^\n]+)/i;
+    const match = body?.match(tagRegex);
+
+    if (match) {
+      const tagString = match[1];
+      tags.push(...tagString.split(/[,\s]+/).filter((t) => t.trim()));
+    }
+
+    return tags;
+  }
+
+  /**
+   * Fetch bundles from GitHub releases
+   * Scans all releases in the repository and creates Bundle objects for those
+   * that contain both a deployment manifest and a bundle archive.
+   *
+   * Uses parallel manifest downloads with caching for improved performance.
+   * @returns Promise resolving to array of Bundle objects
+   * @throws Error if GitHub API request fails or authentication issues occur
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    const { owner, repo } = this.parseGitHubUrl();
+    const url = `${this.apiBase}/repos/${owner}/${repo}/releases`;
+
+    try {
+      const releases: GitHubRelease[] = await this.makeRequest(url);
+
+      // Filter releases that have both manifest and bundle assets
+      const validReleases = releases.filter((release) => {
+        const hasManifest = release.assets.some((a) =>
+          a.name === 'deployment-manifest.yml'
+          || a.name === 'deployment-manifest.yaml'
+          || a.name === 'deployment-manifest.json'
+        );
+        const hasBundle = release.assets.some((a) =>
+          a.name.endsWith('.zip')
+          || a.name.endsWith('.tar.gz')
+        );
+        return hasManifest && hasBundle;
+      });
+
+      // Download manifests in parallel with concurrency limit
+      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
+      const bundles: Bundle[] = [];
+
+      for (let i = 0; i < validReleases.length; i += concurrency) {
+        const batch = validReleases.slice(i, i + concurrency);
+        const batchResults = await Promise.allSettled(
+          batch.map((release) => this.processSingleRelease(release, owner, repo))
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            bundles.push(result.value);
+          }
+        }
+      }
+
+      return bundles;
+    } catch (error) {
+      throw new Error(`Failed to fetch bundles from GitHub: ${error}`);
+    }
   }
 
   /**
@@ -830,67 +878,5 @@ export class GitHubAdapter extends RepositoryAdapter {
     }
     this.authToken = undefined;
     this.authMethod = 'none';
-  }
-
-  /**
-   * Extract description from release body
-   * @param body
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private extractDescription(body: string): string {
-    if (!body) {
-      return '';
-    }
-
-    // Take first paragraph
-    const lines = body.split('\n');
-    const descLines = [];
-
-    for (const line of lines) {
-      if (line.trim() === '' && descLines.length > 0) {
-        break;
-      }
-      if (line.trim()) {
-        descLines.push(line.trim());
-      }
-    }
-
-    return descLines.join(' ').substring(0, 200);
-  }
-
-  /**
-   * Extract environments from release body
-   * @param body
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private extractEnvironments(body: string): string[] {
-    const envs = [];
-    const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
-    const match = body?.match(envRegex);
-
-    if (match) {
-      const envString = match[1];
-      envs.push(...envString.split(/[,\s]+/).filter((e) => e.trim()));
-    }
-
-    return envs.length > 0 ? envs : ['vscode']; // Default to vscode
-  }
-
-  /**
-   * Extract tags from release body
-   * @param body
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private extractTags(body: string): string[] {
-    const tags = [];
-    const tagRegex = /(?:tags?):\s*([^\n]+)/i;
-    const match = body?.match(tagRegex);
-
-    if (match) {
-      const tagString = match[1];
-      tags.push(...tagString.split(/[,\s]+/).filter((t) => t.trim()));
-    }
-
-    return tags;
   }
 }

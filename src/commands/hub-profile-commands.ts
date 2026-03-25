@@ -56,6 +56,214 @@ export class HubProfileCommands {
   }
 
   /**
+   * Show detailed information about a hub profile with actions
+   * @param profile
+   */
+  private async showProfileDetails(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
+    const bundleList = profile.bundles.length > 0
+      ? profile.bundles.map((b, i) => `   ${i + 1}. ${b.id}@${b.version}${b.required ? ' (required)' : ''}`).join('\n')
+      : '   (No bundles)';
+
+    const message = [
+      `**${profile.name}**`,
+      '',
+      `📦 Hub: ${profile.hubName}`,
+      `📝 ${profile.description}`,
+      '',
+      `**Bundles (${profile.bundles.length}):**`,
+      bundleList,
+      '',
+      `Created: ${profile.createdAt || 'Unknown'}`,
+      `Updated: ${profile.updatedAt || 'Unknown'}`
+    ].join('\n');
+
+    // Show in markdown preview
+    const panel = vscode.window.createWebviewPanel(
+      'hubProfileDetails',
+      `Profile: ${profile.name}`,
+      vscode.ViewColumn.One,
+      { enableScripts: false }
+    );
+
+    panel.webview.html = this.getProfileDetailsHtml(profile, message);
+
+    // Show action buttons
+    const action = await vscode.window.showInformationMessage(
+      `Viewing profile "${profile.name}" from "${profile.hubName}"`,
+      'Copy to Local',
+      'View Hub',
+      'Close'
+    );
+
+    if (action === 'Copy to Local') {
+      await this.copyProfileToLocal(profile);
+    } else if (action === 'View Hub') {
+      await vscode.commands.executeCommand('promptregistry.listHubs');
+    }
+
+    panel.dispose();
+  }
+
+  /**
+   * Generate HTML for profile details webview
+   * @param profile
+   * @param _markdown
+   */
+  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, _markdown: string): string {
+    const bundleRows = profile.bundles.map((b) => `
+            <tr>
+                <td>${b.id}</td>
+                <td>${b.version}</td>
+                <td>${b.source}</td>
+                <td>${b.required ? '✓' : ''}</td>
+            </tr>
+        `).join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            padding: 20px;
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+        }
+        h1 { 
+            font-size: 24px; 
+            margin-bottom: 10px;
+            color: var(--vscode-textLink-foreground);
+        }
+        .meta {
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 20px;
+        }
+        .section {
+            margin: 20px 0;
+        }
+        .section h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        th {
+            font-weight: bold;
+            background-color: var(--vscode-editor-background);
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+        }
+    </style>
+</head>
+<body>
+    <h1>${profile.icon || '📦'} ${profile.name}</h1>
+    <div class="meta">
+        <span class="badge">Hub: ${profile.hubName}</span>
+        <span class="badge">Hub ID: ${profile.hubId}</span>
+    </div>
+    
+    <div class="section">
+        <p>${profile.description}</p>
+    </div>
+
+    <div class="section">
+        <h2>Bundles (${profile.bundles.length})</h2>
+        ${profile.bundles.length > 0
+          ? `
+        <table>
+            <thead>
+                <tr>
+                    <th>Bundle ID</th>
+                    <th>Version</th>
+                    <th>Source</th>
+                    <th>Required</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${bundleRows}
+            </tbody>
+        </table>
+        `
+          : '<p>No bundles in this profile.</p>'}
+    </div>
+
+    <div class="section">
+        <h2>Metadata</h2>
+        <table>
+            <tr>
+                <td><strong>Profile ID:</strong></td>
+                <td>${profile.id}</td>
+            </tr>
+            <tr>
+                <td><strong>Created:</strong></td>
+                <td>${profile.createdAt || 'Unknown'}</td>
+            </tr>
+            <tr>
+                <td><strong>Updated:</strong></td>
+                <td>${profile.updatedAt || 'Unknown'}</td>
+            </tr>
+            <tr>
+                <td><strong>Active:</strong></td>
+                <td>${profile.active ? 'Yes' : 'No'}</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Copy a hub profile to local profiles
+   * @param profile
+   */
+  private async copyProfileToLocal(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
+    try {
+      const newName = await vscode.window.showInputBox({
+        prompt: 'Enter a name for the local copy',
+        value: `${profile.name} (from ${profile.hubName})`,
+        validateInput: (value) => {
+          if (!value || value.trim().length === 0) {
+            return 'Profile name cannot be empty';
+          }
+          return null;
+        },
+        ignoreFocusOut: true
+      });
+
+      if (!newName) {
+        return;
+      }
+
+      // TODO: Implement profile copying to RegistryManager
+      // This will be part of Phase 3 (Profile Activation)
+      vscode.window.showInformationMessage(
+        `Profile copying will be implemented in Phase 3. Profile "${profile.name}" would be copied as "${newName}".`
+      );
+    } catch (error) {
+      this.logger.error('Failed to copy profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to copy profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Toggle profile favorite status
    * @param arg
    */
@@ -120,8 +328,7 @@ export class HubProfileCommands {
       // Create quick pick items
       const items: (vscode.QuickPickItem & { profile?: HubProfile & { hubId: string; hubName: string } })[] = [];
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
-      for (const [_hubId, hubProfiles] of hubGroups) {
+      for (const [, hubProfiles] of hubGroups) {
         const hubName = hubProfiles[0].hubName;
 
         // Hub separator
@@ -249,217 +456,6 @@ export class HubProfileCommands {
     } catch (error) {
       this.logger.error('Failed to view hub profile', error as Error);
       vscode.window.showErrorMessage(`Failed to view profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Show detailed information about a hub profile with actions
-   * @param profile
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async showProfileDetails(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
-    const bundleList = profile.bundles.length > 0
-      ? profile.bundles.map((b, i) => `   ${i + 1}. ${b.id}@${b.version}${b.required ? ' (required)' : ''}`).join('\n')
-      : '   (No bundles)';
-
-    const message = [
-      `**${profile.name}**`,
-      '',
-      `📦 Hub: ${profile.hubName}`,
-      `📝 ${profile.description}`,
-      '',
-      `**Bundles (${profile.bundles.length}):**`,
-      bundleList,
-      '',
-      `Created: ${profile.createdAt || 'Unknown'}`,
-      `Updated: ${profile.updatedAt || 'Unknown'}`
-    ].join('\n');
-
-    // Show in markdown preview
-    const panel = vscode.window.createWebviewPanel(
-      'hubProfileDetails',
-      `Profile: ${profile.name}`,
-      vscode.ViewColumn.One,
-      { enableScripts: false }
-    );
-
-    panel.webview.html = this.getProfileDetailsHtml(profile, message);
-
-    // Show action buttons
-    const action = await vscode.window.showInformationMessage(
-      `Viewing profile "${profile.name}" from "${profile.hubName}"`,
-      'Copy to Local',
-      'View Hub',
-      'Close'
-    );
-
-    if (action === 'Copy to Local') {
-      await this.copyProfileToLocal(profile);
-    } else if (action === 'View Hub') {
-      await vscode.commands.executeCommand('promptregistry.listHubs');
-    }
-
-    panel.dispose();
-  }
-
-  /**
-   * Generate HTML for profile details webview
-   * @param profile
-   * @param _markdown
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, _markdown: string): string {
-    const bundleRows = profile.bundles.map((b) => `
-            <tr>
-                <td>${b.id}</td>
-                <td>${b.version}</td>
-                <td>${b.source}</td>
-                <td>${b.required ? '✓' : ''}</td>
-            </tr>
-        `).join('');
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: var(--vscode-font-family);
-            padding: 20px;
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-editor-background);
-        }
-        h1 { 
-            font-size: 24px; 
-            margin-bottom: 10px;
-            color: var(--vscode-textLink-foreground);
-        }
-        .meta {
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 20px;
-        }
-        .section {
-            margin: 20px 0;
-        }
-        .section h2 {
-            font-size: 18px;
-            margin-bottom: 10px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            padding-bottom: 5px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-        }
-        th {
-            font-weight: bold;
-            background-color: var(--vscode-editor-background);
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            background-color: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-        }
-    </style>
-</head>
-<body>
-    <h1>${profile.icon || '📦'} ${profile.name}</h1>
-    <div class="meta">
-        <span class="badge">Hub: ${profile.hubName}</span>
-        <span class="badge">Hub ID: ${profile.hubId}</span>
-    </div>
-    
-    <div class="section">
-        <p>${profile.description}</p>
-    </div>
-
-    <div class="section">
-        <h2>Bundles (${profile.bundles.length})</h2>
-        ${profile.bundles.length > 0
-          ? `
-        <table>
-            <thead>
-                <tr>
-                    <th>Bundle ID</th>
-                    <th>Version</th>
-                    <th>Source</th>
-                    <th>Required</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${bundleRows}
-            </tbody>
-        </table>
-        `
-          : '<p>No bundles in this profile.</p>'}
-    </div>
-
-    <div class="section">
-        <h2>Metadata</h2>
-        <table>
-            <tr>
-                <td><strong>Profile ID:</strong></td>
-                <td>${profile.id}</td>
-            </tr>
-            <tr>
-                <td><strong>Created:</strong></td>
-                <td>${profile.createdAt || 'Unknown'}</td>
-            </tr>
-            <tr>
-                <td><strong>Updated:</strong></td>
-                <td>${profile.updatedAt || 'Unknown'}</td>
-            </tr>
-            <tr>
-                <td><strong>Active:</strong></td>
-                <td>${profile.active ? 'Yes' : 'No'}</td>
-            </tr>
-        </table>
-    </div>
-</body>
-</html>`;
-  }
-
-  /**
-   * Copy a hub profile to local profiles
-   * @param profile
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async copyProfileToLocal(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
-    try {
-      const newName = await vscode.window.showInputBox({
-        prompt: 'Enter a name for the local copy',
-        value: `${profile.name} (from ${profile.hubName})`,
-        validateInput: (value) => {
-          if (!value || value.trim().length === 0) {
-            return 'Profile name cannot be empty';
-          }
-          return null;
-        },
-        ignoreFocusOut: true
-      });
-
-      if (!newName) {
-        return;
-      }
-
-      // TODO: Implement profile copying to RegistryManager
-      // This will be part of Phase 3 (Profile Activation)
-      vscode.window.showInformationMessage(
-        `Profile copying will be implemented in Phase 3. Profile "${profile.name}" would be copied as "${newName}".`
-      );
-    } catch (error) {
-      this.logger.error('Failed to copy profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to copy profile: ${(error as Error).message}`);
     }
   }
 }

@@ -19,57 +19,6 @@ export class ValidateAccessCommand {
   }
 
   /**
-   * Execute the validate access command
-   */
-  public async execute(): Promise<void> {
-    try {
-      this.logger.info('Validating GitHub repository access...');
-
-      // Show progress while validating
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Prompt Registry: Validating Repository Access',
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ increment: 20, message: 'Checking repository configuration...' });
-
-        // Get current configuration
-        const config = vscode.workspace.getConfiguration('olaf');
-        const owner = config.get<string>('repositoryOwner') || 'AmadeusITGroup';
-        const repo = config.get<string>('repositoryName') || 'olaf';
-        const usePrivateRepo = config.get<boolean>('usePrivateRepository') || false;
-        const hasToken = !!config.get<string>('githubToken');
-
-        progress.report({ increment: 30, message: 'Testing repository access...' });
-
-        // Validate access
-        const result = await this.githubService.validateAccess();
-
-        progress.report({ increment: 40, message: 'Checking connectivity...' });
-
-        // Check basic connectivity
-        const isConnected = await this.githubService.checkConnectivity();
-
-        progress.report({ increment: 10, message: 'Preparing results...' });
-
-        // Show detailed results
-        await this.showValidationResults({
-          owner,
-          repo,
-          usePrivateRepo,
-          hasToken,
-          accessValid: result.valid,
-          accessMessage: result.message,
-          connectivity: isConnected
-        });
-      });
-    } catch (error) {
-      this.logger.error('Failed to validate GitHub access', error as Error);
-      vscode.window.showErrorMessage(`Failed to validate GitHub access: ${error}`);
-    }
-  }
-
-  /**
    * Show detailed validation results to the user
    * @param results
    * @param results.owner
@@ -80,7 +29,6 @@ export class ValidateAccessCommand {
    * @param results.accessMessage
    * @param results.connectivity
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showValidationResults(results: {
     owner: string;
     repo: string;
@@ -160,6 +108,57 @@ export class ValidateAccessCommand {
         }
         // Details are already shown in the document
       });
+    }
+  }
+
+  /**
+   * Execute the validate access command
+   */
+  public async execute(): Promise<void> {
+    try {
+      this.logger.info('Validating GitHub repository access...');
+
+      // Show progress while validating
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Prompt Registry: Validating Repository Access',
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 20, message: 'Checking repository configuration...' });
+
+        // Get current configuration
+        const config = vscode.workspace.getConfiguration('olaf');
+        const owner = config.get<string>('repositoryOwner') || 'AmadeusITGroup';
+        const repo = config.get<string>('repositoryName') || 'olaf';
+        const usePrivateRepo = config.get<boolean>('usePrivateRepository') || false;
+        const hasToken = !!config.get<string>('githubToken');
+
+        progress.report({ increment: 30, message: 'Testing repository access...' });
+
+        // Validate access
+        const result = await this.githubService.validateAccess();
+
+        progress.report({ increment: 40, message: 'Checking connectivity...' });
+
+        // Check basic connectivity
+        const isConnected = await this.githubService.checkConnectivity();
+
+        progress.report({ increment: 10, message: 'Preparing results...' });
+
+        // Show detailed results
+        await this.showValidationResults({
+          owner,
+          repo,
+          usePrivateRepo,
+          hasToken,
+          accessValid: result.valid,
+          accessMessage: result.message,
+          connectivity: isConnected
+        });
+      });
+    } catch (error) {
+      this.logger.error('Failed to validate GitHub access', error as Error);
+      vscode.window.showErrorMessage(`Failed to validate GitHub access: ${error}`);
     }
   }
 }

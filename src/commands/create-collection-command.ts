@@ -32,6 +32,40 @@ export class CreateCollectionCommand {
     this.outputChannel = vscode.window.createOutputChannel('Collection Creator');
   }
 
+  private generateDefaultName(id: string): string {
+    return id.split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ') + ' Collection';
+  }
+
+  private generateTemplate(
+    id: string,
+    name: string,
+    description: string,
+    tags: string[]
+  ): CollectionTemplate {
+    return {
+      id,
+      name,
+      description,
+      tags,
+      items: [
+        {
+          path: `prompts/${id}-example.prompt.md`,
+          kind: 'prompt'
+        }
+      ],
+      display: {
+        ordering: 'manual',
+        show_badge: true
+      }
+    };
+  }
+
+  private log(message: string): void {
+    this.outputChannel.appendLine(message);
+  }
+
   public async execute(): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
@@ -171,43 +205,6 @@ export class CreateCollectionCommand {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create collection: ${(error as Error).message}`);
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateDefaultName(id: string): string {
-    return id.split('-')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ') + ' Collection';
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateTemplate(
-    id: string,
-    name: string,
-    description: string,
-    tags: string[]
-  ): CollectionTemplate {
-    return {
-      id,
-      name,
-      description,
-      tags,
-      items: [
-        {
-          path: `prompts/${id}-example.prompt.md`,
-          kind: 'prompt'
-        }
-      ],
-      display: {
-        ordering: 'manual',
-        show_badge: true
-      }
-    };
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private log(message: string): void {
-    this.outputChannel.appendLine(message);
   }
 
   public dispose(): void {

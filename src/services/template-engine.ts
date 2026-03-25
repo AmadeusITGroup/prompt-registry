@@ -41,6 +41,116 @@ export class TemplateEngine {
   constructor(private readonly templateRoot: string) {}
 
   /**
+   * Resolve relative path for a template, handling special cases
+   * Replaces getTargetPath by returning the relative path component
+   * @param name
+   * @param templatePath
+   */
+  private resolveRelativePath(name: string, templatePath: string): string {
+    let relativePath = templatePath;
+
+    // Handle README.template.md -> README.md
+    switch (templatePath) {
+      case 'README.template.md': {
+        relativePath = 'README.md';
+
+        break;
+      }
+      case 'package.template.json': {
+        relativePath = 'package.json';
+
+        break;
+      }
+      case '.gitignore.template': {
+        relativePath = '.gitignore';
+
+        break;
+      }
+      default: {
+        if (templatePath.endsWith('.template')) {
+          relativePath = templatePath.slice(0, -9);
+        } else if (templatePath.includes('.template.')) {
+          // Handle .template. in the middle (e.g., file.template.yml -> file.yml)
+          relativePath = templatePath.replace('.template.', '.');
+        }
+      }
+    }
+
+    // Handle workflows -> .github/workflows
+    if (relativePath.startsWith('workflows/')) {
+      const filename = path.basename(relativePath);
+      return path.join('.github', 'workflows', filename);
+    }
+
+    // Handle actions -> .github/actions
+    if (relativePath.startsWith('actions/')) {
+      // Preserve the full path under actions (e.g., actions/publish-common/action.yml)
+      return path.join('.github', relativePath);
+    }
+
+    // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
+    if (name === 'validation-script' && relativePath.includes('validate-collections.js')) {
+      const filename = path.basename(relativePath);
+      return path.join('scripts', filename);
+    }
+
+    return relativePath;
+  }
+
+  /**
+   * Enhance context with computed values
+   * @param context
+   */
+  private enhanceContext(context: TemplateContext): Record<string, any> {
+    const enhanced: Record<string, string> = { ...context };
+
+    // Compute packageName from projectName (kebab-case)
+    if (context.projectName) {
+      enhanced.packageName = generateSanitizedId(context.projectName);
+      // Also map to 'name' if not present
+      if (!enhanced.name) {
+        enhanced.name = enhanced.packageName;
+      }
+    }
+
+    // Ensure defaults for required fields
+    if (!enhanced.description) {
+      enhanced.description = 'A new package';
+    }
+    if (!enhanced.author) {
+      enhanced.author = process.env.USER || 'Your Name';
+    }
+    if (!enhanced.githubOrg) {
+      enhanced.githubOrg = 'YOUR_ORG';
+    }
+
+    // Format tags
+    if (enhanced.tags) {
+      if (Array.isArray(enhanced.tags)) {
+        enhanced.tags = enhanced.tags.map((t: string) => `"${t}"`).join(', ');
+      }
+    } else {
+      enhanced.tags = '"apm", "prompt-registry"';
+    }
+
+    // Defaults for organization details (InnerSource LICENSE)
+    if (!enhanced.organizationName) {
+      enhanced.organizationName = '[Your Organization]';
+    }
+    if (!enhanced.internalContact) {
+      enhanced.internalContact = '[internal-contact@yourorg.com]';
+    }
+    if (!enhanced.legalContact) {
+      enhanced.legalContact = '[legal@yourorg.com]';
+    }
+    if (!enhanced.organizationPolicyLink) {
+      enhanced.organizationPolicyLink = '[Link to organization policy]';
+    }
+
+    return enhanced;
+  }
+
+  /**
    * Load template manifest
    */
   public async loadManifest(): Promise<TemplateManifest> {
@@ -169,117 +279,5 @@ export class TemplateEngine {
   public async getTemplates(): Promise<{ [key: string]: TemplateInfo }> {
     const manifest = await this.loadManifest();
     return manifest.templates;
-  }
-
-  /**
-   * Resolve relative path for a template, handling special cases
-   * Replaces getTargetPath by returning the relative path component
-   * @param name
-   * @param templatePath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private resolveRelativePath(name: string, templatePath: string): string {
-    let relativePath = templatePath;
-
-    // Handle README.template.md -> README.md
-    switch (templatePath) {
-      case 'README.template.md': {
-        relativePath = 'README.md';
-
-        break;
-      }
-      case 'package.template.json': {
-        relativePath = 'package.json';
-
-        break;
-      }
-      case '.gitignore.template': {
-        relativePath = '.gitignore';
-
-        break;
-      }
-      default: {
-        if (templatePath.endsWith('.template')) {
-          relativePath = templatePath.slice(0, -9);
-        } else if (templatePath.includes('.template.')) {
-          // Handle .template. in the middle (e.g., file.template.yml -> file.yml)
-          relativePath = templatePath.replace('.template.', '.');
-        }
-      }
-    }
-
-    // Handle workflows -> .github/workflows
-    if (relativePath.startsWith('workflows/')) {
-      const filename = path.basename(relativePath);
-      return path.join('.github', 'workflows', filename);
-    }
-
-    // Handle actions -> .github/actions
-    if (relativePath.startsWith('actions/')) {
-      // Preserve the full path under actions (e.g., actions/publish-common/action.yml)
-      return path.join('.github', relativePath);
-    }
-
-    // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
-    if (name === 'validation-script' && relativePath.includes('validate-collections.js')) {
-      const filename = path.basename(relativePath);
-      return path.join('scripts', filename);
-    }
-
-    return relativePath;
-  }
-
-  /**
-   * Enhance context with computed values
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private enhanceContext(context: TemplateContext): Record<string, any> {
-    const enhanced: Record<string, string> = { ...context };
-
-    // Compute packageName from projectName (kebab-case)
-    if (context.projectName) {
-      enhanced.packageName = generateSanitizedId(context.projectName);
-      // Also map to 'name' if not present
-      if (!enhanced.name) {
-        enhanced.name = enhanced.packageName;
-      }
-    }
-
-    // Ensure defaults for required fields
-    if (!enhanced.description) {
-      enhanced.description = 'A new package';
-    }
-    if (!enhanced.author) {
-      enhanced.author = process.env.USER || 'Your Name';
-    }
-    if (!enhanced.githubOrg) {
-      enhanced.githubOrg = 'YOUR_ORG';
-    }
-
-    // Format tags
-    if (enhanced.tags) {
-      if (Array.isArray(enhanced.tags)) {
-        enhanced.tags = enhanced.tags.map((t: string) => `"${t}"`).join(', ');
-      }
-    } else {
-      enhanced.tags = '"apm", "prompt-registry"';
-    }
-
-    // Defaults for organization details (InnerSource LICENSE)
-    if (!enhanced.organizationName) {
-      enhanced.organizationName = '[Your Organization]';
-    }
-    if (!enhanced.internalContact) {
-      enhanced.internalContact = '[internal-contact@yourorg.com]';
-    }
-    if (!enhanced.legalContact) {
-      enhanced.legalContact = '[legal@yourorg.com]';
-    }
-    if (!enhanced.organizationPolicyLink) {
-      enhanced.organizationPolicyLink = '[Link to organization policy]';
-    }
-
-    return enhanced;
   }
 }

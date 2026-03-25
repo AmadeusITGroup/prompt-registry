@@ -24,6 +24,101 @@ export class BundleUpdateNotifications extends BaseNotificationService {
   }
 
   /**
+   * Filter updates based on notification preference
+   * @param updates
+   * @param preference
+   */
+  private filterUpdatesByPreference(updates: UpdateCheckResult[], preference: string): UpdateCheckResult[] {
+    if (preference === 'critical') {
+      return updates.filter((update) => this.isCriticalUpdate(update));
+    }
+    return updates;
+  }
+
+  /**
+   * Build message for update notification
+   * Handles both single and multiple updates
+   * @param updates
+   */
+  private async buildUpdateMessage(updates: UpdateCheckResult[]): Promise<string> {
+    if (updates.length === 1) {
+      const update = updates[0];
+      const bundleName = await this.getBundleDisplayName(update.bundleId);
+      return `Update available for ${bundleName}: v${update.currentVersion} → v${update.latestVersion}`;
+    }
+
+    // Multiple updates - list them all
+    const updateList = await Promise.all(
+      updates.map(async (u) => {
+        const bundleName = await this.getBundleDisplayName(u.bundleId);
+        return `• ${bundleName}: v${u.currentVersion} → v${u.latestVersion}`;
+      })
+    );
+
+    return `${updates.length} bundle updates available:\n${updateList.join('\n')}`;
+  }
+
+  private shouldSkipNotification(updates: UpdateCheckResult[], preference: string): boolean {
+    if (preference === 'none') {
+      return true;
+    }
+
+    if (preference === 'critical') {
+      // Filter to only critical updates (major version changes or security updates)
+      const criticalUpdates = updates.filter((update) => this.isCriticalUpdate(update));
+      if (criticalUpdates.length === 0) {
+        this.logger.debug('No critical updates found, skipping notification');
+        return true;
+      }
+      // Continue with critical updates only
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Determine if an update is critical based on version change
+   * Critical updates are major version changes (e.g., 1.x.x -> 2.x.x)
+   * @param update
+   */
+  private isCriticalUpdate(update: UpdateCheckResult): boolean {
+    try {
+      const currentParts = update.currentVersion.split('.').map(Number);
+      const latestParts = update.latestVersion.split('.').map(Number);
+
+      // Major version change is considered critical
+      return latestParts[0] > currentParts[0];
+    } catch {
+      // If version parsing fails, treat as critical to be safe
+      this.logger.warn(`Failed to parse versions for ${update.bundleId}, treating as critical`);
+      return true;
+    }
+  }
+
+  private async handleNotificationAction(
+    action: string | undefined,
+    updates: UpdateCheckResult[]
+  ): Promise<void> {
+    switch (action) {
+      case 'Update Now': {
+        // Trigger update command
+        await (updates.length === 1 ? vscode.commands.executeCommand('promptRegistry.updateBundle', updates[0].bundleId) : vscode.commands.executeCommand('promptRegistry.updateAllBundles'));
+        break;
+      }
+      case 'View Changes': {
+        // Open release notes for first update
+        if (updates.length > 0 && updates[0].releaseNotes) {
+          await vscode.env.openExternal(vscode.Uri.parse(updates[0].releaseNotes));
+        } else {
+          this.logger.warn('No release notes available for viewing');
+        }
+        break;
+      }
+    }
+  }
+
+  /**
    * Implementation of abstract method from BaseNotificationService
    * @param bundleId
    */
@@ -59,19 +154,6 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     );
 
     await this.handleNotificationAction(action, updatesToShow);
-  }
-
-  /**
-   * Filter updates based on notification preference
-   * @param updates
-   * @param preference
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private filterUpdatesByPreference(updates: UpdateCheckResult[], preference: string): UpdateCheckResult[] {
-    if (preference === 'critical') {
-      return updates.filter((update) => this.isCriticalUpdate(update));
-    }
-    return updates;
   }
 
   /**
@@ -156,93 +238,6 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         `Update failures:\n${details.join('\n')}`,
         ['Show Logs', 'Dismiss']
       );
-    }
-  }
-
-  /**
-   * Build message for update notification
-   * Handles both single and multiple updates
-   * @param updates
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async buildUpdateMessage(updates: UpdateCheckResult[]): Promise<string> {
-    if (updates.length === 1) {
-      const update = updates[0];
-      const bundleName = await this.getBundleDisplayName(update.bundleId);
-      return `Update available for ${bundleName}: v${update.currentVersion} → v${update.latestVersion}`;
-    }
-
-    // Multiple updates - list them all
-    const updateList = await Promise.all(
-      updates.map(async (u) => {
-        const bundleName = await this.getBundleDisplayName(u.bundleId);
-        return `• ${bundleName}: v${u.currentVersion} → v${u.latestVersion}`;
-      })
-    );
-
-    return `${updates.length} bundle updates available:\n${updateList.join('\n')}`;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private shouldSkipNotification(updates: UpdateCheckResult[], preference: string): boolean {
-    if (preference === 'none') {
-      return true;
-    }
-
-    if (preference === 'critical') {
-      // Filter to only critical updates (major version changes or security updates)
-      const criticalUpdates = updates.filter((update) => this.isCriticalUpdate(update));
-      if (criticalUpdates.length === 0) {
-        this.logger.debug('No critical updates found, skipping notification');
-        return true;
-      }
-      // Continue with critical updates only
-      return false;
-    }
-
-    return false;
-  }
-
-  /**
-   * Determine if an update is critical based on version change
-   * Critical updates are major version changes (e.g., 1.x.x -> 2.x.x)
-   * @param update
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private isCriticalUpdate(update: UpdateCheckResult): boolean {
-    try {
-      const currentParts = update.currentVersion.split('.').map(Number);
-      const latestParts = update.latestVersion.split('.').map(Number);
-
-      // Major version change is considered critical
-      return latestParts[0] > currentParts[0];
-    } catch {
-      // If version parsing fails, treat as critical to be safe
-      this.logger.warn(`Failed to parse versions for ${update.bundleId}, treating as critical`);
-      return true;
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async handleNotificationAction(
-    action: string | undefined,
-    updates: UpdateCheckResult[]
-  ): Promise<void> {
-    switch (action) {
-      case 'Update Now': {
-        // Trigger update command
-        await (updates.length === 1 ? vscode.commands.executeCommand('promptRegistry.updateBundle', updates[0].bundleId) : vscode.commands.executeCommand('promptRegistry.updateAllBundles'));
-        break;
-      }
-      case 'View Changes': {
-        // Open release notes for first update
-        if (updates.length > 0 && updates[0].releaseNotes) {
-          await vscode.env.openExternal(vscode.Uri.parse(updates[0].releaseNotes));
-        } else {
-          this.logger.warn('No release notes available for viewing');
-        }
-        break;
-      }
     }
   }
 }

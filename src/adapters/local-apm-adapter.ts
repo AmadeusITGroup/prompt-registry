@@ -157,49 +157,11 @@ export class LocalApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch list of available bundles from local filesystem
-   */
-  public async fetchBundles(): Promise<Bundle[]> {
-    const cacheKey = this.source.url;
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.bundles;
-    }
-
-    const localPath = this.getLocalPath();
-
-    // Validate directory exists
-    const exists = await this.directoryExists(localPath);
-    if (!exists) {
-      throw new Error(`Local APM packages directory not found: ${localPath}`);
-    }
-
-    const bundles: LocalApmBundle[] = [];
-
-    // Check if root has apm.yml (single package)
-    const rootManifest = await this.readApmManifest(localPath);
-    if (rootManifest) {
-      const bundle = this.manifestToBundle(rootManifest, localPath, '');
-      bundles.push(bundle);
-    }
-
-    // Scan subdirectories if enabled
-    if (this.config.scanSubdirectories) {
-      const subdirBundles = await this.scanSubdirectories(localPath, 1);
-      bundles.push(...subdirBundles);
-    }
-
-    this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
-    return bundles;
-  }
-
-  /**
    * Scan subdirectories for APM packages
    * Security: Skips hidden directories and known non-package directories
    * @param baseDir
    * @param currentDepth
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanSubdirectories(
     baseDir: string,
     currentDepth: number
@@ -252,7 +214,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Read and parse apm.yml from a directory
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readApmManifest(dir: string): Promise<ApmManifest | null> {
     const manifestPath = path.join(dir, 'apm.yml');
 
@@ -270,7 +231,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param packageDir
    * @param relativePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private manifestToBundle(
     manifest: ApmManifest,
     packageDir: string,
@@ -305,30 +265,10 @@ export class LocalApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Download a bundle by creating ZIP from local directory
-   * @param bundle
-   */
-  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    const packageDir = (bundle as LocalApmBundle).localPackagePath;
-
-    if (!packageDir) {
-      throw new Error(`No local path for bundle: ${bundle.id}`);
-    }
-
-    const exists = await this.directoryExists(packageDir);
-    if (!exists) {
-      throw new Error(`Package directory not found: ${packageDir}`);
-    }
-
-    return this.createBundleArchive(bundle, packageDir);
-  }
-
-  /**
    * Create ZIP archive from local APM package
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleArchive(bundle: Bundle, packageDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -351,7 +291,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async populateArchive(
     archive: archiver.Archiver,
     bundle: Bundle,
@@ -380,7 +319,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createDeploymentManifest(bundle: Bundle, packageDir: string): Promise<any> {
     const apmManifest: ApmManifest = await this.readApmManifest(packageDir) || { name: bundle.name };
     const promptFiles = await this.findPromptFiles(packageDir, true);
@@ -429,7 +367,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param dir Directory to search
    * @param recursive Whether to search recursively
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async findPromptFiles(dir: string, recursive: boolean): Promise<string[]> {
     const files: string[] = [];
 
@@ -470,7 +407,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Detect file type from filename
    * @param filename
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
       return 'instructions';
@@ -488,11 +424,66 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Convert string to title case
    * @param str
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private titleCase(str: string): string {
     return str.split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  /**
+   * Fetch list of available bundles from local filesystem
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    const cacheKey = this.source.url;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.bundles;
+    }
+
+    const localPath = this.getLocalPath();
+
+    // Validate directory exists
+    const exists = await this.directoryExists(localPath);
+    if (!exists) {
+      throw new Error(`Local APM packages directory not found: ${localPath}`);
+    }
+
+    const bundles: LocalApmBundle[] = [];
+
+    // Check if root has apm.yml (single package)
+    const rootManifest = await this.readApmManifest(localPath);
+    if (rootManifest) {
+      const bundle = this.manifestToBundle(rootManifest, localPath, '');
+      bundles.push(bundle);
+    }
+
+    // Scan subdirectories if enabled
+    if (this.config.scanSubdirectories) {
+      const subdirBundles = await this.scanSubdirectories(localPath, 1);
+      bundles.push(...subdirBundles);
+    }
+
+    this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
+    return bundles;
+  }
+
+  /**
+   * Download a bundle by creating ZIP from local directory
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    const packageDir = (bundle as LocalApmBundle).localPackagePath;
+
+    if (!packageDir) {
+      throw new Error(`No local path for bundle: ${bundle.id}`);
+    }
+
+    const exists = await this.directoryExists(packageDir);
+    if (!exists) {
+      throw new Error(`Package directory not found: ${packageDir}`);
+    }
+
+    return this.createBundleArchive(bundle, packageDir);
   }
 
   /**

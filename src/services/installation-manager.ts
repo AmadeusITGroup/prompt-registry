@@ -44,6 +44,14 @@ export interface InstallationResult {
  */
 export class InstallationManager {
   private static instance: InstallationManager;
+
+  public static getInstance(): InstallationManager {
+    if (!InstallationManager.instance) {
+      InstallationManager.instance = new InstallationManager();
+    }
+    return InstallationManager.instance;
+  }
+
   private readonly logger: Logger;
   private readonly platformDetector: PlatformDetector;
 
@@ -52,11 +60,276 @@ export class InstallationManager {
     this.platformDetector = PlatformDetector.getInstance();
   }
 
-  public static getInstance(): InstallationManager {
-    if (!InstallationManager.instance) {
-      InstallationManager.instance = new InstallationManager();
+  /**
+   * Helper method to remove a directory if it's empty
+   * @param dirPath - The directory path to check and potentially remove
+   */
+  private async removeIfEmpty(dirPath: string): Promise<void> {
+    try {
+      // Check if directory exists
+      await access(dirPath);
+
+      // Read directory contents
+      const files = await fs.promises.readdir(dirPath);
+
+      if (files.length === 0) {
+        // Directory is empty, remove it
+        await fs.promises.rmdir(dirPath);
+        this.logger.info(`Removed empty directory: ${dirPath}`);
+      } else {
+        this.logger.debug(`Directory not empty, keeping: ${dirPath} (${files.length} items)`);
+      }
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        this.logger.debug(`Directory does not exist: ${dirPath}`);
+      } else if ((error as any).code === 'ENOTEMPTY') {
+        this.logger.debug(`Directory not empty: ${dirPath}`);
+      } else {
+        this.logger.debug(`Failed to check/remove directory: ${dirPath}`, error as Error);
+      }
     }
-    return InstallationManager.instance;
+  }
+
+  /**
+   * Recursively remove empty parent directories up to a root path
+   * @param dirPath - Starting directory path
+   * @param rootPath - Root path to stop at (won't remove this)
+   */
+  private async removeEmptyParentsRecursively(dirPath: string, rootPath: string): Promise<void> {
+    if (dirPath === rootPath || dirPath === path.dirname(dirPath)) {
+      return; // Reached root or filesystem root
+    }
+
+    try {
+      await access(dirPath);
+      const files = await fs.promises.readdir(dirPath);
+
+      if (files.length === 0) {
+        await fs.promises.rmdir(dirPath);
+        this.logger.info(`Removed empty parent directory: ${dirPath}`);
+
+        // Recursively check parent directory
+        const parentDir = path.dirname(dirPath);
+        await this.removeEmptyParentsRecursively(parentDir, rootPath);
+      }
+    } catch (error) {
+      // Directory doesn't exist or can't be read/removed - stop recursion
+      this.logger.debug(`Stopped recursive removal at: ${dirPath}`, error as Error);
+    }
+  }
+
+  private async ensureDirectoryExists(dirPath: string): Promise<void> {
+    try {
+      await access(dirPath);
+    } catch {
+      await mkdir(dirPath, { recursive: true });
+      this.logger.debug(`Created directory: ${dirPath}`);
+    }
+  }
+
+  private async extractBundle(
+    bundleBuffer: Buffer,
+    extractPath: string,
+    onProgress?: (progress: number, message: string) => void
+  ): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const extractedFiles: string[] = [];
+      let processedEntries = 0;
+      let totalEntries = 0;
+
+      yauzl.fromBuffer(bundleBuffer, { lazyEntries: true }, (err: Error | null, zipfile?: yauzl.ZipFile) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        if (!zipfile) {
+          reject(new Error('Failed to open zip file'));
+          return;
+        }
+
+        totalEntries = zipfile.entryCount;
+        this.logger.debug(`Extracting ${totalEntries} entries from bundle to ${extractPath}`);
+
+        zipfile.readEntry();
+
+        zipfile.on('entry', (entry: yauzl.Entry) => {
+          const fileName = entry.fileName;
+
+          // Skip directories
+          if (fileName.endsWith('/')) {
+            processedEntries++;
+            zipfile.readEntry();
+            return;
+          }
+
+          // Skip common hidden files but allow important dot directories like .github
+          const isHiddenFile = fileName.startsWith('.')
+            && !fileName.startsWith('.github/')
+            && !fileName.startsWith('.vscode/')
+            && !fileName.startsWith('.windsurf/')
+            && !fileName.startsWith('.kiro/')
+            && !fileName.startsWith('.cursor/')
+            && !fileName.startsWith('.olaf/');
+
+          if (isHiddenFile) {
+            processedEntries++;
+            zipfile.readEntry();
+            return;
+          }
+
+          const outputPath = path.join(extractPath, fileName);
+          const outputDir = path.dirname(outputPath);
+
+          // Ensure output directory exists
+          fs.mkdir(outputDir, { recursive: true }, (mkdirErr) => {
+            if (mkdirErr) {
+              reject(mkdirErr);
+              return;
+            }
+
+            zipfile.openReadStream(entry, (streamErr: Error | null, readStream?: NodeJS.ReadableStream) => {
+              if (streamErr) {
+                reject(streamErr);
+                return;
+              }
+
+              if (!readStream) {
+                reject(new Error('Failed to open read stream'));
+                return;
+              }
+
+              const writeStream = fs.createWriteStream(outputPath);
+
+              readStream.pipe(writeStream);
+
+              writeStream.on('close', () => {
+                extractedFiles.push(fileName);
+                processedEntries++;
+
+                // Update progress
+                const progress = 20 + (processedEntries / totalEntries) * 60; // 20-80% for extraction
+                onProgress?.(progress, `Extracting: ${fileName}`);
+
+                this.logger.debug(`Extracted: ${fileName}`);
+
+                if (processedEntries === totalEntries) {
+                  resolve(extractedFiles);
+                } else {
+                  zipfile.readEntry();
+                }
+              });
+
+              writeStream.on('error', (writeErr) => {
+                reject(writeErr);
+              });
+            });
+          });
+        });
+
+        zipfile.on('end', () => {
+          if (processedEntries === totalEntries) {
+            resolve(extractedFiles);
+          }
+        });
+
+        zipfile.on('error', (zipErr: Error) => {
+          reject(zipErr);
+        });
+      });
+    });
+  }
+
+  private async createInstallationMetadata(
+    metadataPath: string,
+    bundleInfo: BundleInfo,
+    scope: InstallationScope,
+    platform: Platform,
+    installedFiles: string[],
+    extractionPath: string
+  ): Promise<void> {
+    const metadata = {
+      version: bundleInfo.version,
+      platform: platform,
+      scope: scope,
+      installedAt: new Date().toISOString(),
+      bundleInfo: {
+        filename: bundleInfo.filename,
+        size: bundleInfo.size,
+        platform: bundleInfo.platform
+      },
+      installedFiles: installedFiles,
+      extractionPath: extractionPath
+    };
+
+    const metadataFilePath = path.join(metadataPath, '.olaf-metadata.json');
+    await writeFile(metadataFilePath, JSON.stringify(metadata, null, 2));
+
+    this.logger.debug(`Created installation metadata at: ${metadataFilePath}`);
+  }
+
+  private async readInstallationMetadata(installationPath: string): Promise<any> {
+    const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+    const metadataContent = await readFile(metadataPath, 'utf8');
+    return JSON.parse(metadataContent);
+  }
+
+  private async updatePlatformConfiguration(
+    platform: Platform,
+    scope: InstallationScope,
+    installationPath: string
+  ): Promise<void> {
+    try {
+      // Platform-specific configuration updates
+      switch (platform) {
+        case Platform.VSCODE: {
+          await this.updateVSCodeConfiguration(scope, installationPath);
+          break;
+        }
+        case Platform.WINDSURF: {
+          await this.updateWindsurfConfiguration(scope, installationPath);
+          break;
+        }
+        case Platform.KIRO: {
+          await this.updateKiroConfiguration(scope, installationPath);
+          break;
+        }
+        case Platform.CURSOR: {
+          await this.updateCursorConfiguration(scope, installationPath);
+          break;
+        }
+        default: {
+          this.logger.debug('No platform-specific configuration updates needed');
+        }
+      }
+    } catch (error) {
+      this.logger.warn('Failed to update platform configuration', error as Error);
+      // Don't fail the installation for configuration updates
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async updateVSCodeConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
+    // Add VSCode-specific configuration updates here
+    this.logger.debug(`Updating VSCode configuration for scope: ${scope}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async updateWindsurfConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
+    // Add Windsurf-specific configuration updates here
+    this.logger.debug(`Updating Windsurf configuration for scope: ${scope}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async updateKiroConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
+    // Add Kiro-specific configuration updates here
+    this.logger.debug(`Updating Kiro configuration for scope: ${scope}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async updateCursorConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
+    // Add Cursor-specific configuration updates here
+    this.logger.debug(`Updating Cursor configuration for scope: ${scope}`);
   }
 
   /**
@@ -227,66 +500,6 @@ export class InstallationManager {
   }
 
   /**
-   * Helper method to remove a directory if it's empty
-   * @param dirPath - The directory path to check and potentially remove
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async removeIfEmpty(dirPath: string): Promise<void> {
-    try {
-      // Check if directory exists
-      await access(dirPath);
-
-      // Read directory contents
-      const files = await fs.promises.readdir(dirPath);
-
-      if (files.length === 0) {
-        // Directory is empty, remove it
-        await fs.promises.rmdir(dirPath);
-        this.logger.info(`Removed empty directory: ${dirPath}`);
-      } else {
-        this.logger.debug(`Directory not empty, keeping: ${dirPath} (${files.length} items)`);
-      }
-    } catch (error) {
-      if ((error as any).code === 'ENOENT') {
-        this.logger.debug(`Directory does not exist: ${dirPath}`);
-      } else if ((error as any).code === 'ENOTEMPTY') {
-        this.logger.debug(`Directory not empty: ${dirPath}`);
-      } else {
-        this.logger.debug(`Failed to check/remove directory: ${dirPath}`, error as Error);
-      }
-    }
-  }
-
-  /**
-   * Recursively remove empty parent directories up to a root path
-   * @param dirPath - Starting directory path
-   * @param rootPath - Root path to stop at (won't remove this)
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async removeEmptyParentsRecursively(dirPath: string, rootPath: string): Promise<void> {
-    if (dirPath === rootPath || dirPath === path.dirname(dirPath)) {
-      return; // Reached root or filesystem root
-    }
-
-    try {
-      await access(dirPath);
-      const files = await fs.promises.readdir(dirPath);
-
-      if (files.length === 0) {
-        await fs.promises.rmdir(dirPath);
-        this.logger.info(`Removed empty parent directory: ${dirPath}`);
-
-        // Recursively check parent directory
-        const parentDir = path.dirname(dirPath);
-        await this.removeEmptyParentsRecursively(parentDir, rootPath);
-      }
-    } catch (error) {
-      // Directory doesn't exist or can't be read/removed - stop recursion
-      this.logger.debug(`Stopped recursive removal at: ${dirPath}`, error as Error);
-    }
-  }
-
-  /**
    * Uninstall Prompt Registry components
    * @param scope
    */
@@ -306,8 +519,6 @@ export class InstallationManager {
       }
 
       // Read installation metadata to get list of installed files
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _metadataPath = path.join(installationPath, '.olaf-metadata.json');
       let installedFiles: string[] = [];
       let extractionPath = installationPath;
 
@@ -398,224 +609,5 @@ export class InstallationManager {
     }
 
     return installedScopes;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async ensureDirectoryExists(dirPath: string): Promise<void> {
-    try {
-      await access(dirPath);
-    } catch {
-      await mkdir(dirPath, { recursive: true });
-      this.logger.debug(`Created directory: ${dirPath}`);
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async extractBundle(
-    bundleBuffer: Buffer,
-    extractPath: string,
-    onProgress?: (progress: number, message: string) => void
-  ): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-      const extractedFiles: string[] = [];
-      let processedEntries = 0;
-      let totalEntries = 0;
-
-      yauzl.fromBuffer(bundleBuffer, { lazyEntries: true }, (err: Error | null, zipfile?: yauzl.ZipFile) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        if (!zipfile) {
-          reject(new Error('Failed to open zip file'));
-          return;
-        }
-
-        totalEntries = zipfile.entryCount;
-        this.logger.debug(`Extracting ${totalEntries} entries from bundle to ${extractPath}`);
-
-        zipfile.readEntry();
-
-        zipfile.on('entry', (entry: yauzl.Entry) => {
-          const fileName = entry.fileName;
-
-          // Skip directories
-          if (fileName.endsWith('/')) {
-            processedEntries++;
-            zipfile.readEntry();
-            return;
-          }
-
-          // Skip common hidden files but allow important dot directories like .github
-          const isHiddenFile = fileName.startsWith('.')
-            && !fileName.startsWith('.github/')
-            && !fileName.startsWith('.vscode/')
-            && !fileName.startsWith('.windsurf/')
-            && !fileName.startsWith('.kiro/')
-            && !fileName.startsWith('.cursor/')
-            && !fileName.startsWith('.olaf/');
-
-          if (isHiddenFile) {
-            processedEntries++;
-            zipfile.readEntry();
-            return;
-          }
-
-          const outputPath = path.join(extractPath, fileName);
-          const outputDir = path.dirname(outputPath);
-
-          // Ensure output directory exists
-          fs.mkdir(outputDir, { recursive: true }, (mkdirErr) => {
-            if (mkdirErr) {
-              reject(mkdirErr);
-              return;
-            }
-
-            zipfile.openReadStream(entry, (streamErr: Error | null, readStream?: NodeJS.ReadableStream) => {
-              if (streamErr) {
-                reject(streamErr);
-                return;
-              }
-
-              if (!readStream) {
-                reject(new Error('Failed to open read stream'));
-                return;
-              }
-
-              const writeStream = fs.createWriteStream(outputPath);
-
-              readStream.pipe(writeStream);
-
-              writeStream.on('close', () => {
-                extractedFiles.push(fileName);
-                processedEntries++;
-
-                // Update progress
-                const progress = 20 + (processedEntries / totalEntries) * 60; // 20-80% for extraction
-                onProgress?.(progress, `Extracting: ${fileName}`);
-
-                this.logger.debug(`Extracted: ${fileName}`);
-
-                if (processedEntries === totalEntries) {
-                  resolve(extractedFiles);
-                } else {
-                  zipfile.readEntry();
-                }
-              });
-
-              writeStream.on('error', (writeErr) => {
-                reject(writeErr);
-              });
-            });
-          });
-        });
-
-        zipfile.on('end', () => {
-          if (processedEntries === totalEntries) {
-            resolve(extractedFiles);
-          }
-        });
-
-        zipfile.on('error', (zipErr: Error) => {
-          reject(zipErr);
-        });
-      });
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async createInstallationMetadata(
-    metadataPath: string,
-    bundleInfo: BundleInfo,
-    scope: InstallationScope,
-    platform: Platform,
-    installedFiles: string[],
-    extractionPath: string
-  ): Promise<void> {
-    const metadata = {
-      version: bundleInfo.version,
-      platform: platform,
-      scope: scope,
-      installedAt: new Date().toISOString(),
-      bundleInfo: {
-        filename: bundleInfo.filename,
-        size: bundleInfo.size,
-        platform: bundleInfo.platform
-      },
-      installedFiles: installedFiles,
-      extractionPath: extractionPath
-    };
-
-    const metadataFilePath = path.join(metadataPath, '.olaf-metadata.json');
-    await writeFile(metadataFilePath, JSON.stringify(metadata, null, 2));
-
-    this.logger.debug(`Created installation metadata at: ${metadataFilePath}`);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async readInstallationMetadata(installationPath: string): Promise<any> {
-    const metadataPath = path.join(installationPath, '.olaf-metadata.json');
-    const metadataContent = await readFile(metadataPath, 'utf8');
-    return JSON.parse(metadataContent);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async updatePlatformConfiguration(
-    platform: Platform,
-    scope: InstallationScope,
-    installationPath: string
-  ): Promise<void> {
-    try {
-      // Platform-specific configuration updates
-      switch (platform) {
-        case Platform.VSCODE: {
-          await this.updateVSCodeConfiguration(scope, installationPath);
-          break;
-        }
-        case Platform.WINDSURF: {
-          await this.updateWindsurfConfiguration(scope, installationPath);
-          break;
-        }
-        case Platform.KIRO: {
-          await this.updateKiroConfiguration(scope, installationPath);
-          break;
-        }
-        case Platform.CURSOR: {
-          await this.updateCursorConfiguration(scope, installationPath);
-          break;
-        }
-        default: {
-          this.logger.debug('No platform-specific configuration updates needed');
-        }
-      }
-    } catch (error) {
-      this.logger.warn('Failed to update platform configuration', error as Error);
-      // Don't fail the installation for configuration updates
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async updateVSCodeConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
-    // Add VSCode-specific configuration updates here
-    this.logger.debug(`Updating VSCode configuration for scope: ${scope}`);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async updateWindsurfConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
-    // Add Windsurf-specific configuration updates here
-    this.logger.debug(`Updating Windsurf configuration for scope: ${scope}`);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async updateKiroConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
-    // Add Kiro-specific configuration updates here
-    this.logger.debug(`Updating Kiro configuration for scope: ${scope}`);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async updateCursorConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
-    // Add Cursor-specific configuration updates here
-    this.logger.debug(`Updating Cursor configuration for scope: ${scope}`);
   }
 }

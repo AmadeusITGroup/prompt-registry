@@ -169,6 +169,320 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Check if directory exists and is accessible
+   * @param dirPath
+   */
+  private async directoryExists(dirPath: string): Promise<boolean> {
+    try {
+      await access(dirPath, fs.constants.R_OK);
+      const stats = await stat(dirPath);
+      return stats.isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * List all .collection.yml files in collections directory
+   */
+  private async listCollectionFiles(): Promise<string[]> {
+    const collectionsPath = this.getCollectionsPath();
+
+    const exists = await this.directoryExists(collectionsPath);
+    if (!exists) {
+      throw new Error(`Collections directory does not exist: ${collectionsPath}`);
+    }
+
+    const entries = await readdir(collectionsPath, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.collection.yml'))
+      .map((entry) => entry.name);
+  }
+
+  /**
+   * Parse a collection file into a Bundle
+   * @param collectionFile
+   */
+  private async parseCollection(collectionFile: string): Promise<Bundle | null> {
+    try {
+      const collectionsPath = this.getCollectionsPath();
+      const collectionFilePath = path.join(collectionsPath, collectionFile);
+
+      const yamlContent = await readFile(collectionFilePath, 'utf8');
+      const collection = yaml.load(yamlContent) as CollectionManifest;
+
+      // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
+      const mcpServers = collection.mcpServers || collection.mcp?.items;
+
+      // Count items by kind (including MCP servers)
+      const breakdown = this.calculateBreakdown(collection.items, mcpServers);
+
+      // Get file stats for timestamp
+      const stats = await stat(collectionFilePath);
+
+      const bundle: Bundle = {
+        id: collection.id,
+        name: collection.name,
+        version: collection.version || '1.0.0',
+        description: collection.description,
+        author: collection.author || 'Local Developer',
+        repository: this.source.url,
+        tags: collection.tags || [],
+        environments: this.inferEnvironments(collection.tags || []),
+        sourceId: this.source.id,
+        manifestUrl: `file://${collectionFilePath}`,
+        downloadUrl: `file://${collectionFilePath}`,
+        lastUpdated: stats.mtime.toISOString(),
+        size: `${collection.items.length} items`,
+        dependencies: [],
+        license: 'MIT'
+      };
+
+      // Store collection file name for download
+      (bundle as any).collectionFile = collectionFile;
+      (bundle as any).breakdown = breakdown;
+
+      // Attach MCP servers for pre-installation display
+      if (mcpServers && Object.keys(mcpServers).length > 0) {
+        (bundle as any).mcpServers = mcpServers;
+      }
+
+      return bundle;
+    } catch (error) {
+      this.logger.error(`Failed to parse collection ${collectionFile}`, error as Error);
+      return null;
+    }
+  }
+
+  /**
+   * Create a zip archive containing collection files
+   * @param collection
+   * @param _collectionFile
+   */
+  private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
+    this.logger.debug(`Creating archive for collection: ${collection.name}`);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      // Use IIFE to handle async operations within Promise executor
+      void (async () => {
+        try {
+          const archive = archiver('zip', { zlib: { level: 9 } });
+          const chunks: Buffer[] = [];
+
+          // Collect data chunks
+          archive.on('data', (chunk: Buffer) => {
+            chunks.push(chunk);
+          });
+
+          // Resolve when archive is finalized
+          archive.on('finish', () => {
+            const buffer = Buffer.concat(chunks);
+            this.logger.debug(`Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`);
+            resolve(buffer);
+          });
+
+          // Handle errors
+          archive.on('error', (err: Error) => {
+            this.logger.error('Archive error', err);
+            reject(err);
+          });
+
+          // Log warnings
+          archive.on('warning', (warning: Error) => {
+            this.logger.warn('Archive warning', warning);
+          });
+
+          // Add deployment-manifest.yml
+          const manifest = this.createDeploymentManifest(collection);
+          const manifestYaml = yaml.dump(manifest);
+          archive.append(manifestYaml, { name: 'deployment-manifest.yml' });
+          this.logger.debug(`Added manifest (${manifestYaml.length} bytes)`);
+
+          // Add each item file
+          const localPath = this.getLocalPath();
+          for (const item of collection.items) {
+            // For skills, add the entire skill directory recursively
+            // so that templates/, references/ and other sibling resources are included
+            if (item.kind === 'skill') {
+              // item.path is like skills/my-skill/SKILL.md — add skills/my-skill/ recursively
+              const skillDir = path.join(localPath, path.dirname(item.path));
+              const skillDirInArchive = path.dirname(item.path);
+              archive.directory(skillDir, skillDirInArchive);
+              this.logger.debug(`Added skill directory ${skillDirInArchive}/ recursively`);
+            } else {
+              // For other types, put in prompts/ folder
+              const itemPath = path.join(localPath, item.path);
+              const content = await readFile(itemPath, 'utf8');
+              const filename = path.basename(item.path);
+              archive.append(content, { name: `prompts/${filename}` });
+              this.logger.debug(`Added ${filename} (${content.length} bytes)`);
+            }
+          }
+
+          // Finalize the archive (this triggers 'finish' event when complete)
+          this.logger.debug('Finalizing archive...');
+          void archive.finalize();
+        } catch (error) {
+          this.logger.error('Failed to create archive', error as Error);
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
+          reject(error);
+        }
+      })();
+    });
+  }
+
+  /**
+   * Create deployment manifest from collection
+   * @param collection
+   */
+  private createDeploymentManifest(collection: CollectionManifest): any {
+    const prompts = collection.items.map((item) => {
+      const itemKind = item.kind;
+      const itemPath = item.path;
+
+      // For skills, preserve the full path (skills/skill-name/SKILL.md)
+      if (itemKind === 'skill') {
+        // Extract skill name from path like skills/my-skill/SKILL.md
+        const skillMatch = itemPath.match(/skills\/([^/]+)\/SKILL\.md/);
+        const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
+        return {
+          id: skillName,
+          name: this.titleCase(skillName.replace(/-/g, ' ')),
+          description: `Skill from ${collection.name}`,
+          file: itemPath, // Preserve full path for skills
+          type: 'skill',
+          tags: collection.tags || []
+        };
+      }
+
+      // For other types, use prompts/ folder
+      const filename = path.basename(itemPath);
+      const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
+
+      return {
+        id,
+        name: this.titleCase(id.replace(/-/g, ' ')),
+        description: `From ${collection.name}`,
+        file: `prompts/${filename}`,
+        type: this.mapKindToType(itemKind),
+        tags: collection.tags || []
+      };
+    });
+
+    // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
+    const mcpServers = collection.mcpServers || collection.mcp?.items;
+
+    return {
+      id: collection.id,
+      name: collection.name,
+      version: collection.version || '1.0.0',
+      description: collection.description,
+      author: collection.author || 'Local Developer',
+      repository: this.source.url,
+      license: 'MIT',
+      tags: collection.tags || [],
+      prompts,
+      ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
+    };
+  }
+
+  /**
+   * Map collection kind to Prompt Registry type
+   * @param kind
+   */
+  private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+    const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
+      prompt: 'prompt',
+      instruction: 'instructions',
+      'chat-mode': 'chatmode',
+      agent: 'agent',
+      skill: 'skill'
+    };
+    return kindMap[kind] || 'prompt';
+  }
+
+  /**
+   * Calculate content breakdown from items
+   * @param items
+   * @param mcpServers
+   */
+  private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
+    const breakdown = {
+      prompts: 0,
+      instructions: 0,
+      chatmodes: 0,
+      agents: 0,
+      skills: 0,
+      mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
+    };
+
+    for (const item of items) {
+      switch (item.kind) {
+        case 'prompt': {
+          breakdown.prompts++;
+          break;
+        }
+        case 'instruction': {
+          breakdown.instructions++;
+          break;
+        }
+        case 'chat-mode': {
+          breakdown.chatmodes++;
+          break;
+        }
+        case 'agent': {
+          breakdown.agents++;
+          break;
+        }
+        case 'skill': {
+          breakdown.skills++;
+          break;
+        }
+      }
+    }
+
+    return breakdown;
+  }
+
+  /**
+   * Infer environments from tags
+   * @param tags
+   */
+  private inferEnvironments(tags: string[]): string[] {
+    const envMap: Record<string, string> = {
+      azure: 'cloud',
+      aws: 'cloud',
+      gcp: 'cloud',
+      frontend: 'web',
+      backend: 'server',
+      database: 'data',
+      devops: 'infrastructure',
+      testing: 'testing'
+    };
+
+    const environments = new Set<string>();
+    for (const tag of tags) {
+      const env = envMap[tag.toLowerCase()];
+      if (env) {
+        environments.add(env);
+      }
+    }
+
+    return environments.size > 0 ? Array.from(environments) : ['general'];
+  }
+
+  /**
+   * Convert kebab-case to Title Case
+   * @param str
+   */
+  private titleCase(str: string): string {
+    return str
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  /**
    * Check if path is valid local filesystem path
    * @param url
    */
@@ -178,21 +492,6 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
       || path.isAbsolute(url)
       || url.startsWith('~/')
       || url.startsWith('./');
-  }
-
-  /**
-   * Check if directory exists and is accessible
-   * @param dirPath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async directoryExists(dirPath: string): Promise<boolean> {
-    try {
-      await access(dirPath, fs.constants.R_OK);
-      const stats = await stat(dirPath);
-      return stats.isDirectory();
-    } catch {
-      return false;
-    }
   }
 
   /**
@@ -370,316 +669,5 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
         bundlesFound: 0
       };
     }
-  }
-
-  /**
-   * List all .collection.yml files in collections directory
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async listCollectionFiles(): Promise<string[]> {
-    const collectionsPath = this.getCollectionsPath();
-
-    const exists = await this.directoryExists(collectionsPath);
-    if (!exists) {
-      throw new Error(`Collections directory does not exist: ${collectionsPath}`);
-    }
-
-    const entries = await readdir(collectionsPath, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.collection.yml'))
-      .map((entry) => entry.name);
-  }
-
-  /**
-   * Parse a collection file into a Bundle
-   * @param collectionFile
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async parseCollection(collectionFile: string): Promise<Bundle | null> {
-    try {
-      const collectionsPath = this.getCollectionsPath();
-      const collectionFilePath = path.join(collectionsPath, collectionFile);
-
-      const yamlContent = await readFile(collectionFilePath, 'utf8');
-      const collection = yaml.load(yamlContent) as CollectionManifest;
-
-      // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
-      const mcpServers = collection.mcpServers || collection.mcp?.items;
-
-      // Count items by kind (including MCP servers)
-      const breakdown = this.calculateBreakdown(collection.items, mcpServers);
-
-      // Get file stats for timestamp
-      const stats = await stat(collectionFilePath);
-
-      const bundle: Bundle = {
-        id: collection.id,
-        name: collection.name,
-        version: collection.version || '1.0.0',
-        description: collection.description,
-        author: collection.author || 'Local Developer',
-        repository: this.source.url,
-        tags: collection.tags || [],
-        environments: this.inferEnvironments(collection.tags || []),
-        sourceId: this.source.id,
-        manifestUrl: `file://${collectionFilePath}`,
-        downloadUrl: `file://${collectionFilePath}`,
-        lastUpdated: stats.mtime.toISOString(),
-        size: `${collection.items.length} items`,
-        dependencies: [],
-        license: 'MIT'
-      };
-
-      // Store collection file name for download
-      (bundle as any).collectionFile = collectionFile;
-      (bundle as any).breakdown = breakdown;
-
-      // Attach MCP servers for pre-installation display
-      if (mcpServers && Object.keys(mcpServers).length > 0) {
-        (bundle as any).mcpServers = mcpServers;
-      }
-
-      return bundle;
-    } catch (error) {
-      this.logger.error(`Failed to parse collection ${collectionFile}`, error as Error);
-      return null;
-    }
-  }
-
-  /**
-   * Create a zip archive containing collection files
-   * @param collection
-   * @param _collectionFile
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
-    this.logger.debug(`Creating archive for collection: ${collection.name}`);
-
-    return new Promise<Buffer>((resolve, reject) => {
-      // Use IIFE to handle async operations within Promise executor
-      void (async () => {
-        try {
-          const archive = archiver('zip', { zlib: { level: 9 } });
-          const chunks: Buffer[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-          let totalSize = 0;
-
-          // Collect data chunks
-          archive.on('data', (chunk: Buffer) => {
-            chunks.push(chunk);
-            totalSize += chunk.length;
-          });
-
-          // Resolve when archive is finalized
-          archive.on('finish', () => {
-            const buffer = Buffer.concat(chunks);
-            this.logger.debug(`Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`);
-            resolve(buffer);
-          });
-
-          // Handle errors
-          archive.on('error', (err: Error) => {
-            this.logger.error('Archive error', err);
-            reject(err);
-          });
-
-          // Log warnings
-          archive.on('warning', (warning: Error) => {
-            this.logger.warn('Archive warning', warning);
-          });
-
-          // Add deployment-manifest.yml
-          const manifest = this.createDeploymentManifest(collection);
-          const manifestYaml = yaml.dump(manifest);
-          archive.append(manifestYaml, { name: 'deployment-manifest.yml' });
-          this.logger.debug(`Added manifest (${manifestYaml.length} bytes)`);
-
-          // Add each item file
-          const localPath = this.getLocalPath();
-          for (const item of collection.items) {
-            // For skills, add the entire skill directory recursively
-            // so that templates/, references/ and other sibling resources are included
-            if (item.kind === 'skill') {
-              // item.path is like skills/my-skill/SKILL.md — add skills/my-skill/ recursively
-              const skillDir = path.join(localPath, path.dirname(item.path));
-              const skillDirInArchive = path.dirname(item.path);
-              archive.directory(skillDir, skillDirInArchive);
-              this.logger.debug(`Added skill directory ${skillDirInArchive}/ recursively`);
-            } else {
-              // For other types, put in prompts/ folder
-              const itemPath = path.join(localPath, item.path);
-              const content = await readFile(itemPath, 'utf8');
-              const filename = path.basename(item.path);
-              archive.append(content, { name: `prompts/${filename}` });
-              this.logger.debug(`Added ${filename} (${content.length} bytes)`);
-            }
-          }
-
-          // Finalize the archive (this triggers 'finish' event when complete)
-          this.logger.debug('Finalizing archive...');
-          void archive.finalize();
-        } catch (error) {
-          this.logger.error('Failed to create archive', error as Error);
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
-          reject(error);
-        }
-      })();
-    });
-  }
-
-  /**
-   * Create deployment manifest from collection
-   * @param collection
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private createDeploymentManifest(collection: CollectionManifest): any {
-    const prompts = collection.items.map((item) => {
-      const itemKind = item.kind;
-      const itemPath = item.path;
-
-      // For skills, preserve the full path (skills/skill-name/SKILL.md)
-      if (itemKind === 'skill') {
-        // Extract skill name from path like skills/my-skill/SKILL.md
-        const skillMatch = itemPath.match(/skills\/([^/]+)\/SKILL\.md/);
-        const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
-        return {
-          id: skillName,
-          name: this.titleCase(skillName.replace(/-/g, ' ')),
-          description: `Skill from ${collection.name}`,
-          file: itemPath, // Preserve full path for skills
-          type: 'skill',
-          tags: collection.tags || []
-        };
-      }
-
-      // For other types, use prompts/ folder
-      const filename = path.basename(itemPath);
-      const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
-
-      return {
-        id,
-        name: this.titleCase(id.replace(/-/g, ' ')),
-        description: `From ${collection.name}`,
-        file: `prompts/${filename}`,
-        type: this.mapKindToType(itemKind),
-        tags: collection.tags || []
-      };
-    });
-
-    // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
-    const mcpServers = collection.mcpServers || collection.mcp?.items;
-
-    return {
-      id: collection.id,
-      name: collection.name,
-      version: collection.version || '1.0.0',
-      description: collection.description,
-      author: collection.author || 'Local Developer',
-      repository: this.source.url,
-      license: 'MIT',
-      tags: collection.tags || [],
-      prompts,
-      ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
-    };
-  }
-
-  /**
-   * Map collection kind to Prompt Registry type
-   * @param kind
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
-    const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
-      prompt: 'prompt',
-      instruction: 'instructions',
-      'chat-mode': 'chatmode',
-      agent: 'agent',
-      skill: 'skill'
-    };
-    return kindMap[kind] || 'prompt';
-  }
-
-  /**
-   * Calculate content breakdown from items
-   * @param items
-   * @param mcpServers
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
-    const breakdown = {
-      prompts: 0,
-      instructions: 0,
-      chatmodes: 0,
-      agents: 0,
-      skills: 0,
-      mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
-    };
-
-    for (const item of items) {
-      switch (item.kind) {
-        case 'prompt': {
-          breakdown.prompts++;
-          break;
-        }
-        case 'instruction': {
-          breakdown.instructions++;
-          break;
-        }
-        case 'chat-mode': {
-          breakdown.chatmodes++;
-          break;
-        }
-        case 'agent': {
-          breakdown.agents++;
-          break;
-        }
-        case 'skill': {
-          breakdown.skills++;
-          break;
-        }
-      }
-    }
-
-    return breakdown;
-  }
-
-  /**
-   * Infer environments from tags
-   * @param tags
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private inferEnvironments(tags: string[]): string[] {
-    const envMap: Record<string, string> = {
-      azure: 'cloud',
-      aws: 'cloud',
-      gcp: 'cloud',
-      frontend: 'web',
-      backend: 'server',
-      database: 'data',
-      devops: 'infrastructure',
-      testing: 'testing'
-    };
-
-    const environments = new Set<string>();
-    for (const tag of tags) {
-      const env = envMap[tag.toLowerCase()];
-      if (env) {
-        environments.add(env);
-      }
-    }
-
-    return environments.size > 0 ? Array.from(environments) : ['general'];
-  }
-
-  /**
-   * Convert kebab-case to Title Case
-   * @param str
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private titleCase(str: string): string {
-    return str
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
   }
 }

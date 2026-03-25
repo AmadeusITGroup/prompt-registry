@@ -29,14 +29,74 @@ export interface DuplicateInfo {
 }
 
 export class McpConfigService {
-  private readonly logger: Logger;
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly BACKUP_SUFFIX = '.backup';
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly SCHEMA_VERSION = '1.0.0';
+  private readonly logger: Logger;
 
   constructor() {
     this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Process a stdio (local process) server definition with variable substitution
+   * @param definition
+   * @param context
+   */
+  private processStdioServerDefinition(
+    definition: McpStdioServerConfig,
+    context: McpVariableContext
+  ): McpStdioServerConfig {
+    return {
+      type: definition.type,
+      command: this.substituteVariables(definition.command, context)!,
+      args: definition.args?.map((arg) => this.substituteVariables(arg, context)!),
+      env: definition.env
+        ? Object.fromEntries(
+          Object.entries(definition.env).map(([k, v]) => [
+            k,
+            this.substituteVariables(v, context)!
+          ])
+        )
+        : undefined,
+      envFile: this.substituteVariables(definition.envFile, context),
+      disabled: definition.disabled,
+      description: definition.description
+    };
+  }
+
+  /**
+   * Process a remote (HTTP/SSE) server definition with variable substitution
+   * @param definition
+   * @param context
+   */
+  private processRemoteServerDefinition(
+    definition: McpRemoteServerConfig,
+    context: McpVariableContext
+  ): McpRemoteServerConfig {
+    return {
+      type: definition.type,
+      url: this.substituteVariables(definition.url, context)!,
+      headers: definition.headers
+        ? Object.fromEntries(
+          Object.entries(definition.headers).map(([k, v]) => [
+            k,
+            this.substituteVariables(v, context)!
+          ])
+        )
+        : undefined,
+      disabled: definition.disabled,
+      description: definition.description
+    };
+  }
+
+  private async createBackup(configPath: string): Promise<void> {
+    const backupPath = configPath + McpConfigService.BACKUP_SUFFIX;
+    try {
+      await fs.copyFile(configPath, backupPath);
+      this.logger.debug(`Created backup at ${backupPath}`);
+    } catch (error) {
+      this.logger.warn(`Failed to create backup: ${(error as Error).message}`);
+    }
   }
 
   public async readMcpConfig(scope: 'user' | 'workspace'): Promise<McpConfiguration> {
@@ -182,60 +242,6 @@ export class McpConfigService {
   }
 
   /**
-   * Process a stdio (local process) server definition with variable substitution
-   * @param definition
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private processStdioServerDefinition(
-    definition: McpStdioServerConfig,
-    context: McpVariableContext
-  ): McpStdioServerConfig {
-    return {
-      type: definition.type,
-      command: this.substituteVariables(definition.command, context)!,
-      args: definition.args?.map((arg) => this.substituteVariables(arg, context)!),
-      env: definition.env
-        ? Object.fromEntries(
-          Object.entries(definition.env).map(([k, v]) => [
-            k,
-            this.substituteVariables(v, context)!
-          ])
-        )
-        : undefined,
-      envFile: this.substituteVariables(definition.envFile, context),
-      disabled: definition.disabled,
-      description: definition.description
-    };
-  }
-
-  /**
-   * Process a remote (HTTP/SSE) server definition with variable substitution
-   * @param definition
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private processRemoteServerDefinition(
-    definition: McpRemoteServerConfig,
-    context: McpVariableContext
-  ): McpRemoteServerConfig {
-    return {
-      type: definition.type,
-      url: this.substituteVariables(definition.url, context)!,
-      headers: definition.headers
-        ? Object.fromEntries(
-          Object.entries(definition.headers).map(([k, v]) => [
-            k,
-            this.substituteVariables(v, context)!
-          ])
-        )
-        : undefined,
-      disabled: definition.disabled,
-      description: definition.description
-    };
-  }
-
-  /**
    * Compute a unique identity string for a server configuration.
    * Used for duplicate detection - servers with the same identity are considered duplicates.
    *
@@ -359,17 +365,6 @@ export class McpConfigService {
     }
 
     return removedServers;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async createBackup(configPath: string): Promise<void> {
-    const backupPath = configPath + McpConfigService.BACKUP_SUFFIX;
-    try {
-      await fs.copyFile(configPath, backupPath);
-      this.logger.debug(`Created backup at ${backupPath}`);
-    } catch (error) {
-      this.logger.warn(`Failed to create backup: ${(error as Error).message}`);
-    }
   }
 
   public async restoreBackup(scope: 'user' | 'workspace'): Promise<boolean> {

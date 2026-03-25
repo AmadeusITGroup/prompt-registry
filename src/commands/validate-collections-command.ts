@@ -49,6 +49,87 @@ export class ValidateCollectionsCommand {
     this.schemaValidator = new SchemaValidator(context.extensionPath);
   }
 
+  private async validateCollection(
+    filePath: string,
+    workspaceRoot: string,
+    _checkRefs = true
+  ): Promise<ValidationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    let collection: Collection | null = null;
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      collection = yaml.load(content) as Collection;
+
+      if (!collection || typeof collection !== 'object') {
+        errors.push('Empty or invalid YAML file');
+        return { errors, warnings, collection: null };
+      }
+
+      // Use SchemaValidator for validation - always check file references
+      const validationResult = await this.schemaValidator.validateCollection(
+        collection,
+        {
+          checkFileReferences: true,
+          workspaceRoot: workspaceRoot
+        }
+      );
+
+      // Add schema validation errors
+      errors.push(...validationResult.errors);
+
+      // Add schema validation warnings
+      warnings.push(...validationResult.warnings);
+
+      // Additional tag-specific validation (not in schema)
+      if (collection.tags) {
+        if (Array.isArray(collection.tags)) {
+          if (collection.tags.length > 10) {
+            warnings.push('More than 10 tags (recommended max)');
+          }
+          collection.tags.forEach((tag: any, index: number) => {
+            if (typeof tag !== 'string') {
+              errors.push(`Tag ${index + 1}: Must be a string`);
+            } else if (tag.length > 30) {
+              warnings.push(`Tag ${index + 1}: Longer than 30 characters`);
+            }
+          });
+        } else {
+          errors.push('Tags must be an array');
+        }
+      }
+
+      return { errors, warnings, collection };
+    } catch (error) {
+      if (error instanceof yaml.YAMLException) {
+        errors.push(`Failed to parse YAML: ${error.message}`);
+      } else {
+        errors.push(`Failed to validate: ${(error as Error).message}`);
+      }
+      return { errors, warnings, collection: null };
+    }
+  }
+
+  private log(message: string, type?: 'error' | 'warning' | 'success'): void {
+    let prefix = '';
+    switch (type) {
+      case 'error': {
+        prefix = '❌ ';
+        break;
+      }
+      case 'warning': {
+        prefix = '⚠️  ';
+        break;
+      }
+      case 'success': {
+        prefix = '✅ ';
+        break;
+      }
+    }
+    this.outputChannel.appendLine(prefix + message);
+  }
+
   public async execute(options?: { listOnly?: boolean }): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
@@ -187,89 +268,6 @@ export class ValidateCollectionsCommand {
         vscode.window.showErrorMessage(`Validation failed with ${totalErrors} error(s)`);
       }
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async validateCollection(
-    filePath: string,
-    workspaceRoot: string,
-    _checkRefs = true
-  ): Promise<ValidationResult> {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    let collection: Collection | null = null;
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      collection = yaml.load(content) as Collection;
-
-      if (!collection || typeof collection !== 'object') {
-        errors.push('Empty or invalid YAML file');
-        return { errors, warnings, collection: null };
-      }
-
-      // Use SchemaValidator for validation - always check file references
-      const validationResult = await this.schemaValidator.validateCollection(
-        collection,
-        {
-          checkFileReferences: true,
-          workspaceRoot: workspaceRoot
-        }
-      );
-
-      // Add schema validation errors
-      errors.push(...validationResult.errors);
-
-      // Add schema validation warnings
-      warnings.push(...validationResult.warnings);
-
-      // Additional tag-specific validation (not in schema)
-      if (collection.tags) {
-        if (Array.isArray(collection.tags)) {
-          if (collection.tags.length > 10) {
-            warnings.push('More than 10 tags (recommended max)');
-          }
-          collection.tags.forEach((tag: any, index: number) => {
-            if (typeof tag !== 'string') {
-              errors.push(`Tag ${index + 1}: Must be a string`);
-            } else if (tag.length > 30) {
-              warnings.push(`Tag ${index + 1}: Longer than 30 characters`);
-            }
-          });
-        } else {
-          errors.push('Tags must be an array');
-        }
-      }
-
-      return { errors, warnings, collection };
-    } catch (error) {
-      if (error instanceof yaml.YAMLException) {
-        errors.push(`Failed to parse YAML: ${error.message}`);
-      } else {
-        errors.push(`Failed to validate: ${(error as Error).message}`);
-      }
-      return { errors, warnings, collection: null };
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private log(message: string, type?: 'error' | 'warning' | 'success'): void {
-    let prefix = '';
-    switch (type) {
-      case 'error': {
-        prefix = '❌ ';
-        break;
-      }
-      case 'warning': {
-        prefix = '⚠️  ';
-        break;
-      }
-      case 'success': {
-        prefix = '✅ ';
-        break;
-      }
-    }
-    this.outputChannel.appendLine(prefix + message);
   }
 
   public dispose(): void {

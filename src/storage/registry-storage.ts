@@ -24,8 +24,6 @@ const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const readdir = promisify(fs.readdir);
 const unlink = promisify(fs.unlink);
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-const _stat = promisify(fs.stat);
 
 /**
  * Storage paths
@@ -69,14 +67,18 @@ const DEFAULT_CONFIG: RegistryConfig = {
  * Handles all file-based persistence for the registry
  */
 export class RegistryStorage {
+  // Constants for ID sanitization
+  private static readonly MAX_FILENAME_LENGTH = 200;
+  private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
   private readonly paths: StoragePaths;
   private configCache?: RegistryConfig;
 
-  // Constants for ID sanitization
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private static readonly MAX_FILENAME_LENGTH = 200;
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
+  // ===== Update Preferences Management =====
+
+  /**
+   * Bundle update preferences
+   */
+  private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
 
   constructor(private readonly context: vscode.ExtensionContext) {
     const storagePath = context.globalStorageUri.fsPath;
@@ -96,28 +98,8 @@ export class RegistryStorage {
   }
 
   /**
-   * Get the extension context
-   */
-  public getContext(): vscode.ExtensionContext {
-    return this.context;
-  }
-
-  /**
-   * Initialize storage directories
-   */
-  public async initialize(): Promise<void> {
-    await this.ensureDirectories();
-
-    // Create default config if doesn't exist
-    if (!fs.existsSync(this.paths.config)) {
-      await this.saveConfig(DEFAULT_CONFIG);
-    }
-  }
-
-  /**
    * Ensure all required directories exist
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureDirectories(): Promise<void> {
     const dirs = [
       this.paths.root,
@@ -135,6 +117,77 @@ export class RegistryStorage {
       if (!fs.existsSync(dir)) {
         await mkdir(dir, { recursive: true });
       }
+    }
+  }
+
+  /**
+   * Sanitize an ID for safe use in filenames
+   * Replaces characters outside [A-Za-z0-9._-] with underscore
+   * Enforces maximum length to prevent filesystem issues
+   * @param id - The bundle ID, source ID, or other identifier
+   * @returns Sanitized string safe for use in filenames
+   */
+  private sanitizeFilename(id: string): string {
+    if (!id || id.length === 0) {
+      throw new Error('ID cannot be empty');
+    }
+
+    // Replace disallowed characters with underscore
+    let sanitized = id.replace(RegistryStorage.ALLOWED_CHARS_REGEX, '_');
+
+    // Enforce max length (leave room for .json extension)
+    if (sanitized.length > RegistryStorage.MAX_FILENAME_LENGTH) {
+      sanitized = sanitized.substring(0, RegistryStorage.MAX_FILENAME_LENGTH);
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Get the list of supported scopes for querying installed bundles.
+   * Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
+   * See: src/services/LockfileManager.ts - read() method for repository bundle queries
+   * @param scope - Optional scope to filter by
+   * @returns Array of supported scopes to query
+   */
+  private getSupportedScopes(scope?: InstallationScope): ('user' | 'workspace')[] {
+    // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
+    if (scope === 'repository') {
+      return [];
+    }
+    if (scope === 'user' || scope === 'workspace') {
+      return [scope];
+    }
+    // No scope specified - return all supported scopes
+    return ['user', 'workspace'];
+  }
+
+  /**
+   * Get installation path for bundle
+   * @param bundle
+   */
+  private getInstalledBundlePath(bundle: InstalledBundle): string {
+    const scopePath = bundle.scope === 'user' ? this.paths.userInstalled : this.paths.installed;
+    const sanitizedId = this.sanitizeFilename(bundle.bundleId);
+    return path.join(scopePath, `${sanitizedId}.json`);
+  }
+
+  /**
+   * Get the extension context
+   */
+  public getContext(): vscode.ExtensionContext {
+    return this.context;
+  }
+
+  /**
+   * Initialize storage directories
+   */
+  public async initialize(): Promise<void> {
+    await this.ensureDirectories();
+
+    // Create default config if doesn't exist
+    if (!fs.existsSync(this.paths.config)) {
+      await this.saveConfig(DEFAULT_CONFIG);
     }
   }
 
@@ -176,30 +229,6 @@ export class RegistryStorage {
    */
   public getPaths(): StoragePaths {
     return { ...this.paths };
-  }
-
-  /**
-   * Sanitize an ID for safe use in filenames
-   * Replaces characters outside [A-Za-z0-9._-] with underscore
-   * Enforces maximum length to prevent filesystem issues
-   * @param id - The bundle ID, source ID, or other identifier
-   * @returns Sanitized string safe for use in filenames
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private sanitizeFilename(id: string): string {
-    if (!id || id.length === 0) {
-      throw new Error('ID cannot be empty');
-    }
-
-    // Replace disallowed characters with underscore
-    let sanitized = id.replace(RegistryStorage.ALLOWED_CHARS_REGEX, '_');
-
-    // Enforce max length (leave room for .json extension)
-    if (sanitized.length > RegistryStorage.MAX_FILENAME_LENGTH) {
-      sanitized = sanitized.substring(0, RegistryStorage.MAX_FILENAME_LENGTH);
-    }
-
-    return sanitized;
   }
 
   // ===== Source Management =====
@@ -480,26 +509,6 @@ export class RegistryStorage {
   }
 
   /**
-   * Get the list of supported scopes for querying installed bundles.
-   * Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
-   * See: src/services/LockfileManager.ts - read() method for repository bundle queries
-   * @param scope - Optional scope to filter by
-   * @returns Array of supported scopes to query
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getSupportedScopes(scope?: InstallationScope): ('user' | 'workspace')[] {
-    // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
-    if (scope === 'repository') {
-      return [];
-    }
-    if (scope === 'user' || scope === 'workspace') {
-      return [scope];
-    }
-    // No scope specified - return all supported scopes
-    return ['user', 'workspace'];
-  }
-
-  /**
    * Get installed bundle metadata
    * @param bundleId
    * @param scope
@@ -519,17 +528,6 @@ export class RegistryStorage {
     } catch {
       return undefined;
     }
-  }
-
-  /**
-   * Get installation path for bundle
-   * @param bundle
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getInstalledBundlePath(bundle: InstalledBundle): string {
-    const scopePath = bundle.scope === 'user' ? this.paths.userInstalled : this.paths.installed;
-    const sanitizedId = this.sanitizeFilename(bundle.bundleId);
-    return path.join(scopePath, `${sanitizedId}.json`);
   }
 
   // ===== Settings Management =====
@@ -568,14 +566,6 @@ export class RegistryStorage {
     // Clear all caches
     await this.clearAllCaches();
   }
-
-  // ===== Update Preferences Management =====
-
-  /**
-   * Bundle update preferences
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
 
   /**
    * Get all update preferences

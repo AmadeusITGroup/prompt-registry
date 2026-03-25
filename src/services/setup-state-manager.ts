@@ -26,18 +26,6 @@ export enum SetupState {
  */
 export class SetupStateManager {
   private static instance: SetupStateManager | undefined;
-  private readonly logger: Logger;
-  private readonly SETUP_STATE_KEY = 'promptregistry.setupState';
-
-  // Session-scoped flag (not persisted across extension reloads)
-  private resumePromptShown = false;
-
-  private constructor(
-    private readonly context: vscode.ExtensionContext,
-    private readonly hubManager: HubManager
-  ) {
-    this.logger = Logger.getInstance();
-  }
 
   /**
    * Get singleton instance.
@@ -68,6 +56,35 @@ export class SetupStateManager {
    */
   public static resetInstance(): void {
     SetupStateManager.instance = undefined;
+  }
+
+  private readonly logger: Logger;
+  private readonly SETUP_STATE_KEY = 'promptregistry.setupState';
+
+  // Session-scoped flag (not persisted across extension reloads)
+  private resumePromptShown = false;
+
+  private constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly hubManager: HubManager
+  ) {
+    this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Transition to a new state with logging
+   * @param newState
+   */
+  private async transitionState(newState: SetupState): Promise<void> {
+    const oldState = await this.getState();
+
+    if (oldState === newState) {
+      this.logger.debug(`Setup state already ${newState}, no transition needed`);
+      return;
+    }
+
+    await this.context.globalState.update(this.SETUP_STATE_KEY, newState);
+    this.logger.info(`State transition: ${oldState} → ${newState}`);
   }
 
   /**
@@ -185,22 +202,5 @@ export class SetupStateManager {
   public async markResumePromptShown(): Promise<void> {
     this.resumePromptShown = true;
     this.logger.debug('Resume prompt marked as shown for this session');
-  }
-
-  /**
-   * Transition to a new state with logging
-   * @param newState
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async transitionState(newState: SetupState): Promise<void> {
-    const oldState = await this.getState();
-
-    if (oldState === newState) {
-      this.logger.debug(`Setup state already ${newState}, no transition needed`);
-      return;
-    }
-
-    await this.context.globalState.update(this.SETUP_STATE_KEY, newState);
-    this.logger.info(`State transition: ${oldState} → ${newState}`);
   }
 }

@@ -86,6 +86,60 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
 
   constructor(public readonly source: RegistrySource) {}
 
+  /**
+   * Get authentication token from source config
+   * @returns Token or undefined
+   */
+  protected getAuthToken(): string | undefined {
+    return this.source.token;
+  }
+
+  /**
+   * Create common HTTP headers for requests
+   * @returns Headers object
+   */
+  protected getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0',
+      Accept: 'application/json'
+    };
+
+    const token = this.getAuthToken();
+    if (token && this.requiresAuthentication()) {
+      headers.Authorization = `token ${token}`;
+    }
+
+    return headers;
+  }
+
+  /**
+   * Handle HTTP errors
+   * @param response HTTP response
+   * @param context Error context
+   */
+  protected async handleHttpError(response: any, context: string): Promise<never> {
+    const statusText = response.statusText || 'Unknown';
+    const body = await response.text?.().catch(() => '') || '';
+
+    throw new Error(
+      `${context}: HTTP ${response.status} ${statusText}. ${body ? 'Details: ' + body : ''}`
+    );
+  }
+
+  /**
+   * Validate URL format
+   * @param url URL to validate
+   * @returns True if valid
+   */
+  protected isValidUrl(url: string): boolean {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public abstract fetchBundles(): Promise<Bundle[]>;
   public abstract downloadBundle(bundle: Bundle): Promise<Buffer>;
   public abstract fetchMetadata(): Promise<SourceMetadata>;
@@ -107,64 +161,6 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    */
   public requiresAuthentication(): boolean {
     return this.source.private === true;
-  }
-
-  /**
-   * Get authentication token from source config
-   * @returns Token or undefined
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected getAuthToken(): string | undefined {
-    return this.source.token;
-  }
-
-  /**
-   * Create common HTTP headers for requests
-   * @returns Headers object
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0',
-      Accept: 'application/json'
-    };
-
-    const token = this.getAuthToken();
-    if (token && this.requiresAuthentication()) {
-      headers.Authorization = `token ${token}`;
-    }
-
-    return headers;
-  }
-
-  /**
-   * Handle HTTP errors
-   * @param response HTTP response
-   * @param context Error context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected async handleHttpError(response: any, context: string): Promise<never> {
-    const statusText = response.statusText || 'Unknown';
-    const body = await response.text?.().catch(() => '') || '';
-
-    throw new Error(
-      `${context}: HTTP ${response.status} ${statusText}. ${body ? 'Details: ' + body : ''}`
-    );
-  }
-
-  /**
-   * Validate URL format
-   * @param url URL to validate
-   * @returns True if valid
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  protected isValidUrl(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
 

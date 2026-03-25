@@ -32,15 +32,6 @@ interface GitLabRelease {
   released_at: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars -- name reflects domain terminology; kept for clarity
-interface _GitLabFile {
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
-  file_name: string;
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
-  file_path: string;
-  type: string;
-}
-
 /**
  * GitLab repository adapter implementation
  */

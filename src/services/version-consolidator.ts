@@ -71,6 +71,154 @@ export class VersionConsolidator {
   }
 
   /**
+   * Add entry to cache with LRU eviction strategy
+   *
+   * If cache exceeds maxCacheSize, removes the least recently used entry.
+   * This ensures frequently accessed bundles remain in cache.
+   * Uses an access order array for O(1) LRU eviction.
+   * @param key - Bundle identity key
+   * @param versions - Array of bundle versions to cache
+   */
+  private addToCache(key: string, versions: BundleVersion[]): void {
+    const isUpdate = this.versionCache.has(key);
+
+    // Check if we need to evict an entry (for new entries only)
+    if (!isUpdate && this.versionCache.size >= this.maxCacheSize) {
+      this.evictLRU();
+    }
+
+    // Add or update entry
+    this.versionCache.set(key, {
+      versions,
+      lastAccess: Date.now()
+    });
+
+    // Update access order
+    this.updateAccessOrder(key);
+  }
+
+  /**
+   * Update access order for LRU tracking (O(1) operation)
+   * Moves the key to the end of the access order array (most recently used)
+   * @param key
+   */
+  private updateAccessOrder(key: string): void {
+    // Remove key from current position if it exists
+    const index = this.accessOrder.indexOf(key);
+    if (index !== -1) {
+      this.accessOrder.splice(index, 1);
+    }
+
+    // Add to end (most recently used)
+    this.accessOrder.push(key);
+  }
+
+  /**
+   * Evict the least recently used entry from cache (O(1) operation)
+   * Uses the access order array to identify the LRU entry
+   */
+  private evictLRU(): void {
+    if (this.accessOrder.length === 0) {
+      return;
+    }
+
+    // First entry in accessOrder is the least recently used
+    const lruKey = this.accessOrder.shift();
+
+    if (lruKey) {
+      const entry = this.versionCache.get(lruKey);
+      this.versionCache.delete(lruKey);
+
+      if (entry) {
+        this.logger.debug(
+          `Cache size limit (${this.maxCacheSize}) reached, evicted LRU entry: ${lruKey} `
+          + `(last access: ${new Date(entry.lastAccess).toISOString()})`
+        );
+      }
+    }
+  }
+
+  /**
+   * Get bundle identity based on source type
+   * For GitHub: extract owner-repo from bundle ID
+   * For others: use bundle ID as-is
+   * @param bundle
+   */
+  private getBundleIdentity(bundle: Bundle): string {
+    // Use custom resolver if provided, otherwise fall back to heuristic
+    const sourceType = this.sourceTypeResolver
+      ? this.sourceTypeResolver(bundle.sourceId)
+      : this.inferSourceType(bundle.sourceId);
+    return VersionManager.extractBundleIdentity(bundle.id, sourceType);
+  }
+
+  /**
+   * Infer source type from source ID using heuristics
+   *
+   * This is a fallback approach when no resolver is provided.
+   * Ideally, the actual source configuration should be used.
+   * @param sourceId - Source identifier to analyze
+   * @returns Inferred source type (defaults to 'local' for unknown types)
+   */
+  private inferSourceType(sourceId: string): SourceType {
+    if (sourceId.includes('github')) {
+      return 'github';
+    } else if (sourceId.includes('gitlab')) {
+      return 'gitlab';
+    } else if (sourceId.includes('http')) {
+      return 'http';
+    } else if (sourceId.includes('awesome')) {
+      return 'awesome-copilot';
+    } else if (sourceId.includes('local')) {
+      return 'local';
+    }
+    // Default to treating as non-consolidatable (safe default)
+    this.logger.debug(`Could not infer source type from "${sourceId}", treating as non-consolidatable`);
+    return 'local';
+  }
+
+  /**
+   * Sort bundles by version in descending order (latest first)
+   * @param bundles
+   */
+  private sortBundlesByVersion(bundles: Bundle[]): Bundle[] {
+    return bundles.toSorted((a, b) => {
+      try {
+        return VersionManager.compareVersions(b.version, a.version);
+      } catch (error) {
+        // If version comparison fails, fall back to date comparison
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Version comparison failed for ${a.id} and ${b.id}: ${errorMsg}. Using dates`);
+
+        const dateB = new Date(b.lastUpdated);
+        const dateA = new Date(a.lastUpdated);
+
+        if (Number.isNaN(dateB.getTime()) || Number.isNaN(dateA.getTime())) {
+          this.logger.error(`Both version and date comparison failed for ${b.id}, ${a.id}. Preserving order.`);
+          return 0; // Preserve original order
+        }
+
+        return dateB.getTime() - dateA.getTime();
+      }
+    });
+  }
+
+  /**
+   * Convert Bundle to BundleVersion metadata
+   * @param bundle
+   */
+  private toBundleVersion(bundle: Bundle): BundleVersion {
+    return {
+      version: bundle.version,
+      bundleId: bundle.id, // Preserve original bundle ID
+      publishedAt: bundle.lastUpdated,
+      downloadUrl: bundle.downloadUrl,
+      manifestUrl: bundle.manifestUrl,
+      releaseNotes: undefined // Could be extracted from bundle metadata
+    };
+  }
+
+  /**
    * Set a custom source type resolver function
    *
    * This allows the consolidator to accurately determine source types
@@ -194,160 +342,5 @@ export class VersionConsolidator {
     this.versionCache.clear();
     this.accessOrder = [];
     this.logger.debug('Version cache cleared');
-  }
-
-  /**
-   * Add entry to cache with LRU eviction strategy
-   *
-   * If cache exceeds maxCacheSize, removes the least recently used entry.
-   * This ensures frequently accessed bundles remain in cache.
-   * Uses an access order array for O(1) LRU eviction.
-   * @param key - Bundle identity key
-   * @param versions - Array of bundle versions to cache
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private addToCache(key: string, versions: BundleVersion[]): void {
-    const isUpdate = this.versionCache.has(key);
-
-    // Check if we need to evict an entry (for new entries only)
-    if (!isUpdate && this.versionCache.size >= this.maxCacheSize) {
-      this.evictLRU();
-    }
-
-    // Add or update entry
-    this.versionCache.set(key, {
-      versions,
-      lastAccess: Date.now()
-    });
-
-    // Update access order
-    this.updateAccessOrder(key);
-  }
-
-  /**
-   * Update access order for LRU tracking (O(1) operation)
-   * Moves the key to the end of the access order array (most recently used)
-   * @param key
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private updateAccessOrder(key: string): void {
-    // Remove key from current position if it exists
-    const index = this.accessOrder.indexOf(key);
-    if (index !== -1) {
-      this.accessOrder.splice(index, 1);
-    }
-
-    // Add to end (most recently used)
-    this.accessOrder.push(key);
-  }
-
-  /**
-   * Evict the least recently used entry from cache (O(1) operation)
-   * Uses the access order array to identify the LRU entry
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private evictLRU(): void {
-    if (this.accessOrder.length === 0) {
-      return;
-    }
-
-    // First entry in accessOrder is the least recently used
-    const lruKey = this.accessOrder.shift();
-
-    if (lruKey) {
-      const entry = this.versionCache.get(lruKey);
-      this.versionCache.delete(lruKey);
-
-      if (entry) {
-        this.logger.debug(
-          `Cache size limit (${this.maxCacheSize}) reached, evicted LRU entry: ${lruKey} `
-          + `(last access: ${new Date(entry.lastAccess).toISOString()})`
-        );
-      }
-    }
-  }
-
-  /**
-   * Get bundle identity based on source type
-   * For GitHub: extract owner-repo from bundle ID
-   * For others: use bundle ID as-is
-   * @param bundle
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getBundleIdentity(bundle: Bundle): string {
-    // Use custom resolver if provided, otherwise fall back to heuristic
-    const sourceType = this.sourceTypeResolver
-      ? this.sourceTypeResolver(bundle.sourceId)
-      : this.inferSourceType(bundle.sourceId);
-    return VersionManager.extractBundleIdentity(bundle.id, sourceType);
-  }
-
-  /**
-   * Infer source type from source ID using heuristics
-   *
-   * This is a fallback approach when no resolver is provided.
-   * Ideally, the actual source configuration should be used.
-   * @param sourceId - Source identifier to analyze
-   * @returns Inferred source type (defaults to 'local' for unknown types)
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private inferSourceType(sourceId: string): SourceType {
-    if (sourceId.includes('github')) {
-      return 'github';
-    } else if (sourceId.includes('gitlab')) {
-      return 'gitlab';
-    } else if (sourceId.includes('http')) {
-      return 'http';
-    } else if (sourceId.includes('awesome')) {
-      return 'awesome-copilot';
-    } else if (sourceId.includes('local')) {
-      return 'local';
-    }
-    // Default to treating as non-consolidatable (safe default)
-    this.logger.debug(`Could not infer source type from "${sourceId}", treating as non-consolidatable`);
-    return 'local';
-  }
-
-  /**
-   * Sort bundles by version in descending order (latest first)
-   * @param bundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private sortBundlesByVersion(bundles: Bundle[]): Bundle[] {
-    return bundles.toSorted((a, b) => {
-      try {
-        return VersionManager.compareVersions(b.version, a.version);
-      } catch (error) {
-        // If version comparison fails, fall back to date comparison
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Version comparison failed for ${a.id} and ${b.id}: ${errorMsg}. Using dates`);
-
-        const dateB = new Date(b.lastUpdated);
-        const dateA = new Date(a.lastUpdated);
-
-        if (Number.isNaN(dateB.getTime()) || Number.isNaN(dateA.getTime())) {
-          this.logger.error(`Both version and date comparison failed for ${b.id}, ${a.id}. Preserving order.`);
-          return 0; // Preserve original order
-        }
-
-        return dateB.getTime() - dateA.getTime();
-      }
-    });
-  }
-
-  /**
-   * Convert Bundle to BundleVersion metadata
-   * @param bundle
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private toBundleVersion(bundle: Bundle): BundleVersion {
-    return {
-      version: bundle.version,
-      bundleId: bundle.id, // Preserve original bundle ID
-      publishedAt: bundle.lastUpdated,
-      downloadUrl: bundle.downloadUrl,
-      manifestUrl: bundle.manifestUrl,
-      releaseNotes: undefined // Could be extracted from bundle metadata
-    };
   }
 }

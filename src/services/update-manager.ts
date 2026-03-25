@@ -55,6 +55,14 @@ export interface UpdateOptions {
  */
 export class ExtensionUpdateManager {
   private static instance: ExtensionUpdateManager;
+
+  public static getInstance(): ExtensionUpdateManager {
+    if (!ExtensionUpdateManager.instance) {
+      ExtensionUpdateManager.instance = new ExtensionUpdateManager();
+    }
+    return ExtensionUpdateManager.instance;
+  }
+
   private readonly logger: Logger;
   private readonly githubService: GitHubService;
   private readonly installationManager: InstallationManager;
@@ -67,11 +75,87 @@ export class ExtensionUpdateManager {
     this.platformDetector = PlatformDetector.getInstance();
   }
 
-  public static getInstance(): ExtensionUpdateManager {
-    if (!ExtensionUpdateManager.instance) {
-      ExtensionUpdateManager.instance = new ExtensionUpdateManager();
+  private async checkScopeForUpdate(
+    scope: InstallationScope,
+    latestRelease: GitHubRelease,
+    bundleInfo: BundleInfo,
+    options: UpdateOptions
+  ): Promise<UpdateCheckResult | null> {
+    try {
+      // Get current installation info
+      const installationInfo = await this.installationManager.getInstallationInfo(scope);
+
+      if (!installationInfo) {
+        this.logger.debug(`No installation found for scope: ${scope}`);
+        return null;
+      }
+
+      const currentVersion = installationInfo.version;
+      const latestVersion = bundleInfo.version;
+
+      // Parse versions for comparison
+      const currentVersionInfo = this.githubService.parseVersion(currentVersion);
+      const latestVersionInfo = this.githubService.parseVersion(latestVersion);
+
+      if (!currentVersionInfo || !latestVersionInfo) {
+        this.logger.warn(`Invalid version format. Current: ${currentVersion}, Latest: ${latestVersion}`);
+        return null;
+      }
+
+      // Check if prerelease is allowed
+      if (latestVersionInfo.isPrerelease && !options.prerelease) {
+        this.logger.debug(`Skipping prerelease version: ${latestVersion}`);
+        return null;
+      }
+
+      // Compare versions
+      const hasUpdate = this.githubService.isNewerVersion(latestVersion, currentVersion);
+
+      return {
+        hasUpdate,
+        currentVersion,
+        latestVersion,
+        releaseInfo: latestRelease,
+        bundleInfo,
+        scope
+      };
+    } catch (error) {
+      this.logger.error(`Failed to check update for scope: ${scope}`, error as Error);
+      return null;
     }
-    return ExtensionUpdateManager.instance;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async createBackup(scope: InstallationScope): Promise<string | null> {
+    try {
+      // Implementation for creating backup would go here
+      // For now, just log the intent
+      this.logger.debug(`Creating backup for scope: ${scope}`);
+      return null; // Return backup path when implemented
+    } catch (error) {
+      this.logger.warn('Failed to create backup', error as Error);
+      return null;
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async cleanupBackup(backupPath: string): Promise<void> {
+    try {
+      // Implementation for cleaning up backup would go here
+      this.logger.debug(`Cleaning up backup: ${backupPath}`);
+    } catch (error) {
+      this.logger.warn('Failed to cleanup backup', error as Error);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async restoreBackup(backupPath: string, scope: InstallationScope): Promise<void> {
+    try {
+      // Implementation for restoring backup would go here
+      this.logger.info(`Restoring backup for scope: ${scope} from: ${backupPath}`);
+    } catch (error) {
+      this.logger.error('Failed to restore backup', error as Error);
+    }
   }
 
   /**
@@ -294,89 +378,5 @@ export class ExtensionUpdateManager {
     }
 
     return `Prompt Registry updates available for ${updatesAvailable.length} scopes`;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async checkScopeForUpdate(
-    scope: InstallationScope,
-    latestRelease: GitHubRelease,
-    bundleInfo: BundleInfo,
-    options: UpdateOptions
-  ): Promise<UpdateCheckResult | null> {
-    try {
-      // Get current installation info
-      const installationInfo = await this.installationManager.getInstallationInfo(scope);
-
-      if (!installationInfo) {
-        this.logger.debug(`No installation found for scope: ${scope}`);
-        return null;
-      }
-
-      const currentVersion = installationInfo.version;
-      const latestVersion = bundleInfo.version;
-
-      // Parse versions for comparison
-      const currentVersionInfo = this.githubService.parseVersion(currentVersion);
-      const latestVersionInfo = this.githubService.parseVersion(latestVersion);
-
-      if (!currentVersionInfo || !latestVersionInfo) {
-        this.logger.warn(`Invalid version format. Current: ${currentVersion}, Latest: ${latestVersion}`);
-        return null;
-      }
-
-      // Check if prerelease is allowed
-      if (latestVersionInfo.isPrerelease && !options.prerelease) {
-        this.logger.debug(`Skipping prerelease version: ${latestVersion}`);
-        return null;
-      }
-
-      // Compare versions
-      const hasUpdate = this.githubService.isNewerVersion(latestVersion, currentVersion);
-
-      return {
-        hasUpdate,
-        currentVersion,
-        latestVersion,
-        releaseInfo: latestRelease,
-        bundleInfo,
-        scope
-      };
-    } catch (error) {
-      this.logger.error(`Failed to check update for scope: ${scope}`, error as Error);
-      return null;
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async createBackup(scope: InstallationScope): Promise<string | null> {
-    try {
-      // Implementation for creating backup would go here
-      // For now, just log the intent
-      this.logger.debug(`Creating backup for scope: ${scope}`);
-      return null; // Return backup path when implemented
-    } catch (error) {
-      this.logger.warn('Failed to create backup', error as Error);
-      return null;
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async cleanupBackup(backupPath: string): Promise<void> {
-    try {
-      // Implementation for cleaning up backup would go here
-      this.logger.debug(`Cleaning up backup: ${backupPath}`);
-    } catch (error) {
-      this.logger.warn('Failed to cleanup backup', error as Error);
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async restoreBackup(backupPath: string, scope: InstallationScope): Promise<void> {
-    try {
-      // Implementation for restoring backup would go here
-      this.logger.info(`Restoring backup for scope: ${scope} from: ${backupPath}`);
-    } catch (error) {
-      this.logger.error('Failed to restore backup', error as Error);
-    }
   }
 }

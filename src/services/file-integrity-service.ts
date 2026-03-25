@@ -12,7 +12,50 @@ import {
  */
 export class FileIntegrityService {
   private static readonly CHUNK_SIZE = 64 * 1024; // 64KB chunks for large files
-  private static readonly CURRENT_VERSION = '1.1.0'; // Updated version for crypto change
+  private static readonly CURRENT_VERSION = '1.1.0';
+
+  /**
+   * Calculate both SHA256 and BLAKE2b hashes in a single file pass for efficiency
+   * Replaces xxhash with BLAKE2b for better portability while maintaining performance
+   */
+  /**
+   * Calculate both SHA256 and secondary hash in a single file pass for efficiency
+   * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
+   * @param filePath
+   */
+  private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
+    return new Promise((resolve, reject) => {
+      const sha256Hash = crypto.createHash('sha256');
+
+      // Try BLAKE2b first, fallback to SHA-512 if not supported
+      let secondaryHash: crypto.Hash;
+
+      try {
+        secondaryHash = crypto.createHash('blake2b512');
+      } catch {
+        // Fallback to SHA-512 if BLAKE2b is not supported in this environment
+        secondaryHash = crypto.createHash('sha512');
+        console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
+      }
+
+      const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
+
+      stream.on('data', (chunk: string | Buffer) => {
+        sha256Hash.update(chunk);
+        secondaryHash.update(chunk);
+      });
+
+      stream.on('end', () => {
+        const sha256 = sha256Hash.digest('hex');
+        const secondaryDigest = secondaryHash.digest('hex');
+        // For SHA-512, truncate to 64 chars (256-bit equivalent); for BLAKE2b512, truncate to 64 chars
+        const blake2b256 = secondaryDigest.substring(0, 64);
+        resolve({ sha256, blake2b256 });
+      });
+
+      stream.on('error', reject);
+    });
+  } // Updated version for crypto change
 
   /**
    * Calculate comprehensive integrity information for a single file
@@ -58,53 +101,6 @@ export class FileIntegrityService {
 
     await Promise.all(promises);
     return results.toSorted((a, b) => a.path.localeCompare(b.path));
-  }
-
-  /**
-   * Calculate both SHA256 and BLAKE2b hashes in a single file pass for efficiency
-   * Replaces xxhash with BLAKE2b for better portability while maintaining performance
-   */
-  /**
-   * Calculate both SHA256 and secondary hash in a single file pass for efficiency
-   * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
-   * @param filePath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
-    return new Promise((resolve, reject) => {
-      const sha256Hash = crypto.createHash('sha256');
-
-      // Try BLAKE2b first, fallback to SHA-512 if not supported
-      let secondaryHash: crypto.Hash;
-      let _useBlake2b = true;
-
-      try {
-        secondaryHash = crypto.createHash('blake2b512');
-      } catch {
-        // Fallback to SHA-512 if BLAKE2b is not supported in this environment
-        secondaryHash = crypto.createHash('sha512');
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-        _useBlake2b = false;
-        console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
-      }
-
-      const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
-
-      stream.on('data', (chunk: string | Buffer) => {
-        sha256Hash.update(chunk);
-        secondaryHash.update(chunk);
-      });
-
-      stream.on('end', () => {
-        const sha256 = sha256Hash.digest('hex');
-        const secondaryDigest = secondaryHash.digest('hex');
-        // For SHA-512, truncate to 64 chars (256-bit equivalent); for BLAKE2b512, truncate to 64 chars
-        const blake2b256 = secondaryDigest.substring(0, 64);
-        resolve({ sha256, blake2b256 });
-      });
-
-      stream.on('error', reject);
-    });
   }
 
   /**

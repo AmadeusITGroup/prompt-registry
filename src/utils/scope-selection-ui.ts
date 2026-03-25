@@ -127,10 +127,6 @@ export async function showScopeSelectionDialog(bundleName?: string): Promise<Sco
     quickPick.placeholder = 'Choose where to install the bundle';
     quickPick.ignoreFocusOut = true;
 
-    // Track if we're currently showing a warning to prevent re-triggering
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-    let isShowingWarning = false;
-
     // Handle selection changes - prevent disabled options from being accepted
     quickPick.onDidChangeSelection((selection) => {
       if (selection.length === 0) {
@@ -141,8 +137,6 @@ export async function showScopeSelectionDialog(bundleName?: string): Promise<Sco
 
       if (selected._disabled) {
         // Disabled option selected - show inline warning and clear selection
-        isShowingWarning = true;
-
         // Update the detail of the selected item to show warning
         const updatedItems = quickPick.items.map((item) => {
           if (item === selected) {
@@ -162,8 +156,6 @@ export async function showScopeSelectionDialog(bundleName?: string): Promise<Sco
 
         // Clear the selection to keep dialog open
         quickPick.selectedItems = [];
-
-        isShowingWarning = false;
       }
     });
 

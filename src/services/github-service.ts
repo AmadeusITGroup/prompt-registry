@@ -31,6 +31,21 @@ const execAsync = promisify(exec);
  */
 export class GitHubService {
   private static instance: GitHubService;
+
+  public static getInstance(): GitHubService {
+    if (!GitHubService.instance) {
+      GitHubService.instance = new GitHubService();
+    }
+    return GitHubService.instance;
+  }
+
+  /**
+   * Reset the singleton instance (for testing or config reload)
+   */
+  public static resetInstance(): void {
+    GitHubService.instance = undefined as any;
+  }
+
   private readonly logger: Logger;
   private readonly baseUrl: string;
   private readonly owner: string;
@@ -60,20 +75,6 @@ export class GitHubService {
     }
 
     this.logger.debug(`GitHubService initialized for ${this.owner}/${this.repo} (private: ${this.usePrivateRepo}, gh-cli: ${this.useGitHubCli}, default-version: ${this.defaultVersion})`);
-  }
-
-  public static getInstance(): GitHubService {
-    if (!GitHubService.instance) {
-      GitHubService.instance = new GitHubService();
-    }
-    return GitHubService.instance;
-  }
-
-  /**
-   * Reset the singleton instance (for testing or config reload)
-   */
-  public static resetInstance(): void {
-    GitHubService.instance = undefined as any;
   }
 
   /**
@@ -197,6 +198,54 @@ export class GitHubService {
 
       throw error;
     }
+  }
+
+  /**
+   * Get direct download URL for a GitHub release asset (for private repos)
+   * @param assetId
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
+  private async getAssetDirectDownloadUrl(assetId: number): Promise<string> {
+    return `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/assets/${assetId}`;
+  }
+
+  /**
+   * Get release by tag with automatic fallback between v-prefixed and non-prefixed versions
+   * @param version
+   */
+  private async getReleaseByTagWithFallback(version: string): Promise<GitHubRelease> {
+    // First, try the exact version as provided
+    try {
+      return await this.getReleaseByTag(version);
+    } catch {
+      this.logger.debug(`Failed to find release with tag "${version}", trying alternative format...`);
+    }
+
+    // If that fails, try the alternative format (add/remove "v" prefix)
+    const alternativeVersion = version.startsWith('v')
+      ? version.slice(1) // Remove "v" prefix
+      : `v${version}`; // Add "v" prefix
+
+    try {
+      this.logger.debug(`Attempting to find release with alternative tag: ${alternativeVersion}`);
+      return await this.getReleaseByTag(alternativeVersion);
+    } catch (error) {
+      // If both attempts fail, throw an error with helpful information
+      this.logger.error(`Failed to find release with both "${version}" and "${alternativeVersion}"`, error as Error);
+      throw new Error(`Release not found for version "${version}". Please check that this version exists in the repository.`);
+    }
+  }
+
+  private getPlatformPrefix(platform: Platform): string {
+    const prefixMap: Record<Platform, string> = {
+      [Platform.VSCODE]: 'vscode',
+      [Platform.WINDSURF]: 'windsurf',
+      [Platform.KIRO]: 'kiro',
+      [Platform.CURSOR]: 'cursor',
+      [Platform.UNKNOWN]: 'vscode' // fallback
+    };
+
+    return prefixMap[platform];
   }
 
   /**
@@ -500,15 +549,6 @@ export class GitHubService {
   }
 
   /**
-   * Get direct download URL for a GitHub release asset (for private repos)
-   * @param assetId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
-  private async getAssetDirectDownloadUrl(assetId: number): Promise<string> {
-    return `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/assets/${assetId}`;
-  }
-
-  /**
    * Check if GitHub API is accessible
    */
   public async checkConnectivity(): Promise<boolean> {
@@ -541,34 +581,6 @@ export class GitHubService {
   }
 
   /**
-   * Get release by tag with automatic fallback between v-prefixed and non-prefixed versions
-   * @param version
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getReleaseByTagWithFallback(version: string): Promise<GitHubRelease> {
-    // First, try the exact version as provided
-    try {
-      return await this.getReleaseByTag(version);
-    } catch {
-      this.logger.debug(`Failed to find release with tag "${version}", trying alternative format...`);
-    }
-
-    // If that fails, try the alternative format (add/remove "v" prefix)
-    const alternativeVersion = version.startsWith('v')
-      ? version.slice(1) // Remove "v" prefix
-      : `v${version}`; // Add "v" prefix
-
-    try {
-      this.logger.debug(`Attempting to find release with alternative tag: ${alternativeVersion}`);
-      return await this.getReleaseByTag(alternativeVersion);
-    } catch (error) {
-      // If both attempts fail, throw an error with helpful information
-      this.logger.error(`Failed to find release with both "${version}" and "${alternativeVersion}"`, error as Error);
-      throw new Error(`Release not found for version "${version}". Please check that this version exists in the repository.`);
-    }
-  }
-
-  /**
    * List available versions for selection
    * @param limit
    */
@@ -591,18 +603,5 @@ export class GitHubService {
       this.logger.error('Failed to fetch available versions', error as Error);
       throw new Error(`Failed to fetch available versions: ${error}`);
     }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getPlatformPrefix(platform: Platform): string {
-    const prefixMap: Record<Platform, string> = {
-      [Platform.VSCODE]: 'vscode',
-      [Platform.WINDSURF]: 'windsurf',
-      [Platform.KIRO]: 'kiro',
-      [Platform.CURSOR]: 'cursor',
-      [Platform.UNKNOWN]: 'vscode' // fallback
-    };
-
-    return prefixMap[platform];
   }
 }

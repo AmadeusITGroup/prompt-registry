@@ -58,6 +58,111 @@ const MAX_ID_LENGTH = 200;
  */
 export class ApmPackageMapper {
   /**
+   * Generate a sanitized bundle ID
+   * Security: Sanitizes input to prevent injection and limits length
+   * @param manifest
+   * @param context
+   */
+  private generateBundleId(manifest: ApmManifest, context: PackageContext): string {
+    // Sanitize name: remove special characters, convert to lowercase
+    const sanitizedName = manifest.name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except space and hyphen
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Collapse multiple hyphens
+      .trim();
+
+    const id = `${context.owner}-${sanitizedName}`;
+
+    // Limit length to prevent abuse
+    return id.substring(0, MAX_ID_LENGTH);
+  }
+
+  /**
+   * Build package reference string
+   * @param context
+   */
+  private buildPackageRef(context: PackageContext): string {
+    return context.path
+      ? `${context.owner}/${context.repo}/${context.path}`
+      : `${context.owner}/${context.repo}`;
+  }
+
+  /**
+   * Build tags array, always including 'apm' tag
+   * @param manifestTags
+   */
+  private buildTags(manifestTags?: string[]): string[] {
+    const tags = manifestTags ? [...manifestTags] : [];
+    if (!tags.includes('apm')) {
+      tags.push('apm');
+    }
+    return tags;
+  }
+
+  /**
+   * Infer environments from tags
+   * @param tags
+   */
+  private inferEnvironments(tags?: string[]): string[] {
+    if (!tags || tags.length === 0) {
+      return ['general'];
+    }
+
+    const environments = new Set<string>();
+
+    for (const tag of tags) {
+      const env = ENV_TAG_MAP[tag.toLowerCase()];
+      if (env) {
+        environments.add(env);
+      }
+    }
+
+    return environments.size > 0 ? Array.from(environments) : ['general'];
+  }
+
+  /**
+   * Map APM dependencies to Bundle dependencies
+   * @param apmDeps
+   */
+  private mapDependencies(apmDeps?: string[]): {
+    bundleId: string;
+    versionRange: string;
+    optional: boolean;
+  }[] {
+    if (!apmDeps || apmDeps.length === 0) {
+      return [];
+    }
+
+    return apmDeps.map((dep) => ({
+      bundleId: dep,
+      versionRange: '*',
+      optional: false
+    }));
+  }
+
+  /**
+   * Format dependency count as human-readable string
+   * @param deps
+   */
+  private formatDependencyCount(deps?: string[]): string {
+    const count = deps?.length || 0;
+    if (count === 0) {
+      return 'No dependencies';
+    }
+    return `${count} dependenc${count === 1 ? 'y' : 'ies'}`;
+  }
+
+  /**
+   * Build manifest URL for GitHub raw content
+   * @param context
+   */
+  private buildManifestUrl(context: PackageContext): string {
+    const pathPrefix = context.path ? `${context.path}/` : '';
+    return `https://raw.githubusercontent.com/${context.owner}/${context.repo}/main/${pathPrefix}apm.yml`;
+  }
+
+  /**
    * Convert APM manifest to Bundle
    * @param manifest APM manifest object
    * @param context Package context (source, owner, repo, path)
@@ -85,117 +190,5 @@ export class ApmPackageMapper {
       repository: `https://github.com/${context.owner}/${context.repo}`,
       apmPackageRef: packageRef
     };
-  }
-
-  /**
-   * Generate a sanitized bundle ID
-   * Security: Sanitizes input to prevent injection and limits length
-   * @param manifest
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateBundleId(manifest: ApmManifest, context: PackageContext): string {
-    // Sanitize name: remove special characters, convert to lowercase
-    const sanitizedName = manifest.name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except space and hyphen
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Collapse multiple hyphens
-      .trim();
-
-    const id = `${context.owner}-${sanitizedName}`;
-
-    // Limit length to prevent abuse
-    return id.substring(0, MAX_ID_LENGTH);
-  }
-
-  /**
-   * Build package reference string
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private buildPackageRef(context: PackageContext): string {
-    return context.path
-      ? `${context.owner}/${context.repo}/${context.path}`
-      : `${context.owner}/${context.repo}`;
-  }
-
-  /**
-   * Build tags array, always including 'apm' tag
-   * @param manifestTags
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private buildTags(manifestTags?: string[]): string[] {
-    const tags = manifestTags ? [...manifestTags] : [];
-    if (!tags.includes('apm')) {
-      tags.push('apm');
-    }
-    return tags;
-  }
-
-  /**
-   * Infer environments from tags
-   * @param tags
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private inferEnvironments(tags?: string[]): string[] {
-    if (!tags || tags.length === 0) {
-      return ['general'];
-    }
-
-    const environments = new Set<string>();
-
-    for (const tag of tags) {
-      const env = ENV_TAG_MAP[tag.toLowerCase()];
-      if (env) {
-        environments.add(env);
-      }
-    }
-
-    return environments.size > 0 ? Array.from(environments) : ['general'];
-  }
-
-  /**
-   * Map APM dependencies to Bundle dependencies
-   * @param apmDeps
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private mapDependencies(apmDeps?: string[]): {
-    bundleId: string;
-    versionRange: string;
-    optional: boolean;
-  }[] {
-    if (!apmDeps || apmDeps.length === 0) {
-      return [];
-    }
-
-    return apmDeps.map((dep) => ({
-      bundleId: dep,
-      versionRange: '*',
-      optional: false
-    }));
-  }
-
-  /**
-   * Format dependency count as human-readable string
-   * @param deps
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private formatDependencyCount(deps?: string[]): string {
-    const count = deps?.length || 0;
-    if (count === 0) {
-      return 'No dependencies';
-    }
-    return `${count} dependenc${count === 1 ? 'y' : 'ies'}`;
-  }
-
-  /**
-   * Build manifest URL for GitHub raw content
-   * @param context
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private buildManifestUrl(context: PackageContext): string {
-    const pathPrefix = context.path ? `${context.path}/` : '';
-    return `https://raw.githubusercontent.com/${context.owner}/${context.repo}/main/${pathPrefix}apm.yml`;
   }
 }

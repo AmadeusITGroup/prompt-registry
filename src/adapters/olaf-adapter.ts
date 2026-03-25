@@ -103,44 +103,10 @@ export class OlafAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Override fetchBundles to implement OLAF-specific bundle discovery
-   * Scans bundles/ directory for bundle definitions and converts them to Bundle objects
-   */
-  public async fetchBundles(): Promise<Bundle[]> {
-    this.logger.info(`[OlafAdapter] Fetching bundles from OLAF repository: ${this.source.url}`);
-
-    try {
-      // Discover bundle definitions in the repository
-      const bundleDefinitions = await this.scanBundleDefinitions();
-      this.logger.info(`[OlafAdapter] Found ${bundleDefinitions.length} bundle definitions in repository`);
-
-      // Convert bundle definitions to Bundle objects
-      const bundles: Bundle[] = [];
-      for (const bundleInfo of bundleDefinitions) {
-        try {
-          const bundle = this.createBundleFromDefinition(bundleInfo);
-          bundles.push(bundle);
-          this.logger.debug(`[OlafAdapter] Created bundle: ${bundle.id} (${bundleInfo.validatedSkills.length} skills)`);
-        } catch (error) {
-          this.logger.warn(`[OlafAdapter] Failed to create bundle from definition ${bundleInfo.fileName}: ${error}`);
-          // Continue processing other bundles
-        }
-      }
-
-      this.logger.info(`[OlafAdapter] Successfully created ${bundles.length} bundles from definitions`);
-      return bundles;
-    } catch (error) {
-      this.logger.error(`[OlafAdapter] Failed to fetch bundles: ${error}`);
-      throw new Error(`Failed to fetch OLAF bundles: ${error}`);
-    }
-  }
-
-  /**
    * Create Bundle object from BundleDefinitionInfo
    * Maps bundle definition metadata to Bundle properties
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleFromDefinition(bundleInfo: BundleDefinitionInfo): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
     const metadata = bundleInfo.definition.metadata;
@@ -183,7 +149,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Estimate bundle size based on total skill files
    * @param skills
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private estimateBundleSize(skills: SkillInfo[]): string {
     // Sum up estimated sizes for all skills
     let totalFiles = 0;
@@ -204,102 +169,9 @@ export class OlafAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Validate OLAF repository structure
-   * Checks for bundles/ and skills/ directories at root level and validates accessibility
-   */
-  public async validate(): Promise<ValidationResult> {
-    this.logger.info(`[OlafAdapter] Validating OLAF repository: ${this.source.url}`);
-
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    try {
-      const { owner, repo } = this.parseGitHubUrl();
-
-      // First validate basic GitHub repository access
-      const baseValidation = await this.githubAdapter.validate();
-      if (!baseValidation.valid) {
-        return baseValidation;
-      }
-
-      const apiBase = 'https://api.github.com';
-
-      // Check for bundles/ directory at root level
-      let hasBundlesDir = false;
-      try {
-        const bundlesUrl = `${apiBase}/repos/${owner}/${repo}/contents/bundles`;
-        await this.makeGitHubRequest(bundlesUrl);
-        hasBundlesDir = true;
-        this.logger.debug(`[OlafAdapter] Found bundles/ directory`);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('404')) {
-          errors.push(`Missing required 'bundles' directory at repository root`);
-        } else {
-          errors.push(`Failed to access bundles directory: ${error}`);
-        }
-      }
-
-      // Check for skills/ directory at root level
-      let hasSkillsDir = false;
-      try {
-        const skillsUrl = `${apiBase}/repos/${owner}/${repo}/contents/skills`;
-        await this.makeGitHubRequest(skillsUrl);
-        hasSkillsDir = true;
-        this.logger.debug(`[OlafAdapter] Found skills/ directory`);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('404')) {
-          errors.push(`Missing required 'skills' directory at repository root`);
-        } else {
-          errors.push(`Failed to access skills directory: ${error}`);
-        }
-      }
-
-      // If either directory is missing, return validation failure
-      if (!hasBundlesDir || !hasSkillsDir) {
-        return {
-          valid: false,
-          errors,
-          warnings,
-          bundlesFound: 0
-        };
-      }
-
-      // Scan bundle definitions and report bundle count
-      let bundleCount = 0;
-      try {
-        const bundleDefinitions = await this.scanBundleDefinitions();
-        bundleCount = bundleDefinitions.length;
-
-        if (bundleCount === 0) {
-          warnings.push('No valid bundle definitions found in bundles/ directory');
-        } else {
-          this.logger.info(`[OlafAdapter] Found ${bundleCount} valid bundle definition(s)`);
-        }
-      } catch (scanError) {
-        warnings.push(`Failed to scan bundle definitions: ${scanError}`);
-      }
-
-      return {
-        valid: true,
-        errors: [],
-        warnings,
-        bundlesFound: bundleCount
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`OLAF repository validation failed: ${error}`],
-        warnings: [],
-        bundlesFound: 0
-      };
-    }
-  }
-
-  /**
    * Scan bundles/ directory for JSON bundle definition files
    * Returns list of bundle definition file paths for further processing
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanBundleDefinitions(): Promise<BundleDefinitionInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -373,7 +245,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Extracts metadata fields and skill references
    * @param jsonFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseBundleDefinition(jsonFile: GitHubDirectoryContent): Promise<BundleDefinition> {
     this.logger.debug(`[OlafAdapter] Parsing bundle definition: ${jsonFile.name}`);
 
@@ -439,7 +310,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Returns validated SkillInfo[] for valid skills, logs warnings for invalid ones
    * @param bundleDefinition
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async validateSkillReferences(bundleDefinition: BundleDefinition): Promise<SkillInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -529,7 +399,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Parse skill manifest from GitHub and validate entry_points field
    * @param manifestFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseLocalSkillManifest(manifestFile: GitHubDirectoryContent): Promise<LocalOlafSkillManifest> {
     if (!manifestFile.download_url) {
       throw new Error('No download URL for manifest file');
@@ -616,7 +485,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchSingleSkill(skillName: string, skillPath: string, owner: string, repo: string): Promise<SkillInfo | null> {
     this.logger.debug(`[OlafAdapter] Fetching single skill: ${skillName}`);
 
@@ -641,7 +509,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Scan .olaf/core/skills directory for skills
    * Discovers skill folders and parses their manifests
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanSkillsDirectory(): Promise<SkillInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -687,7 +554,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async processSkillDirectory(skillDir: GitHubDirectoryContent, owner: string, repo: string): Promise<SkillInfo | null> {
     const skillPath = skillDir.path;
     const skillName = skillDir.name;
@@ -740,7 +606,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param manifestUrl
    * @param skillFolderName
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseSkillManifest(manifestUrl: string, skillFolderName?: string): Promise<SkillManifest> {
     this.logger.debug(`[OlafAdapter] Parsing skill manifest from: ${manifestUrl}`);
 
@@ -795,7 +660,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Handles authentication and error cases
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadManifestContent(url: string): Promise<Buffer> {
     const https = await import('node:https');
 
@@ -836,7 +700,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Maps skill manifest properties to bundle properties with defaults
    * @param skill
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleFromSkill(skill: SkillInfo): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
     const manifest = skill.manifest;
@@ -883,7 +746,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Ensures 'olaf' and 'skill' tags are always present
    * @param manifestTags
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private normalizeTags(manifestTags?: string[]): string[] {
     const baseTags = ['olaf', 'skill'];
 
@@ -901,7 +763,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Converts string array to BundleDependency array
    * @param manifestDependencies
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private normalizeDependencies(manifestDependencies?: string[]): BundleDependency[] {
     if (!manifestDependencies || !Array.isArray(manifestDependencies)) {
       return [];
@@ -921,7 +782,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Provides a rough size estimate since we don't have actual file sizes
    * @param files
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private estimateSkillSize(files: string[]): string {
     // Rough estimation: assume average file size and add manifest overhead
     const estimatedBytes = files.length * 2048; // 2KB average per file
@@ -940,10 +800,8 @@ export class OlafAdapter extends RepositoryAdapter {
    * Maps skill files to bundle structure with proper paths
    * @param skill
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateDeploymentManifest(skill: SkillInfo): any {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
-    const { owner, repo } = this.parseGitHubUrl();
+    const { owner } = this.parseGitHubUrl();
     const manifest = skill.manifest;
 
     // Create deployment manifest structure with required root-level fields
@@ -1000,53 +858,12 @@ export class OlafAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Download a bundle from the OLAF repository
-   * Downloads all skills defined in the bundle from bundles/ and skills/ directories
-   * Creates ZIP from bundle definition using GitHub API
-   * Ensures OLAF runtime is installed before bundle installation
-   * @param bundle
-   */
-  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    const { owner, repo } = this.parseGitHubUrl();
-
-    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
-    const bundleFileName = bundle.id.replace(`olaf-${owner}-${repo}-`, '');
-
-    this.logger.info(`[OlafAdapter] Downloading bundle: ${bundleFileName}`);
-
-    try {
-      // Ensure OLAF runtime is installed before bundle installation
-      await this.ensureRuntimeInstalled();
-
-      // Find the bundle definition info for this bundle
-      const bundleDefinitions = await this.scanBundleDefinitions();
-      const bundleInfo = bundleDefinitions.find((info) => info.id === bundle.id);
-
-      if (!bundleInfo) {
-        throw new Error(`Bundle definition not found: ${bundle.id}`);
-      }
-
-      this.logger.info(`[OlafAdapter] Found bundle definition: ${bundleInfo.fileName} with ${bundleInfo.validatedSkills.length} skill(s)`);
-
-      // Package bundle as ZIP with all skills
-      const zipBuffer = await this.packageBundleAsZip(bundleInfo);
-
-      this.logger.info(`[OlafAdapter] Successfully packaged bundle ${bundleFileName} (${zipBuffer.length} bytes)`);
-      return zipBuffer;
-    } catch (error) {
-      this.logger.error(`[OlafAdapter] Failed to download bundle ${bundleFileName}: ${error}`);
-      throw new Error(`Failed to download OLAF bundle ${bundleFileName}: ${error}`);
-    }
-  }
-
-  /**
    * Package bundle as ZIP archive from bundle definition
    * Downloads all skill files while preserving folder structure
    * Generates deployment manifest with all skills included
    * Returns Buffer compatible with BundleInstaller.installFromBuffer()
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
     // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
@@ -1110,10 +927,8 @@ export class OlafAdapter extends RepositoryAdapter {
    * Adds required root-level fields (id, version, name) for BundleInstaller validation
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateBundleDeploymentManifest(bundleInfo: BundleDefinitionInfo): any {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
-    const { owner, repo } = this.parseGitHubUrl();
+    const { owner } = this.parseGitHubUrl();
     const { definition, validatedSkills } = bundleInfo;
 
     // Create deployment manifest structure with required root-level fields
@@ -1178,7 +993,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Ensure OLAF runtime is installed and create workspace links
    * Runtime installation is REQUIRED for OLAF skills to function
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureRuntimeInstalled(): Promise<void> {
     try {
       this.logger.info('[OlafAdapter] Ensuring OLAF runtime is installed (required for OLAF skills)');
@@ -1233,7 +1047,6 @@ export class OlafAdapter extends RepositoryAdapter {
   /**
    * Get current workspace path from VSCode API
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getCurrentWorkspacePath(): string | undefined {
     try {
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -1252,7 +1065,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Downloads all files within the skill folder and creates in-memory ZIP
    * @param skill
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageSkillAsBundle(skill: SkillInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
     // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
@@ -1313,7 +1125,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param dirPath
    * @param zipPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addDirectoryToZip(zip: any, owner: string, repo: string, dirPath: string, zipPath: string): Promise<void> {
     try {
       const apiBase = 'https://api.github.com';
@@ -1345,7 +1156,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Download file content from GitHub
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadFileContent(url: string): Promise<Buffer> {
     const https = await import('node:https');
 
@@ -1381,100 +1191,11 @@ export class OlafAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch metadata about the OLAF repository
-   * Delegates to GitHub adapter and adds OLAF-specific information
-   */
-  public async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const githubMetadata = await this.githubAdapter.fetchMetadata();
-      const bundleDefinitions = await this.scanBundleDefinitions();
-
-      // Count total skills across all bundles
-      let totalSkills = 0;
-      for (const bundleInfo of bundleDefinitions) {
-        totalSkills += bundleInfo.validatedSkills.length;
-      }
-
-      return {
-        ...githubMetadata,
-        name: `${githubMetadata.name} (OLAF Bundles)`,
-        description: `OLAF repository with ${bundleDefinitions.length} bundle(s) containing ${totalSkills} skill(s)`,
-        bundleCount: bundleDefinitions.length
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch OLAF metadata: ${error}`);
-    }
-  }
-
-  /**
-   * Get manifest URL for a bundle
-   * Points to the bundle definition JSON file in bundles/ directory
-   * @param bundleId
-   * @param _version
-   */
-  public getManifestUrl(bundleId: string, _version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
-    const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
-    return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
-  }
-
-  /**
-   * Get download URL for a bundle
-   * Points to the bundle definition file which contains skill references
-   * @param bundleId
-   * @param _version
-   */
-  public getDownloadUrl(bundleId: string, _version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
-    const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
-    return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
-  }
-
-  /**
-   * Post-installation hook for OLAF bundles
-   * Registers all skills in the bundle in the competency index after successful installation
-   * @param bundleId
-   * @param installPath
-   */
-  public async postInstall(bundleId: string, installPath: string): Promise<void> {
-    this.logger.info(`[OlafAdapter] Running post-installation for bundle: ${bundleId}`);
-
-    try {
-      await this.registerBundleInCompetencyIndex(bundleId, installPath);
-      this.logger.info(`[OlafAdapter] Post-installation completed successfully`);
-    } catch (error) {
-      this.logger.error(`[OlafAdapter] Post-installation failed: ${error}`);
-      // Don't throw - post-installation failures shouldn't break the installation
-    }
-  }
-
-  /**
-   * Post-uninstallation hook for OLAF bundles
-   * Removes all skills in the bundle from the competency index after successful uninstallation
-   * @param bundleId
-   * @param installPath
-   */
-  public async postUninstall(bundleId: string, installPath: string): Promise<void> {
-    this.logger.info(`[OlafAdapter] Running post-uninstallation for bundle: ${bundleId}`);
-
-    try {
-      await this.unregisterBundleFromCompetencyIndex(bundleId, installPath);
-      this.logger.info(`[OlafAdapter] Post-uninstallation completed successfully`);
-    } catch (error) {
-      this.logger.error(`[OlafAdapter] Post-uninstallation failed: ${error}`);
-      // Don't throw - post-uninstallation failures shouldn't break the uninstallation
-    }
-  }
-
-  /**
    * Register OLAF bundle skills in competency index
    * Updates .olaf/olaf-core/reference/competency-index.json with all skill information
    * @param bundleId
    * @param installPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async registerBundleInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Registering bundle skills in competency index: ${bundleId}`);
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
@@ -1584,7 +1305,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Get source name for competency index paths
    * Uses source.name with fallback to source.id
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSourceName(): string {
     return this.source.name || this.source.id;
   }
@@ -1595,7 +1315,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param sourceName
    * @param competencyIndex
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async registerSkillEntryPoints(skill: SkillInfo, sourceName: string, competencyIndex: any[]): Promise<void> {
     try {
       // Extract entry points from skill manifest
@@ -1647,7 +1367,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async unregisterBundleFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Unregistering bundle from competency index: ${bundleId}`);
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
@@ -1771,7 +1490,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * Uses the same authentication logic as GitHubAdapter
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async makeGitHubRequest(url: string): Promise<any> {
     const https = await import('node:https');
     // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
@@ -1855,5 +1573,258 @@ export class OlafAdapter extends RepositoryAdapter {
         reject(new Error(`Request failed: ${error.message}`));
       });
     });
+  }
+
+  /**
+   * Override fetchBundles to implement OLAF-specific bundle discovery
+   * Scans bundles/ directory for bundle definitions and converts them to Bundle objects
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.info(`[OlafAdapter] Fetching bundles from OLAF repository: ${this.source.url}`);
+
+    try {
+      // Discover bundle definitions in the repository
+      const bundleDefinitions = await this.scanBundleDefinitions();
+      this.logger.info(`[OlafAdapter] Found ${bundleDefinitions.length} bundle definitions in repository`);
+
+      // Convert bundle definitions to Bundle objects
+      const bundles: Bundle[] = [];
+      for (const bundleInfo of bundleDefinitions) {
+        try {
+          const bundle = this.createBundleFromDefinition(bundleInfo);
+          bundles.push(bundle);
+          this.logger.debug(`[OlafAdapter] Created bundle: ${bundle.id} (${bundleInfo.validatedSkills.length} skills)`);
+        } catch (error) {
+          this.logger.warn(`[OlafAdapter] Failed to create bundle from definition ${bundleInfo.fileName}: ${error}`);
+          // Continue processing other bundles
+        }
+      }
+
+      this.logger.info(`[OlafAdapter] Successfully created ${bundles.length} bundles from definitions`);
+      return bundles;
+    } catch (error) {
+      this.logger.error(`[OlafAdapter] Failed to fetch bundles: ${error}`);
+      throw new Error(`Failed to fetch OLAF bundles: ${error}`);
+    }
+  }
+
+  /**
+   * Validate OLAF repository structure
+   * Checks for bundles/ and skills/ directories at root level and validates accessibility
+   */
+  public async validate(): Promise<ValidationResult> {
+    this.logger.info(`[OlafAdapter] Validating OLAF repository: ${this.source.url}`);
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      const { owner, repo } = this.parseGitHubUrl();
+
+      // First validate basic GitHub repository access
+      const baseValidation = await this.githubAdapter.validate();
+      if (!baseValidation.valid) {
+        return baseValidation;
+      }
+
+      const apiBase = 'https://api.github.com';
+
+      // Check for bundles/ directory at root level
+      let hasBundlesDir = false;
+      try {
+        const bundlesUrl = `${apiBase}/repos/${owner}/${repo}/contents/bundles`;
+        await this.makeGitHubRequest(bundlesUrl);
+        hasBundlesDir = true;
+        this.logger.debug(`[OlafAdapter] Found bundles/ directory`);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('404')) {
+          errors.push(`Missing required 'bundles' directory at repository root`);
+        } else {
+          errors.push(`Failed to access bundles directory: ${error}`);
+        }
+      }
+
+      // Check for skills/ directory at root level
+      let hasSkillsDir = false;
+      try {
+        const skillsUrl = `${apiBase}/repos/${owner}/${repo}/contents/skills`;
+        await this.makeGitHubRequest(skillsUrl);
+        hasSkillsDir = true;
+        this.logger.debug(`[OlafAdapter] Found skills/ directory`);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('404')) {
+          errors.push(`Missing required 'skills' directory at repository root`);
+        } else {
+          errors.push(`Failed to access skills directory: ${error}`);
+        }
+      }
+
+      // If either directory is missing, return validation failure
+      if (!hasBundlesDir || !hasSkillsDir) {
+        return {
+          valid: false,
+          errors,
+          warnings,
+          bundlesFound: 0
+        };
+      }
+
+      // Scan bundle definitions and report bundle count
+      let bundleCount = 0;
+      try {
+        const bundleDefinitions = await this.scanBundleDefinitions();
+        bundleCount = bundleDefinitions.length;
+
+        if (bundleCount === 0) {
+          warnings.push('No valid bundle definitions found in bundles/ directory');
+        } else {
+          this.logger.info(`[OlafAdapter] Found ${bundleCount} valid bundle definition(s)`);
+        }
+      } catch (scanError) {
+        warnings.push(`Failed to scan bundle definitions: ${scanError}`);
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        warnings,
+        bundlesFound: bundleCount
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`OLAF repository validation failed: ${error}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
+  }
+
+  /**
+   * Download a bundle from the OLAF repository
+   * Downloads all skills defined in the bundle from bundles/ and skills/ directories
+   * Creates ZIP from bundle definition using GitHub API
+   * Ensures OLAF runtime is installed before bundle installation
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    const { owner, repo } = this.parseGitHubUrl();
+
+    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+    const bundleFileName = bundle.id.replace(`olaf-${owner}-${repo}-`, '');
+
+    this.logger.info(`[OlafAdapter] Downloading bundle: ${bundleFileName}`);
+
+    try {
+      // Ensure OLAF runtime is installed before bundle installation
+      await this.ensureRuntimeInstalled();
+
+      // Find the bundle definition info for this bundle
+      const bundleDefinitions = await this.scanBundleDefinitions();
+      const bundleInfo = bundleDefinitions.find((info) => info.id === bundle.id);
+
+      if (!bundleInfo) {
+        throw new Error(`Bundle definition not found: ${bundle.id}`);
+      }
+
+      this.logger.info(`[OlafAdapter] Found bundle definition: ${bundleInfo.fileName} with ${bundleInfo.validatedSkills.length} skill(s)`);
+
+      // Package bundle as ZIP with all skills
+      const zipBuffer = await this.packageBundleAsZip(bundleInfo);
+
+      this.logger.info(`[OlafAdapter] Successfully packaged bundle ${bundleFileName} (${zipBuffer.length} bytes)`);
+      return zipBuffer;
+    } catch (error) {
+      this.logger.error(`[OlafAdapter] Failed to download bundle ${bundleFileName}: ${error}`);
+      throw new Error(`Failed to download OLAF bundle ${bundleFileName}: ${error}`);
+    }
+  }
+
+  /**
+   * Fetch metadata about the OLAF repository
+   * Delegates to GitHub adapter and adds OLAF-specific information
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const githubMetadata = await this.githubAdapter.fetchMetadata();
+      const bundleDefinitions = await this.scanBundleDefinitions();
+
+      // Count total skills across all bundles
+      let totalSkills = 0;
+      for (const bundleInfo of bundleDefinitions) {
+        totalSkills += bundleInfo.validatedSkills.length;
+      }
+
+      return {
+        ...githubMetadata,
+        name: `${githubMetadata.name} (OLAF Bundles)`,
+        description: `OLAF repository with ${bundleDefinitions.length} bundle(s) containing ${totalSkills} skill(s)`,
+        bundleCount: bundleDefinitions.length
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch OLAF metadata: ${error}`);
+    }
+  }
+
+  /**
+   * Get manifest URL for a bundle
+   * Points to the bundle definition JSON file in bundles/ directory
+   * @param bundleId
+   * @param _version
+   */
+  public getManifestUrl(bundleId: string, _version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+    const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
+    return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
+  }
+
+  /**
+   * Get download URL for a bundle
+   * Points to the bundle definition file which contains skill references
+   * @param bundleId
+   * @param _version
+   */
+  public getDownloadUrl(bundleId: string, _version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+    const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
+    return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
+  }
+
+  /**
+   * Post-installation hook for OLAF bundles
+   * Registers all skills in the bundle in the competency index after successful installation
+   * @param bundleId
+   * @param installPath
+   */
+  public async postInstall(bundleId: string, installPath: string): Promise<void> {
+    this.logger.info(`[OlafAdapter] Running post-installation for bundle: ${bundleId}`);
+
+    try {
+      await this.registerBundleInCompetencyIndex(bundleId, installPath);
+      this.logger.info(`[OlafAdapter] Post-installation completed successfully`);
+    } catch (error) {
+      this.logger.error(`[OlafAdapter] Post-installation failed: ${error}`);
+      // Don't throw - post-installation failures shouldn't break the installation
+    }
+  }
+
+  /**
+   * Post-uninstallation hook for OLAF bundles
+   * Removes all skills in the bundle from the competency index after successful uninstallation
+   * @param bundleId
+   * @param installPath
+   */
+  public async postUninstall(bundleId: string, installPath: string): Promise<void> {
+    this.logger.info(`[OlafAdapter] Running post-uninstallation for bundle: ${bundleId}`);
+
+    try {
+      await this.unregisterBundleFromCompetencyIndex(bundleId, installPath);
+      this.logger.info(`[OlafAdapter] Post-uninstallation completed successfully`);
+    } catch (error) {
+      this.logger.error(`[OlafAdapter] Post-uninstallation failed: ${error}`);
+      // Don't throw - post-uninstallation failures shouldn't break the uninstallation
+    }
   }
 }

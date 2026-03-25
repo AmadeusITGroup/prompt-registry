@@ -84,6 +84,183 @@ export class CollectionValidator {
   private readonly ID_PATTERN = /^[a-z0-9-]+$/;
 
   /**
+   * Validate required fields
+   * @param collection
+   * @param fileName
+   * @param errors
+   */
+  private validateRequiredFields(collection: Collection, fileName: string, errors: ValidationError[]): void {
+    if (!collection.id) {
+      errors.push({
+        file: fileName,
+        message: 'Missing required field: id'
+      });
+    }
+
+    if (!collection.name) {
+      errors.push({
+        file: fileName,
+        message: 'Missing required field: name'
+      });
+    }
+
+    if (!collection.description) {
+      errors.push({
+        file: fileName,
+        message: 'Missing required field: description'
+      });
+    }
+
+    if (!collection.items || !Array.isArray(collection.items)) {
+      errors.push({
+        file: fileName,
+        message: 'Missing or invalid field: items (must be an array)'
+      });
+    }
+  }
+
+  /**
+   * Validate ID format
+   * @param id
+   * @param fileName
+   * @param errors
+   */
+  private validateId(id: string, fileName: string, errors: ValidationError[]): void {
+    if (!this.ID_PATTERN.test(id)) {
+      errors.push({
+        file: fileName,
+        message: 'Invalid id format (must be lowercase letters, numbers, and hyphens only)'
+      });
+    }
+  }
+
+  /**
+   * Validate description length
+   * @param description
+   * @param fileName
+   * @param warnings
+   */
+  private validateDescription(description: string, fileName: string, warnings: ValidationWarning[]): void {
+    if (description.length > this.MAX_DESCRIPTION_LENGTH) {
+      warnings.push({
+        file: fileName,
+        message: `Description is longer than recommended (${this.MAX_DESCRIPTION_LENGTH} characters)`
+      });
+    }
+  }
+
+  /**
+   * Validate items array
+   * @param items
+   * @param fileName
+   * @param projectRoot
+   * @param errors
+   * @param warnings
+   */
+  private validateItems(
+    items: CollectionItem[],
+    fileName: string,
+    projectRoot: string,
+    errors: ValidationError[],
+    warnings: ValidationWarning[]
+  ): void {
+    if (items.length === 0) {
+      warnings.push({
+        file: fileName,
+        message: 'Collection has no items'
+      });
+    }
+
+    if (items.length > this.MAX_ITEMS) {
+      warnings.push({
+        file: fileName,
+        message: `Collection has more than ${this.MAX_ITEMS} items (recommended max)`
+      });
+    }
+
+    items.forEach((item: any, index: number) => {
+      const itemNumber = index + 1;
+
+      // Validate path field
+      if (!item.path) {
+        errors.push({
+          file: fileName,
+          message: `Item ${itemNumber}: Missing 'path' field`
+        });
+      }
+
+      // Validate kind field
+      if (!item.kind) {
+        errors.push({
+          file: fileName,
+          message: `Item ${itemNumber}: Missing 'kind' field`
+        });
+      } else if (!this.VALID_KINDS.includes(item.kind)) {
+        errors.push({
+          file: fileName,
+          message: `Item ${itemNumber}: Invalid 'kind' value (must be one of: ${this.VALID_KINDS.join(', ')})`
+        });
+      }
+
+      // Validate file exists
+      if (item.path) {
+        const itemPath = path.join(projectRoot, item.path);
+        if (!fs.existsSync(itemPath)) {
+          errors.push({
+            file: fileName,
+            message: `Item ${itemNumber}: Referenced file does not exist: ${item.path}`
+          });
+        }
+      }
+    });
+  }
+
+  /**
+   * Validate tags array
+   * @param tags
+   * @param fileName
+   * @param errors
+   * @param warnings
+   */
+  private validateTags(
+    tags: any,
+    fileName: string,
+    errors: ValidationError[],
+    warnings: ValidationWarning[]
+  ): void {
+    if (!Array.isArray(tags)) {
+      errors.push({
+        file: fileName,
+        message: 'Tags must be an array'
+      });
+      return;
+    }
+
+    if (tags.length > this.MAX_TAGS) {
+      warnings.push({
+        file: fileName,
+        message: `More than ${this.MAX_TAGS} tags (recommended max)`
+      });
+    }
+
+    tags.forEach((tag: any, index: number) => {
+      const tagNumber = index + 1;
+
+      if (typeof tag !== 'string') {
+        errors.push({
+          file: fileName,
+          message: `Tag ${tagNumber}: Must be a string`
+        });
+      } else if (tag.length > this.MAX_TAG_LENGTH) {
+        warnings.push({
+          file: fileName,
+          message: `Tag ${tagNumber}: Longer than ${this.MAX_TAG_LENGTH} characters`
+        });
+      }
+    });
+  }
+
+  /**
    * Validate a single collection file
    * @param collectionPath - Absolute path to collection file
    * @param projectRoot - Project root directory for resolving item paths
@@ -229,187 +406,5 @@ export class CollectionValidator {
         warnings: []
       };
     }
-  }
-
-  /**
-   * Validate required fields
-   * @param collection
-   * @param fileName
-   * @param errors
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateRequiredFields(collection: Collection, fileName: string, errors: ValidationError[]): void {
-    if (!collection.id) {
-      errors.push({
-        file: fileName,
-        message: 'Missing required field: id'
-      });
-    }
-
-    if (!collection.name) {
-      errors.push({
-        file: fileName,
-        message: 'Missing required field: name'
-      });
-    }
-
-    if (!collection.description) {
-      errors.push({
-        file: fileName,
-        message: 'Missing required field: description'
-      });
-    }
-
-    if (!collection.items || !Array.isArray(collection.items)) {
-      errors.push({
-        file: fileName,
-        message: 'Missing or invalid field: items (must be an array)'
-      });
-    }
-  }
-
-  /**
-   * Validate ID format
-   * @param id
-   * @param fileName
-   * @param errors
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateId(id: string, fileName: string, errors: ValidationError[]): void {
-    if (!this.ID_PATTERN.test(id)) {
-      errors.push({
-        file: fileName,
-        message: 'Invalid id format (must be lowercase letters, numbers, and hyphens only)'
-      });
-    }
-  }
-
-  /**
-   * Validate description length
-   * @param description
-   * @param fileName
-   * @param warnings
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateDescription(description: string, fileName: string, warnings: ValidationWarning[]): void {
-    if (description.length > this.MAX_DESCRIPTION_LENGTH) {
-      warnings.push({
-        file: fileName,
-        message: `Description is longer than recommended (${this.MAX_DESCRIPTION_LENGTH} characters)`
-      });
-    }
-  }
-
-  /**
-   * Validate items array
-   * @param items
-   * @param fileName
-   * @param projectRoot
-   * @param errors
-   * @param warnings
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateItems(
-    items: CollectionItem[],
-    fileName: string,
-    projectRoot: string,
-    errors: ValidationError[],
-    warnings: ValidationWarning[]
-  ): void {
-    if (items.length === 0) {
-      warnings.push({
-        file: fileName,
-        message: 'Collection has no items'
-      });
-    }
-
-    if (items.length > this.MAX_ITEMS) {
-      warnings.push({
-        file: fileName,
-        message: `Collection has more than ${this.MAX_ITEMS} items (recommended max)`
-      });
-    }
-
-    items.forEach((item: any, index: number) => {
-      const itemNumber = index + 1;
-
-      // Validate path field
-      if (!item.path) {
-        errors.push({
-          file: fileName,
-          message: `Item ${itemNumber}: Missing 'path' field`
-        });
-      }
-
-      // Validate kind field
-      if (!item.kind) {
-        errors.push({
-          file: fileName,
-          message: `Item ${itemNumber}: Missing 'kind' field`
-        });
-      } else if (!this.VALID_KINDS.includes(item.kind)) {
-        errors.push({
-          file: fileName,
-          message: `Item ${itemNumber}: Invalid 'kind' value (must be one of: ${this.VALID_KINDS.join(', ')})`
-        });
-      }
-
-      // Validate file exists
-      if (item.path) {
-        const itemPath = path.join(projectRoot, item.path);
-        if (!fs.existsSync(itemPath)) {
-          errors.push({
-            file: fileName,
-            message: `Item ${itemNumber}: Referenced file does not exist: ${item.path}`
-          });
-        }
-      }
-    });
-  }
-
-  /**
-   * Validate tags array
-   * @param tags
-   * @param fileName
-   * @param errors
-   * @param warnings
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateTags(
-    tags: any,
-    fileName: string,
-    errors: ValidationError[],
-    warnings: ValidationWarning[]
-  ): void {
-    if (!Array.isArray(tags)) {
-      errors.push({
-        file: fileName,
-        message: 'Tags must be an array'
-      });
-      return;
-    }
-
-    if (tags.length > this.MAX_TAGS) {
-      warnings.push({
-        file: fileName,
-        message: `More than ${this.MAX_TAGS} tags (recommended max)`
-      });
-    }
-
-    tags.forEach((tag: any, index: number) => {
-      const tagNumber = index + 1;
-
-      if (typeof tag !== 'string') {
-        errors.push({
-          file: fileName,
-          message: `Tag ${tagNumber}: Must be a string`
-        });
-      } else if (tag.length > this.MAX_TAG_LENGTH) {
-        warnings.push({
-          file: fileName,
-          message: `Tag ${tagNumber}: Longer than ${this.MAX_TAG_LENGTH} characters`
-        });
-      }
-    });
   }
 }

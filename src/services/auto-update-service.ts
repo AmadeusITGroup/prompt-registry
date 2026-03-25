@@ -78,6 +78,183 @@ export class AutoUpdateService {
   }
 
   /**
+   * Validate update options
+   * @param options
+   */
+  private validateUpdateOptions(options: AutoUpdateOptions): void {
+    if (!options.bundleId?.trim()) {
+      throw new Error('Bundle ID is required and cannot be empty');
+    }
+    if (!options.targetVersion?.trim()) {
+      throw new Error('Target version is required and cannot be empty');
+    }
+  }
+
+  /**
+   * Ensure update is not already in progress
+   * @param bundleId
+   */
+  private ensureUpdateNotInProgress(bundleId: string): void {
+    if (this.isUpdateInProgress(bundleId)) {
+      this.logger.warn(`Update already in progress for bundle '${bundleId}'`);
+      throw new Error(`Update already in progress for bundle '${bundleId}'`);
+    }
+  }
+
+  /**
+   * Capture current version before update for rollback
+   * @param bundleId
+   */
+  private async captureCurrentVersion(bundleId: string): Promise<string | null> {
+    const installedBefore = await this.bundleOps.listInstalledBundles();
+    return installedBefore.find((b) => b.bundleId === bundleId)?.version ?? null;
+  }
+
+  /**
+   * Perform update with source sync and verification
+   * @param bundleId
+   * @param targetVersion
+   */
+  private async performUpdateWithVerification(bundleId: string, targetVersion: string): Promise<void> {
+    // CRITICAL: Sync source before updating (only for GitHub release sources)
+    await this.syncSourceForBundle(bundleId);
+
+    // Perform update using registry operations
+    await this.bundleOps.updateBundle(bundleId, targetVersion);
+
+    // CRITICAL: Verify update succeeded
+    if (!await this.verifyUpdate(bundleId, targetVersion)) {
+      throw new Error('Update verification failed');
+    }
+  }
+
+  /**
+   * Show success notification after update
+   * @param bundleId
+   * @param previousVersion
+   * @param targetVersion
+   */
+  private async showSuccessNotification(bundleId: string, previousVersion: string | null, targetVersion: string): Promise<void> {
+    await this.bundleNotifications.showAutoUpdateComplete(
+      bundleId,
+      previousVersion || 'unknown',
+      targetVersion
+    );
+  }
+
+  /**
+   * Handle update failure with rollback attempt and appropriate notifications
+   * @param bundleId
+   * @param errorMsg
+   * @param previousVersion
+   */
+  private async handleUpdateFailure(bundleId: string, errorMsg: string, previousVersion: string | null): Promise<void> {
+    if (previousVersion) {
+      try {
+        await this.performRollback(bundleId, previousVersion);
+        await this.bundleNotifications.showUpdateFailure(
+          bundleId,
+          `${errorMsg}. Rolled back to version ${previousVersion}.`
+        );
+      } catch (rollbackError) {
+        // Rollback failed - mark as corrupted per Requirement 8.5
+        const rollbackErrorObj = toError(rollbackError);
+        this.logger.error(`Rollback failed for bundle '${bundleId}'`, rollbackErrorObj);
+        await this.bundleNotifications.showUpdateFailure(
+          bundleId,
+          `${errorMsg}. Rollback failed. Please reinstall the bundle.`
+        );
+      }
+    } else {
+      // No previous version to rollback to
+      await this.bundleNotifications.showUpdateFailure(bundleId, errorMsg);
+    }
+  }
+
+  /**
+   * Perform rollback to previous version with verification
+   * @param bundleId
+   * @param previousVersion
+   */
+  private async performRollback(bundleId: string, previousVersion: string): Promise<void> {
+    this.logger.info(`Attempting rollback to version ${previousVersion}`);
+    await this.bundleOps.updateBundle(bundleId, previousVersion);
+
+    // Verify rollback succeeded
+    if (!await this.verifyUpdate(bundleId, previousVersion)) {
+      throw new Error('Rollback verification failed');
+    }
+  }
+
+  /**
+   * Verify that an update completed successfully
+   * @param bundleId
+   * @param expectedVersion
+   */
+  private async verifyUpdate(bundleId: string, expectedVersion: string): Promise<boolean> {
+    const updatedBundles = await this.bundleOps.listInstalledBundles();
+    const bundle = updatedBundles.find((b) => b.bundleId === bundleId);
+    return bundle?.version === expectedVersion;
+  }
+
+  /**
+   * Sync source for a bundle before updating (only for GitHub release sources)
+   * Skips syncing for awesome-copilot, local-awesome-copilot, and local sources
+   *
+   * NOTE: Sync failures are logged but do not block updates. The update will proceed
+   * with cached source data. If the cached data is stale, the update may fail later
+   * with a more specific error (e.g., version not found, download failure).
+   * @param bundleId
+   * @private
+   */
+  private async syncSourceForBundle(bundleId: string): Promise<void> {
+    try {
+      // Get bundle details to find its source
+      const bundle = await this.bundleOps.getBundleDetails(bundleId);
+
+      // Get all sources to find the bundle's source
+      const sources = await this.sourceOps.listSources();
+      const source = sources.find((s) => s.id === bundle.sourceId);
+
+      if (!source) {
+        // Source not found is potentially critical - log as warning
+        this.logger.warn(
+          `Source not found for bundle '${bundleId}'. `
+          + `Update will proceed with cached data, which may be stale.`
+        );
+        return;
+      }
+
+      // Only sync if source type is 'github'
+      if (source.type === 'github') {
+        this.logger.info(`Syncing GitHub release source '${source.id}' before updating bundle '${bundleId}'`);
+        try {
+          await this.sourceOps.syncSource(source.id);
+          this.logger.debug(`Source sync completed for '${source.id}'`);
+        } catch (syncError) {
+          const errorObj = toError(syncError);
+          // Make sync failures more visible - this could cause update to fail
+          this.logger.warn(
+            `Failed to sync GitHub source '${source.id}' for bundle '${bundleId}'. `
+            + `Update will use cached data. Error: ${errorObj.message}`,
+            errorObj
+          );
+        }
+      } else {
+        this.logger.debug(`Skipping sync for source type: ${source.type} (bundle: ${bundleId})`);
+      }
+    } catch (error) {
+      // Outer catch for getBundleDetails or listSources failures
+      const errorObj = toError(error);
+      this.logger.warn(
+        `Failed to prepare sync for bundle '${bundleId}', continuing with update. `
+        + `Error: ${errorObj.message}`,
+        errorObj
+      );
+    }
+  }
+
+  /**
    * Update a single bundle automatically with rollback on failure
    * Prevents concurrent updates and shows notifications on completion
    * @param options
@@ -231,191 +408,5 @@ export class AutoUpdateService {
    */
   public getActiveUpdates(): string[] {
     return Array.from(this.activeUpdates);
-  }
-
-  /**
-   * Validate update options
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateUpdateOptions(options: AutoUpdateOptions): void {
-    if (!options.bundleId?.trim()) {
-      throw new Error('Bundle ID is required and cannot be empty');
-    }
-    if (!options.targetVersion?.trim()) {
-      throw new Error('Target version is required and cannot be empty');
-    }
-  }
-
-  /**
-   * Ensure update is not already in progress
-   * @param bundleId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private ensureUpdateNotInProgress(bundleId: string): void {
-    if (this.isUpdateInProgress(bundleId)) {
-      this.logger.warn(`Update already in progress for bundle '${bundleId}'`);
-      throw new Error(`Update already in progress for bundle '${bundleId}'`);
-    }
-  }
-
-  /**
-   * Capture current version before update for rollback
-   * @param bundleId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async captureCurrentVersion(bundleId: string): Promise<string | null> {
-    const installedBefore = await this.bundleOps.listInstalledBundles();
-    return installedBefore.find((b) => b.bundleId === bundleId)?.version ?? null;
-  }
-
-  /**
-   * Perform update with source sync and verification
-   * @param bundleId
-   * @param targetVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async performUpdateWithVerification(bundleId: string, targetVersion: string): Promise<void> {
-    // CRITICAL: Sync source before updating (only for GitHub release sources)
-    await this.syncSourceForBundle(bundleId);
-
-    // Perform update using registry operations
-    await this.bundleOps.updateBundle(bundleId, targetVersion);
-
-    // CRITICAL: Verify update succeeded
-    if (!await this.verifyUpdate(bundleId, targetVersion)) {
-      throw new Error('Update verification failed');
-    }
-  }
-
-  /**
-   * Show success notification after update
-   * @param bundleId
-   * @param previousVersion
-   * @param targetVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async showSuccessNotification(bundleId: string, previousVersion: string | null, targetVersion: string): Promise<void> {
-    await this.bundleNotifications.showAutoUpdateComplete(
-      bundleId,
-      previousVersion || 'unknown',
-      targetVersion
-    );
-  }
-
-  /**
-   * Handle update failure with rollback attempt and appropriate notifications
-   * @param bundleId
-   * @param errorMsg
-   * @param previousVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async handleUpdateFailure(bundleId: string, errorMsg: string, previousVersion: string | null): Promise<void> {
-    if (previousVersion) {
-      try {
-        await this.performRollback(bundleId, previousVersion);
-        await this.bundleNotifications.showUpdateFailure(
-          bundleId,
-          `${errorMsg}. Rolled back to version ${previousVersion}.`
-        );
-      } catch (rollbackError) {
-        // Rollback failed - mark as corrupted per Requirement 8.5
-        const rollbackErrorObj = toError(rollbackError);
-        this.logger.error(`Rollback failed for bundle '${bundleId}'`, rollbackErrorObj);
-        await this.bundleNotifications.showUpdateFailure(
-          bundleId,
-          `${errorMsg}. Rollback failed. Please reinstall the bundle.`
-        );
-      }
-    } else {
-      // No previous version to rollback to
-      await this.bundleNotifications.showUpdateFailure(bundleId, errorMsg);
-    }
-  }
-
-  /**
-   * Perform rollback to previous version with verification
-   * @param bundleId
-   * @param previousVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async performRollback(bundleId: string, previousVersion: string): Promise<void> {
-    this.logger.info(`Attempting rollback to version ${previousVersion}`);
-    await this.bundleOps.updateBundle(bundleId, previousVersion);
-
-    // Verify rollback succeeded
-    if (!await this.verifyUpdate(bundleId, previousVersion)) {
-      throw new Error('Rollback verification failed');
-    }
-  }
-
-  /**
-   * Verify that an update completed successfully
-   * @param bundleId
-   * @param expectedVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async verifyUpdate(bundleId: string, expectedVersion: string): Promise<boolean> {
-    const updatedBundles = await this.bundleOps.listInstalledBundles();
-    const bundle = updatedBundles.find((b) => b.bundleId === bundleId);
-    return bundle?.version === expectedVersion;
-  }
-
-  /**
-   * Sync source for a bundle before updating (only for GitHub release sources)
-   * Skips syncing for awesome-copilot, local-awesome-copilot, and local sources
-   *
-   * NOTE: Sync failures are logged but do not block updates. The update will proceed
-   * with cached source data. If the cached data is stale, the update may fail later
-   * with a more specific error (e.g., version not found, download failure).
-   * @param bundleId
-   * @private
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async syncSourceForBundle(bundleId: string): Promise<void> {
-    try {
-      // Get bundle details to find its source
-      const bundle = await this.bundleOps.getBundleDetails(bundleId);
-
-      // Get all sources to find the bundle's source
-      const sources = await this.sourceOps.listSources();
-      const source = sources.find((s) => s.id === bundle.sourceId);
-
-      if (!source) {
-        // Source not found is potentially critical - log as warning
-        this.logger.warn(
-          `Source not found for bundle '${bundleId}'. `
-          + `Update will proceed with cached data, which may be stale.`
-        );
-        return;
-      }
-
-      // Only sync if source type is 'github'
-      if (source.type === 'github') {
-        this.logger.info(`Syncing GitHub release source '${source.id}' before updating bundle '${bundleId}'`);
-        try {
-          await this.sourceOps.syncSource(source.id);
-          this.logger.debug(`Source sync completed for '${source.id}'`);
-        } catch (syncError) {
-          const errorObj = toError(syncError);
-          // Make sync failures more visible - this could cause update to fail
-          this.logger.warn(
-            `Failed to sync GitHub source '${source.id}' for bundle '${bundleId}'. `
-            + `Update will use cached data. Error: ${errorObj.message}`,
-            errorObj
-          );
-        }
-      } else {
-        this.logger.debug(`Skipping sync for source type: ${source.type} (bundle: ${bundleId})`);
-      }
-    } catch (error) {
-      // Outer catch for getBundleDetails or listSources failures
-      const errorObj = toError(error);
-      this.logger.warn(
-        `Failed to prepare sync for bundle '${bundleId}', continuing with update. `
-        + `Error: ${errorObj.message}`,
-        errorObj
-      );
-    }
   }
 }

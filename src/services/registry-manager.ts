@@ -123,6 +123,21 @@ interface UpdateResults {
  */
 export class RegistryManager {
   private static instance: RegistryManager;
+
+  /**
+   * Get singleton instance
+   * @param context
+   */
+  public static getInstance(context?: vscode.ExtensionContext): RegistryManager {
+    if (!RegistryManager.instance && context) {
+      RegistryManager.instance = new RegistryManager(context);
+    }
+    if (!RegistryManager.instance) {
+      throw new Error('RegistryManager not initialized. Provide context on first call.');
+    }
+    return RegistryManager.instance;
+  }
+
   private readonly storage: RegistryStorage;
   private hubManager?: HubManager;
   private _autoUpdateService?: AutoUpdateService;
@@ -193,6 +208,897 @@ export class RegistryManager {
   }
 
   /**
+   * Enrich source with global token if applicable
+   * Applies global GitHub token to GitHub sources that don't have their own token
+   * @param source
+   */
+  private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
+    // If source already has a token, don't override it
+    if (source.token && source.token.trim().length > 0) {
+      return source;
+    }
+
+    // Get global token from VS Code configuration
+    const config = vscode.workspace.getConfiguration('promptregistry');
+    const globalToken = config.get<string>('githubToken', '');
+
+    if (globalToken && globalToken.trim().length > 0) {
+      this.logger.debug(`[RegistryManager] Applying global GitHub token to source '${source.id}'`);
+      return {
+        ...source,
+        token: globalToken.trim()
+      };
+    }
+
+    return source;
+  }
+
+  /**
+   * Load adapters for all sources
+   */
+  private async loadAdapters(): Promise<void> {
+    const sources = await this.storage.getSources();
+    this.sourcesCache = sources; // Cache for synchronous access
+
+    for (const source of sources) {
+      if (source.enabled) {
+        try {
+          const enrichedSource = this.enrichSourceWithGlobalToken(source);
+          const adapter = RepositoryAdapterFactory.create(enrichedSource);
+          this.adapters.set(source.id, adapter);
+        } catch (error) {
+          this.logger.error(`Failed to create adapter for source '${source.id}'`, error as Error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Local skills installations are symlinked directly to the source directory, so updating files
+   * in the source immediately updates the installed content. After syncing the source, refresh the
+   * recorded installation metadata so the UI reflects the latest hash/version without requiring an
+   * explicit update action.
+   * @param sourceId
+   * @param latestBundles
+   */
+  private async refreshLocalSkillInstallations(sourceId: string, latestBundles: Bundle[]): Promise<void> {
+    const installedBundles = await this.storage.getInstalledBundles();
+    const installsForSource = installedBundles.filter((bundle) => bundle.sourceId === sourceId && bundle.scope !== 'repository');
+
+    if (installsForSource.length === 0) {
+      return;
+    }
+
+    const updated: InstalledBundle[] = [];
+
+    for (const installed of installsForSource) {
+      const latest = latestBundles.find((bundle) => bundle.id === installed.bundleId);
+      if (!latest || latest.version === installed.version) {
+        continue;
+      }
+
+      const updatedInstallation: InstalledBundle = {
+        ...installed,
+        version: latest.version,
+        installedAt: new Date().toISOString()
+      };
+
+      await this.storage.recordInstallation(updatedInstallation);
+      updated.push(updatedInstallation);
+    }
+
+    if (updated.length > 0) {
+      for (const install of updated) {
+        this._onBundleUpdated.fire(install);
+      }
+      this.logger.info(`[local-skills] Refreshed ${updated.length} installed skill(s) to latest hash`);
+    }
+  }
+
+  /**
+   * Get or create adapter for a source
+   * @param source
+   */
+  private getAdapter(source: RegistrySource): IRepositoryAdapter {
+    let adapter = this.adapters.get(source.id);
+
+    if (!adapter) {
+      const enrichedSource = this.enrichSourceWithGlobalToken(source);
+      adapter = RepositoryAdapterFactory.create(enrichedSource);
+      this.adapters.set(source.id, adapter);
+    }
+
+    return adapter;
+  }
+
+  /**
+   * Auto-update installed bundles from a source
+   * Used for Awesome Copilot sources that should auto-update
+   * @param sourceId
+   * @param latestBundles
+   */
+  private async autoUpdateInstalledBundles(sourceId: string, latestBundles: Bundle[]): Promise<void> {
+    const bundlesToUpdate = await this.identifyBundlesForUpdate(sourceId, latestBundles);
+    const results = await this.performBundleUpdates(bundlesToUpdate, latestBundles);
+
+    // Report results summary
+    if (results.failed.length > 0) {
+      this.logger.warn(
+        `Auto-update completed: ${results.succeeded.length} succeeded, `
+        + `${results.failed.length} failed, ${results.skipped.length} skipped`
+      );
+    } else if (results.succeeded.length > 0) {
+      this.logger.info(`Auto-update completed successfully: ${results.succeeded.length} bundles updated`);
+    }
+  }
+
+  /**
+   * Identify bundles that need to be updated from a source
+   * @param sourceId
+   * @param latestBundles
+   */
+  private async identifyBundlesForUpdate(
+    sourceId: string,
+    latestBundles: Bundle[]
+  ): Promise<InstalledBundle[]> {
+    const installed = await this.storage.getInstalledBundles();
+    const bundlesFromSource = this.filterBundlesBySource(installed, sourceId, latestBundles);
+
+    this.logger.info(`Found ${bundlesFromSource.length} installed bundles from source '${sourceId}'`);
+    return bundlesFromSource;
+  }
+
+  /**
+   * Perform updates for a list of bundles
+   *
+   * Iterates through bundles, checks for updates, and tracks results.
+   * Continues processing even if individual updates fail.
+   * @param bundlesToUpdate
+   * @param latestBundles
+   */
+  private async performBundleUpdates(
+    bundlesToUpdate: InstalledBundle[],
+    latestBundles: Bundle[]
+  ): Promise<UpdateResults> {
+    const results: UpdateResults = {
+      succeeded: [],
+      failed: [],
+      skipped: []
+    };
+
+    for (const installedBundle of bundlesToUpdate) {
+      try {
+        const latestBundle = this.findMatchingLatestBundle(installedBundle, latestBundles);
+
+        if (!latestBundle) {
+          this.logger.warn(`Bundle '${installedBundle.bundleId}' no longer available`);
+          results.skipped.push(installedBundle.bundleId);
+          continue;
+        }
+
+        // Check if update is needed (version comparison)
+        if (latestBundle.version === installedBundle.version) {
+          this.logger.debug(`Bundle '${installedBundle.bundleId}' is already at latest version ${latestBundle.version}`);
+        } else {
+          this.logger.info(`Auto-updating bundle '${installedBundle.bundleId}' from v${installedBundle.version} to v${latestBundle.version}`);
+          await this.updateBundle(installedBundle.bundleId, latestBundle.version);
+          results.succeeded.push(installedBundle.bundleId);
+          this.logger.info(`Successfully auto-updated bundle '${installedBundle.bundleId}'`);
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        results.failed.push({ bundleId: installedBundle.bundleId, error: errorMsg });
+        this.logger.error(`Failed to auto-update bundle '${installedBundle.bundleId}'`, error as Error);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Filter installed bundles by source ID
+   * @param installed
+   * @param sourceId
+   * @param latestBundles
+   */
+  private filterBundlesBySource(
+    installed: InstalledBundle[],
+    sourceId: string,
+    latestBundles: Bundle[]
+  ): InstalledBundle[] {
+    return installed.filter((b) => this.belongsToSource(b, sourceId, latestBundles));
+  }
+
+  /**
+   * Check if an installed bundle belongs to a specific source
+   * @param bundle
+   * @param sourceId
+   * @param latestBundles
+   */
+  private belongsToSource(
+    bundle: InstalledBundle,
+    sourceId: string,
+    latestBundles: Bundle[]
+  ): boolean {
+    // Direct source ID match
+    if (bundle.sourceId === sourceId) {
+      return true;
+    }
+
+    // @migration-cleanup(sourceId-normalization-v2): Remove legacy ID check once all lockfiles are migrated
+    // Legacy source ID match: bundle may have been installed with old-format ID.
+    // Compute the legacy ID for this source and check against the bundle's sourceId.
+    if (bundle.sourceId) {
+      const source = this.getSourceById(sourceId);
+      if (source) {
+        const legacyId = generateLegacyHubSourceId(source.type, source.url, {
+          branch: source.config?.branch,
+          collectionsPath: source.config?.collectionsPath
+        });
+        if (legacyId && bundle.sourceId === legacyId) {
+          return true;
+        }
+      }
+    }
+
+    // Manifest URL match
+    if (bundle.manifest?.metadata?.repository?.url?.includes(sourceId)) {
+      return true;
+    }
+
+    // Identity-based match
+    return latestBundles.some((lb) => this.bundlesMatch(bundle, lb, sourceId));
+  }
+
+  /**
+   * Check if installed bundle matches a latest bundle from a source
+   * @param installed
+   * @param latest
+   * @param sourceId
+   */
+  private bundlesMatch(installed: InstalledBundle, latest: Bundle, sourceId: string): boolean {
+    if (latest.sourceId !== sourceId) {
+      return false;
+    }
+
+    const sourceType: SourceType = (installed.sourceType as SourceType) ?? 'local';
+    return BundleIdentityMatcher.matches(
+      installed.bundleId,
+      latest.id,
+      sourceType
+    );
+  }
+
+  /**
+   * Find matching latest bundle for an installed bundle
+   * @param installedBundle
+   * @param latestBundles
+   */
+  private findMatchingLatestBundle(installedBundle: InstalledBundle, latestBundles: Bundle[]): Bundle | undefined {
+    return latestBundles.find((lb) => {
+      if (installedBundle.sourceType === 'github') {
+        return BundleIdentityMatcher.matches(
+          installedBundle.bundleId,
+          lb.id,
+          'github'
+        );
+      } else {
+        // For non-GitHub bundles, match by base ID (without version)
+        const installedBaseId = BundleIdentityMatcher.extractBaseId(installedBundle.bundleId);
+        const latestBaseId = BundleIdentityMatcher.extractBaseId(lb.id);
+        return installedBaseId === latestBaseId;
+      }
+    });
+  }
+
+  /**
+   * Clean up old versions of a bundle when a new version is installed
+   * This handles downgrades and version changes by removing previous installation records
+   * @param bundle The newly installed bundle
+   * @param scope The installation scope (user, workspace, or repository)
+   */
+  private async cleanupOldVersions(bundle: Bundle, scope: InstallationScope): Promise<void> {
+    // Repository scope cleanup is handled by LockfileManager
+    if (scope === 'repository') {
+      return;
+    }
+    try {
+      // Get source information to determine sourceType
+      const source = await this.getSourceForBundle(bundle);
+      const sourceType = source.type;
+
+      // Get the base bundle identity (without version suffix)
+      const baseIdentity = VersionManager.extractBundleIdentity(bundle.id, sourceType);
+
+      // Get all installed bundles in this scope
+      // OPTIMIZATION: Filter early by sourceId to reduce iterations
+      const allInstalled = await this.storage.getInstalledBundles(scope);
+      const candidateBundles = allInstalled.filter((installed) => installed.sourceId === bundle.sourceId);
+
+      // Find all installations that match this bundle's identity
+      const oldInstallations = candidateBundles.filter((installed) => {
+        const installedSourceType = (installed.sourceType as SourceType) || 'github';
+
+        return VersionManager.isSameBundleIdentity(
+          installed.bundleId,
+          installedSourceType,
+          bundle.id,
+          sourceType
+        ) && installed.version !== bundle.version;
+      });
+
+      // Remove old versions
+      for (const oldInstall of oldInstallations) {
+        this.logger.debug(`Removing old version ${oldInstall.version} of bundle ${baseIdentity}`);
+        await this.storage.removeInstallation(oldInstall.bundleId, scope);
+      }
+
+      if (oldInstallations.length > 0) {
+        this.logger.info(`Cleaned up ${oldInstallations.length} old version(s) of bundle ${baseIdentity}`);
+      }
+    } catch (error) {
+      // Log but don't fail if cleanup fails - the new version is already installed
+      this.logger.warn(`Failed to cleanup old versions: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Check existing installation and determine if installation should proceed
+   * Returns modified options if version change is detected
+   * @param bundleId
+   * @param bundle
+   * @param options
+   */
+  private async checkExistingInstallation(
+    bundleId: string,
+    bundle: Bundle,
+    options: InstallOptions
+  ): Promise<InstallOptions> {
+    const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
+
+    if (!existing || options.force) {
+      return options;
+    }
+
+    // If a different version is being installed, allow it (treat as version change)
+    if (existing.version !== bundle.version) {
+      this.logger.info(`Version change detected: ${existing.version} → ${bundle.version}`);
+      return { ...options, force: true };
+    }
+
+    throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
+  }
+
+  /**
+   * Resolve the bundle to install, handling version-specific requests
+   * @param bundleId
+   * @param options
+   */
+  private async resolveInstallationBundle(
+    bundleId: string,
+    options: InstallOptions
+  ): Promise<Bundle> {
+    // Try exact versioned bundle first if applicable
+    if (options.version && BundleIdentityMatcher.hasVersionSuffix(bundleId)) {
+      const exactBundle = await this.tryGetExactVersionedBundle(bundleId, options.version);
+      if (exactBundle) {
+        return exactBundle;
+      }
+    }
+
+    // Fall back to identity-based search
+    return await this.resolveByIdentity(bundleId, options);
+  }
+
+  /**
+   * Try to get an exact versioned bundle
+   * Returns null if not found or version doesn't match
+   * @param bundleId
+   * @param version
+   */
+  private async tryGetExactVersionedBundle(bundleId: string, version: string): Promise<Bundle | null> {
+    try {
+      const bundle = await this.getBundleDetails(bundleId);
+      if (bundle.version === version) {
+        return bundle;
+      }
+      this.logger.debug(`Bundle ${bundleId} found but version mismatch: ${bundle.version} !== ${version}`);
+      return null;
+    } catch {
+      this.logger.debug(`Exact bundle ${bundleId} not found, trying identity-based search`);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve bundle by identity, applying version override if needed
+   * @param bundleId
+   * @param options
+   */
+  private async resolveByIdentity(bundleId: string, options: InstallOptions): Promise<Bundle> {
+    const searchId = await this.determineSearchId(bundleId, options);
+    let bundle = await this.getBundleDetails(searchId);
+
+    if (options.version) {
+      bundle = await this.applyVersionOverride(bundle, bundleId, options.version);
+    }
+
+    return bundle;
+  }
+
+  /**
+   * Determine the search ID for bundle lookup
+   * @param bundleId
+   * @param options
+   */
+  private async determineSearchId(bundleId: string, options: InstallOptions): Promise<string> {
+    if (!options.version) {
+      return bundleId;
+    }
+
+    // For version-specific requests, try to extract identity
+    const sources = await this.storage.getSources();
+    for (const source of sources) {
+      const cachedBundles = await this.storage.getCachedSourceBundles(source.id);
+      const matchingBundle = cachedBundles.find((b) => b.id === bundleId);
+      if (matchingBundle) {
+        return VersionManager.extractBundleIdentity(bundleId, source.type);
+      }
+    }
+
+    return bundleId;
+  }
+
+  /**
+   * Apply version override to bundle
+   * @param bundle
+   * @param originalBundleId
+   * @param requestedVersion
+   */
+  private async applyVersionOverride(
+    bundle: Bundle,
+    originalBundleId: string,
+    requestedVersion: string
+  ): Promise<Bundle> {
+    const sources = await this.storage.getSources();
+    const source = sources.find((s) => s.id === bundle.sourceId);
+
+    if (!source) {
+      this.logger.warn('Source not found for version override, using latest');
+      return bundle;
+    }
+
+    const identity = VersionManager.extractBundleIdentity(originalBundleId, source.type);
+    const specificVersion = this.versionConsolidator.getBundleVersion(identity, requestedVersion);
+
+    if (specificVersion) {
+      this.logger.info(`Installing specific version ${requestedVersion} instead of latest ${bundle.version}`);
+      // Use the original bundle ID from the version cache to preserve the correct format
+      // (e.g., owner-repo-v1.0.0 instead of owner-repo-1.0.0)
+      return {
+        ...bundle,
+        id: specificVersion.bundleId,
+        version: specificVersion.version,
+        downloadUrl: specificVersion.downloadUrl,
+        manifestUrl: specificVersion.manifestUrl,
+        lastUpdated: specificVersion.publishedAt
+      };
+    }
+
+    this.logger.warn(`Requested version ${requestedVersion} not found, using latest ${bundle.version}`);
+    return bundle;
+  }
+
+  /**
+   * Get source for a bundle
+   * @param bundle
+   */
+  private async getSourceForBundle(bundle: Bundle): Promise<RegistrySource> {
+    const sources = await this.storage.getSources();
+    const source = sources.find((s) => s.id === bundle.sourceId);
+
+    if (!source) {
+      throw new Error(`Source '${bundle.sourceId}' not found`);
+    }
+
+    return source;
+  }
+
+  /**
+   * Download and install a bundle
+   * @param bundle
+   * @param source
+   * @param options
+   */
+  private async downloadAndInstall(
+    bundle: Bundle,
+    source: RegistrySource,
+    options: InstallOptions
+  ): Promise<InstalledBundle> {
+    const adapter = this.getAdapter(source);
+
+    // For local-skills, use symlink installation instead of copying
+    if (source.type === 'local-skills') {
+      this.logger.debug(`Installing local skill as symlink from ${source.type} adapter`);
+      const localSkillsAdapter = adapter as any;
+
+      if (typeof localSkillsAdapter.getSkillSourcePath === 'function'
+        && typeof localSkillsAdapter.getSkillName === 'function') {
+        const skillSourcePath = localSkillsAdapter.getSkillSourcePath(bundle);
+        const skillName = localSkillsAdapter.getSkillName(bundle);
+
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
+        const installation = await this.installer.installLocalSkillAsSymlink(
+          bundle,
+          skillName,
+          skillSourcePath,
+          options
+        );
+
+        // Ensure sourceId and sourceType are set
+        installation.sourceId = bundle.sourceId;
+        installation.sourceType = source.type;
+
+        if (options.profileId) {
+          installation.profileId = options.profileId;
+        }
+
+        return installation;
+      }
+      // Fall through to standard installation if methods not available
+      this.logger.warn(`LocalSkillsAdapter missing symlink methods, falling back to standard installation`);
+    }
+
+    // Unified download path: all adapters use downloadBundle()
+    this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+    const bundleBuffer = await adapter.downloadBundle(bundle);
+    this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+
+    // Install from buffer (pass sourceType and sourceName for OLAF bundle detection)
+    const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options, source.type, source.name);
+
+    // Add profileId if provided
+    if (options.profileId) {
+      installation.profileId = options.profileId;
+    }
+
+    // Ensure sourceId and sourceType are set for identity matching
+    installation.sourceId = bundle.sourceId;
+    installation.sourceType = source.type;
+
+    // Call adapter post-installation hook if available (for OLAF skills)
+    if (source.type === 'olaf' || source.type === 'local-olaf') {
+      this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
+      this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
+
+      if (typeof (adapter as any).postInstall === 'function') {
+        this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
+        try {
+          await (adapter as any).postInstall(bundle.id, installation.installPath);
+          this.logger.info(`Post-installation hook completed successfully`);
+        } catch (error) {
+          this.logger.warn(`Post-installation hook failed: ${error}`);
+          // Don't fail the installation if post-install fails
+        }
+      } else {
+        this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
+      }
+    }
+
+    return installation;
+  }
+
+  /**
+   * Check for local modifications and handle user response before updating
+   *
+   * For repository-scoped bundles, this method:
+   * 1. Detects if any bundle files have been modified locally
+   * 2. Shows a warning dialog if modifications are found
+   * 3. Handles user response (contribute, override, or cancel)
+   * @param bundleId - The bundle ID being updated
+   * @param current - The current installed bundle
+   * @throws UpdateCancelledError if user chooses to contribute or cancel
+   *
+   * Requirements: 14.1-14.10
+   */
+  private async checkLocalModificationsBeforeUpdate(
+    bundleId: string,
+    current: InstalledBundle
+  ): Promise<void> {
+    // Only check for repository-scoped bundles
+    if (current.scope !== 'repository') {
+      return;
+    }
+
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return;
+    }
+
+    const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+    const warningService = new LocalModificationWarningService(lockfileManager);
+
+    // Get bundle repository URL for "Contribute Changes" action
+    const bundleRepoUrl = current.manifest?.metadata?.repository?.url
+      || current.manifest?.metadata?.homepage;
+
+    const warningResult = await warningService.checkAndWarn(bundleId, bundleRepoUrl);
+
+    if (warningResult === null) {
+      // No modifications detected, proceed with update
+      return;
+    }
+
+    // Handle user response
+    switch (warningResult) {
+      case WARNING_RESULTS.CONTRIBUTE: {
+        this.logger.info(`Update aborted for '${bundleId}': user chose to contribute changes`);
+        throw new UpdateCancelledError(bundleId, 'contribute');
+      }
+
+      case WARNING_RESULTS.CANCEL: {
+        this.logger.info(`Update cancelled for '${bundleId}': user cancelled`);
+        throw new UpdateCancelledError(bundleId, 'cancel');
+      }
+
+      case WARNING_RESULTS.OVERRIDE: {
+        this.logger.info(`User chose to override local modifications for '${bundleId}'`);
+        return;
+      }
+
+      default: {
+        // Unknown result, proceed with update
+        return;
+      }
+    }
+  }
+
+  /**
+   * Validate and normalize profile ID
+   * @param profileId
+   */
+  private validateProfileId(profileId: any): string {
+    if (typeof profileId !== 'string') {
+      const profileObj = profileId;
+      if (profileObj && typeof profileObj === 'object' && profileObj.id) {
+        this.logger.warn('Profile object passed to activateProfile, extracting ID');
+        return profileObj.id;
+      }
+      throw new Error(`Invalid profile identifier: expected string, got ${typeof profileId}`);
+    }
+    return profileId;
+  }
+
+  /**
+   * Deactivate all active profiles except the target
+   * @param targetProfileId
+   * @param progress
+   */
+  private async deactivateOtherProfiles(targetProfileId: string, progress: vscode.Progress<any>): Promise<void> {
+    const profiles = await this.storage.getProfiles();
+    progress.report({ message: 'Checking for active profiles...' });
+
+    for (const profile of profiles) {
+      if (profile.active && profile.id !== targetProfileId) {
+        this.logger.info(`Deactivating previous profile: ${profile.id}`);
+        try {
+          await this.deactivateProfile(profile.id);
+        } catch (error) {
+          this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Get profile by ID or throw error
+   * @param profileId
+   */
+  private async getProfileById(profileId: string): Promise<Profile> {
+    const profiles = await this.storage.getProfiles();
+    const profile = profiles.find((p) => p.id === profileId);
+
+    if (!profile) {
+      throw new Error(`Profile not found: ${profileId}`);
+    }
+
+    return profile;
+  }
+
+  /**
+   * Install all bundles associated with a profile
+   * @param profile
+   * @param profileId
+   * @param progress
+   */
+  private async installProfileBundles(
+    profile: Profile,
+    profileId: string,
+    progress: vscode.Progress<any>
+  ): Promise<void> {
+    if (!profile.bundles || profile.bundles.length === 0) {
+      return;
+    }
+
+    progress.report({ message: `Installing ${profile.bundles.length} bundle(s)...` });
+    this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
+
+    const allSources = await this.storage.getSources();
+    const installed: InstalledBundle[] = [];
+    const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
+
+    for (let i = 0; i < profile.bundles.length; i += CONCURRENCY_LIMIT) {
+      const chunk = profile.bundles.slice(i, i + CONCURRENCY_LIMIT);
+
+      const results = await Promise.all(chunk.map(async (bundleRef) => {
+        progress.report({ message: `Installing ${bundleRef.id}...` });
+        try {
+          return await this.installProfileBundle(bundleRef, profileId, allSources, true);
+        } catch (error) {
+          this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
+          return null;
+        }
+      }));
+
+      for (const result of results) {
+        if (result) {
+          installed.push(result);
+        }
+      }
+    }
+
+    if (installed.length > 0) {
+      this._onBundlesInstalled.fire(installed);
+    }
+
+    this.logger.info(`Profile bundle installation complete: ${installed.length} installed`);
+  }
+
+  /**
+   * Install a single bundle for a profile
+   * @param bundleRef
+   * @param profileId
+   * @param allSources
+   * @param silent
+   */
+  private async installProfileBundle(
+    bundleRef: ProfileBundle,
+    profileId: string,
+    allSources: RegistrySource[],
+    silent = false
+  ): Promise<InstalledBundle | null> {
+    // Check if bundle is already installed
+    const installedBundles = await this.storage.getInstalledBundles();
+    const alreadyInstalled = installedBundles.find((b) => b.bundleId === bundleRef.id);
+
+    if (alreadyInstalled) {
+      this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
+      return null;
+    }
+
+    // Search for the bundle
+    this.logger.info(`Searching for bundle: ${bundleRef.id} v${bundleRef.version}`);
+    const queryBySourceAndBundleId = { text: bundleRef.id, tags: [], sourceId: bundleRef.sourceId };
+    const searchResults = await this.searchBundles(queryBySourceAndBundleId);
+    this.logger.info(`Found ${searchResults.length} matching bundles.`, searchResults);
+
+    // Find matching bundle
+    const matchingBundle = searchResults.find((b) => {
+      const idMatch = b.id === bundleRef.id || b.name.toLowerCase().includes(bundleRef.id.toLowerCase());
+      if (bundleRef.sourceId) {
+        return idMatch && b.sourceId === bundleRef.sourceId;
+      }
+      return idMatch;
+    });
+
+    if (!matchingBundle) {
+      this.logger.warn(`Bundle not found: ${bundleRef.id}`);
+      return null;
+    }
+
+    // Get source and adapter
+    const source = allSources.find((s) => s.id === matchingBundle.sourceId);
+    if (!source) {
+      this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
+      return null;
+    }
+
+    const adapter = this.getAdapter(source);
+
+    // Download and install
+    this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
+    this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+
+    const bundleBuffer = await adapter.downloadBundle(matchingBundle);
+    this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+
+    const options: InstallOptions = {
+      scope: 'user',
+      force: false,
+      profileId: profileId
+    };
+
+    const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options, source.type, source.name);
+
+    // Ensure sourceId and sourceType are set for identity matching
+    installation.sourceId = matchingBundle.sourceId;
+    installation.sourceType = source.type;
+
+    // Call adapter post-installation hook if available (for OLAF skills)
+    if (source.type === 'olaf' || source.type === 'local-olaf') {
+      this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
+      this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
+
+      if (typeof (adapter as any).postInstall === 'function') {
+        this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
+        try {
+          await (adapter as any).postInstall(matchingBundle.id, installation.installPath);
+          this.logger.info(`Post-installation hook completed successfully`);
+        } catch (error) {
+          this.logger.warn(`Post-installation hook failed: ${error}`);
+          // Don't fail the installation if post-install fails
+        }
+      } else {
+        this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
+      }
+    }
+
+    // Record installation and fire event
+    await this.storage.recordInstallation(installation);
+
+    if (!silent) {
+      this._onBundleInstalled.fire(installation);
+    }
+
+    this.logger.info(`Successfully installed: ${matchingBundle.id}`);
+
+    return installation;
+  }
+  // ===== Helper Methods =====
+
+  /**
+   * Sort bundles by criteria
+   * @param bundles
+   * @param sortBy
+   */
+  private sortBundles(bundles: Bundle[], sortBy: string): Bundle[] {
+    switch (sortBy) {
+      case 'downloads': {
+        return bundles.toSorted((a, b) => (b.downloads || 0) - (a.downloads || 0));
+      }
+      case 'rating': {
+        return bundles.toSorted((a, b) => (b.rating || 0) - (a.rating || 0));
+      }
+      case 'recent': {
+        return bundles.toSorted((a, b) =>
+          new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+        );
+      }
+      default: {
+        return bundles;
+      }
+    }
+  }
+
+  /**
+   * Get source type for a source ID
+   * Used by version consolidator for identity matching
+   * @param sourceId
+   */
+  private getSourceType(sourceId: string): SourceType {
+    const source = this.sourcesCache.find((s) => s.id === sourceId);
+    return source?.type ?? 'local';
+  }
+
+  /**
+   * Get a source by its ID from the cache
+   * @param sourceId
+   */
+  private getSourceById(sourceId: string): RegistrySource | undefined {
+    return this.sourcesCache.find((s) => s.id === sourceId);
+  }
+
+  /**
    * Set HubManager instance for hub integration
    * @param hubManager
    */
@@ -251,20 +1157,6 @@ export class RegistryManager {
   }
 
   /**
-   * Get singleton instance
-   * @param context
-   */
-  public static getInstance(context?: vscode.ExtensionContext): RegistryManager {
-    if (!RegistryManager.instance && context) {
-      RegistryManager.instance = new RegistryManager(context);
-    }
-    if (!RegistryManager.instance) {
-      throw new Error('RegistryManager not initialized. Provide context on first call.');
-    }
-    return RegistryManager.instance;
-  }
-
-  /**
    * Initialize the registry
    */
   public async initialize(): Promise<void> {
@@ -288,114 +1180,6 @@ export class RegistryManager {
    */
   public getBundleInstaller(): BundleInstaller {
     return this.installer;
-  }
-
-  /**
-   * Enrich source with global token if applicable
-   * Applies global GitHub token to GitHub sources that don't have their own token
-   * @param source
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
-    // If source already has a token, don't override it
-    if (source.token && source.token.trim().length > 0) {
-      return source;
-    }
-
-    // Get global token from VS Code configuration
-    const config = vscode.workspace.getConfiguration('promptregistry');
-    const globalToken = config.get<string>('githubToken', '');
-
-    if (globalToken && globalToken.trim().length > 0) {
-      this.logger.debug(`[RegistryManager] Applying global GitHub token to source '${source.id}'`);
-      return {
-        ...source,
-        token: globalToken.trim()
-      };
-    }
-
-    return source;
-  }
-
-  /**
-   * Load adapters for all sources
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async loadAdapters(): Promise<void> {
-    const sources = await this.storage.getSources();
-    this.sourcesCache = sources; // Cache for synchronous access
-
-    for (const source of sources) {
-      if (source.enabled) {
-        try {
-          const enrichedSource = this.enrichSourceWithGlobalToken(source);
-          const adapter = RepositoryAdapterFactory.create(enrichedSource);
-          this.adapters.set(source.id, adapter);
-        } catch (error) {
-          this.logger.error(`Failed to create adapter for source '${source.id}'`, error as Error);
-        }
-      }
-    }
-  }
-
-  /**
-   * Local skills installations are symlinked directly to the source directory, so updating files
-   * in the source immediately updates the installed content. After syncing the source, refresh the
-   * recorded installation metadata so the UI reflects the latest hash/version without requiring an
-   * explicit update action.
-   * @param sourceId
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async refreshLocalSkillInstallations(sourceId: string, latestBundles: Bundle[]): Promise<void> {
-    const installedBundles = await this.storage.getInstalledBundles();
-    const installsForSource = installedBundles.filter((bundle) => bundle.sourceId === sourceId && bundle.scope !== 'repository');
-
-    if (installsForSource.length === 0) {
-      return;
-    }
-
-    const updated: InstalledBundle[] = [];
-
-    for (const installed of installsForSource) {
-      const latest = latestBundles.find((bundle) => bundle.id === installed.bundleId);
-      if (!latest || latest.version === installed.version) {
-        continue;
-      }
-
-      const updatedInstallation: InstalledBundle = {
-        ...installed,
-        version: latest.version,
-        installedAt: new Date().toISOString()
-      };
-
-      await this.storage.recordInstallation(updatedInstallation);
-      updated.push(updatedInstallation);
-    }
-
-    if (updated.length > 0) {
-      for (const install of updated) {
-        this._onBundleUpdated.fire(install);
-      }
-      this.logger.info(`[local-skills] Refreshed ${updated.length} installed skill(s) to latest hash`);
-    }
-  }
-
-  /**
-   * Get or create adapter for a source
-   * @param source
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getAdapter(source: RegistrySource): IRepositoryAdapter {
-    let adapter = this.adapters.get(source.id);
-
-    if (!adapter) {
-      const enrichedSource = this.enrichSourceWithGlobalToken(source);
-      adapter = RepositoryAdapterFactory.create(enrichedSource);
-      this.adapters.set(source.id, adapter);
-    }
-
-    return adapter;
   }
 
   /**
@@ -547,193 +1331,6 @@ export class RegistryManager {
 
     // Fire source synced event
     this._onSourceSynced.fire({ sourceId, bundleCount: bundles.length });
-  }
-
-  /**
-   * Auto-update installed bundles from a source
-   * Used for Awesome Copilot sources that should auto-update
-   * @param sourceId
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async autoUpdateInstalledBundles(sourceId: string, latestBundles: Bundle[]): Promise<void> {
-    const bundlesToUpdate = await this.identifyBundlesForUpdate(sourceId, latestBundles);
-    const results = await this.performBundleUpdates(bundlesToUpdate, latestBundles);
-
-    // Report results summary
-    if (results.failed.length > 0) {
-      this.logger.warn(
-        `Auto-update completed: ${results.succeeded.length} succeeded, `
-        + `${results.failed.length} failed, ${results.skipped.length} skipped`
-      );
-    } else if (results.succeeded.length > 0) {
-      this.logger.info(`Auto-update completed successfully: ${results.succeeded.length} bundles updated`);
-    }
-  }
-
-  /**
-   * Identify bundles that need to be updated from a source
-   * @param sourceId
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async identifyBundlesForUpdate(
-    sourceId: string,
-    latestBundles: Bundle[]
-  ): Promise<InstalledBundle[]> {
-    const installed = await this.storage.getInstalledBundles();
-    const bundlesFromSource = this.filterBundlesBySource(installed, sourceId, latestBundles);
-
-    this.logger.info(`Found ${bundlesFromSource.length} installed bundles from source '${sourceId}'`);
-    return bundlesFromSource;
-  }
-
-  /**
-   * Perform updates for a list of bundles
-   *
-   * Iterates through bundles, checks for updates, and tracks results.
-   * Continues processing even if individual updates fail.
-   * @param bundlesToUpdate
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async performBundleUpdates(
-    bundlesToUpdate: InstalledBundle[],
-    latestBundles: Bundle[]
-  ): Promise<UpdateResults> {
-    const results: UpdateResults = {
-      succeeded: [],
-      failed: [],
-      skipped: []
-    };
-
-    for (const installedBundle of bundlesToUpdate) {
-      try {
-        const latestBundle = this.findMatchingLatestBundle(installedBundle, latestBundles);
-
-        if (!latestBundle) {
-          this.logger.warn(`Bundle '${installedBundle.bundleId}' no longer available`);
-          results.skipped.push(installedBundle.bundleId);
-          continue;
-        }
-
-        // Check if update is needed (version comparison)
-        if (latestBundle.version === installedBundle.version) {
-          this.logger.debug(`Bundle '${installedBundle.bundleId}' is already at latest version ${latestBundle.version}`);
-        } else {
-          this.logger.info(`Auto-updating bundle '${installedBundle.bundleId}' from v${installedBundle.version} to v${latestBundle.version}`);
-          await this.updateBundle(installedBundle.bundleId, latestBundle.version);
-          results.succeeded.push(installedBundle.bundleId);
-          this.logger.info(`Successfully auto-updated bundle '${installedBundle.bundleId}'`);
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        results.failed.push({ bundleId: installedBundle.bundleId, error: errorMsg });
-        this.logger.error(`Failed to auto-update bundle '${installedBundle.bundleId}'`, error as Error);
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Filter installed bundles by source ID
-   * @param installed
-   * @param sourceId
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private filterBundlesBySource(
-    installed: InstalledBundle[],
-    sourceId: string,
-    latestBundles: Bundle[]
-  ): InstalledBundle[] {
-    return installed.filter((b) => this.belongsToSource(b, sourceId, latestBundles));
-  }
-
-  /**
-   * Check if an installed bundle belongs to a specific source
-   * @param bundle
-   * @param sourceId
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private belongsToSource(
-    bundle: InstalledBundle,
-    sourceId: string,
-    latestBundles: Bundle[]
-  ): boolean {
-    // Direct source ID match
-    if (bundle.sourceId === sourceId) {
-      return true;
-    }
-
-    // @migration-cleanup(sourceId-normalization-v2): Remove legacy ID check once all lockfiles are migrated
-    // Legacy source ID match: bundle may have been installed with old-format ID.
-    // Compute the legacy ID for this source and check against the bundle's sourceId.
-    if (bundle.sourceId) {
-      const source = this.getSourceById(sourceId);
-      if (source) {
-        const legacyId = generateLegacyHubSourceId(source.type, source.url, {
-          branch: source.config?.branch,
-          collectionsPath: source.config?.collectionsPath
-        });
-        if (legacyId && bundle.sourceId === legacyId) {
-          return true;
-        }
-      }
-    }
-
-    // Manifest URL match
-    if (bundle.manifest?.metadata?.repository?.url?.includes(sourceId)) {
-      return true;
-    }
-
-    // Identity-based match
-    return latestBundles.some((lb) => this.bundlesMatch(bundle, lb, sourceId));
-  }
-
-  /**
-   * Check if installed bundle matches a latest bundle from a source
-   * @param installed
-   * @param latest
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private bundlesMatch(installed: InstalledBundle, latest: Bundle, sourceId: string): boolean {
-    if (latest.sourceId !== sourceId) {
-      return false;
-    }
-
-    const sourceType: SourceType = (installed.sourceType as SourceType) ?? 'local';
-    return BundleIdentityMatcher.matches(
-      installed.bundleId,
-      latest.id,
-      sourceType
-    );
-  }
-
-  /**
-   * Find matching latest bundle for an installed bundle
-   * @param installedBundle
-   * @param latestBundles
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private findMatchingLatestBundle(installedBundle: InstalledBundle, latestBundles: Bundle[]): Bundle | undefined {
-    return latestBundles.find((lb) => {
-      if (installedBundle.sourceType === 'github') {
-        return BundleIdentityMatcher.matches(
-          installedBundle.bundleId,
-          lb.id,
-          'github'
-        );
-      } else {
-        // For non-GitHub bundles, match by base ID (without version)
-        const installedBaseId = BundleIdentityMatcher.extractBaseId(installedBundle.bundleId);
-        const latestBaseId = BundleIdentityMatcher.extractBaseId(lb.id);
-        return installedBaseId === latestBaseId;
-      }
-    });
   }
 
   /**
@@ -989,312 +1586,6 @@ export class RegistryManager {
   }
 
   /**
-   * Clean up old versions of a bundle when a new version is installed
-   * This handles downgrades and version changes by removing previous installation records
-   * @param bundle The newly installed bundle
-   * @param scope The installation scope (user, workspace, or repository)
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async cleanupOldVersions(bundle: Bundle, scope: InstallationScope): Promise<void> {
-    // Repository scope cleanup is handled by LockfileManager
-    if (scope === 'repository') {
-      return;
-    }
-    try {
-      // Get source information to determine sourceType
-      const source = await this.getSourceForBundle(bundle);
-      const sourceType = source.type;
-
-      // Get the base bundle identity (without version suffix)
-      const baseIdentity = VersionManager.extractBundleIdentity(bundle.id, sourceType);
-
-      // Get all installed bundles in this scope
-      // OPTIMIZATION: Filter early by sourceId to reduce iterations
-      const allInstalled = await this.storage.getInstalledBundles(scope);
-      const candidateBundles = allInstalled.filter((installed) => installed.sourceId === bundle.sourceId);
-
-      // Find all installations that match this bundle's identity
-      const oldInstallations = candidateBundles.filter((installed) => {
-        const installedSourceType = (installed.sourceType as SourceType) || 'github';
-
-        return VersionManager.isSameBundleIdentity(
-          installed.bundleId,
-          installedSourceType,
-          bundle.id,
-          sourceType
-        ) && installed.version !== bundle.version;
-      });
-
-      // Remove old versions
-      for (const oldInstall of oldInstallations) {
-        this.logger.debug(`Removing old version ${oldInstall.version} of bundle ${baseIdentity}`);
-        await this.storage.removeInstallation(oldInstall.bundleId, scope);
-      }
-
-      if (oldInstallations.length > 0) {
-        this.logger.info(`Cleaned up ${oldInstallations.length} old version(s) of bundle ${baseIdentity}`);
-      }
-    } catch (error) {
-      // Log but don't fail if cleanup fails - the new version is already installed
-      this.logger.warn(`Failed to cleanup old versions: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Check existing installation and determine if installation should proceed
-   * Returns modified options if version change is detected
-   * @param bundleId
-   * @param bundle
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async checkExistingInstallation(
-    bundleId: string,
-    bundle: Bundle,
-    options: InstallOptions
-  ): Promise<InstallOptions> {
-    const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
-
-    if (!existing || options.force) {
-      return options;
-    }
-
-    // If a different version is being installed, allow it (treat as version change)
-    if (existing.version !== bundle.version) {
-      this.logger.info(`Version change detected: ${existing.version} → ${bundle.version}`);
-      return { ...options, force: true };
-    }
-
-    throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
-  }
-
-  /**
-   * Resolve the bundle to install, handling version-specific requests
-   * @param bundleId
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async resolveInstallationBundle(
-    bundleId: string,
-    options: InstallOptions
-  ): Promise<Bundle> {
-    // Try exact versioned bundle first if applicable
-    if (options.version && BundleIdentityMatcher.hasVersionSuffix(bundleId)) {
-      const exactBundle = await this.tryGetExactVersionedBundle(bundleId, options.version);
-      if (exactBundle) {
-        return exactBundle;
-      }
-    }
-
-    // Fall back to identity-based search
-    return await this.resolveByIdentity(bundleId, options);
-  }
-
-  /**
-   * Try to get an exact versioned bundle
-   * Returns null if not found or version doesn't match
-   * @param bundleId
-   * @param version
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async tryGetExactVersionedBundle(bundleId: string, version: string): Promise<Bundle | null> {
-    try {
-      const bundle = await this.getBundleDetails(bundleId);
-      if (bundle.version === version) {
-        return bundle;
-      }
-      this.logger.debug(`Bundle ${bundleId} found but version mismatch: ${bundle.version} !== ${version}`);
-      return null;
-    } catch {
-      this.logger.debug(`Exact bundle ${bundleId} not found, trying identity-based search`);
-      return null;
-    }
-  }
-
-  /**
-   * Resolve bundle by identity, applying version override if needed
-   * @param bundleId
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async resolveByIdentity(bundleId: string, options: InstallOptions): Promise<Bundle> {
-    const searchId = await this.determineSearchId(bundleId, options);
-    let bundle = await this.getBundleDetails(searchId);
-
-    if (options.version) {
-      bundle = await this.applyVersionOverride(bundle, bundleId, options.version);
-    }
-
-    return bundle;
-  }
-
-  /**
-   * Determine the search ID for bundle lookup
-   * @param bundleId
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async determineSearchId(bundleId: string, options: InstallOptions): Promise<string> {
-    if (!options.version) {
-      return bundleId;
-    }
-
-    // For version-specific requests, try to extract identity
-    const sources = await this.storage.getSources();
-    for (const source of sources) {
-      const cachedBundles = await this.storage.getCachedSourceBundles(source.id);
-      const matchingBundle = cachedBundles.find((b) => b.id === bundleId);
-      if (matchingBundle) {
-        return VersionManager.extractBundleIdentity(bundleId, source.type);
-      }
-    }
-
-    return bundleId;
-  }
-
-  /**
-   * Apply version override to bundle
-   * @param bundle
-   * @param originalBundleId
-   * @param requestedVersion
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async applyVersionOverride(
-    bundle: Bundle,
-    originalBundleId: string,
-    requestedVersion: string
-  ): Promise<Bundle> {
-    const sources = await this.storage.getSources();
-    const source = sources.find((s) => s.id === bundle.sourceId);
-
-    if (!source) {
-      this.logger.warn('Source not found for version override, using latest');
-      return bundle;
-    }
-
-    const identity = VersionManager.extractBundleIdentity(originalBundleId, source.type);
-    const specificVersion = this.versionConsolidator.getBundleVersion(identity, requestedVersion);
-
-    if (specificVersion) {
-      this.logger.info(`Installing specific version ${requestedVersion} instead of latest ${bundle.version}`);
-      // Use the original bundle ID from the version cache to preserve the correct format
-      // (e.g., owner-repo-v1.0.0 instead of owner-repo-1.0.0)
-      return {
-        ...bundle,
-        id: specificVersion.bundleId,
-        version: specificVersion.version,
-        downloadUrl: specificVersion.downloadUrl,
-        manifestUrl: specificVersion.manifestUrl,
-        lastUpdated: specificVersion.publishedAt
-      };
-    }
-
-    this.logger.warn(`Requested version ${requestedVersion} not found, using latest ${bundle.version}`);
-    return bundle;
-  }
-
-  /**
-   * Get source for a bundle
-   * @param bundle
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getSourceForBundle(bundle: Bundle): Promise<RegistrySource> {
-    const sources = await this.storage.getSources();
-    const source = sources.find((s) => s.id === bundle.sourceId);
-
-    if (!source) {
-      throw new Error(`Source '${bundle.sourceId}' not found`);
-    }
-
-    return source;
-  }
-
-  /**
-   * Download and install a bundle
-   * @param bundle
-   * @param source
-   * @param options
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async downloadAndInstall(
-    bundle: Bundle,
-    source: RegistrySource,
-    options: InstallOptions
-  ): Promise<InstalledBundle> {
-    const adapter = this.getAdapter(source);
-
-    // For local-skills, use symlink installation instead of copying
-    if (source.type === 'local-skills') {
-      this.logger.debug(`Installing local skill as symlink from ${source.type} adapter`);
-      const localSkillsAdapter = adapter as any;
-
-      if (typeof localSkillsAdapter.getSkillSourcePath === 'function'
-        && typeof localSkillsAdapter.getSkillName === 'function') {
-        const skillSourcePath = localSkillsAdapter.getSkillSourcePath(bundle);
-        const skillName = localSkillsAdapter.getSkillName(bundle);
-
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const installation = await this.installer.installLocalSkillAsSymlink(
-          bundle,
-          skillName,
-          skillSourcePath,
-          options
-        );
-
-        // Ensure sourceId and sourceType are set
-        installation.sourceId = bundle.sourceId;
-        installation.sourceType = source.type;
-
-        if (options.profileId) {
-          installation.profileId = options.profileId;
-        }
-
-        return installation;
-      }
-      // Fall through to standard installation if methods not available
-      this.logger.warn(`LocalSkillsAdapter missing symlink methods, falling back to standard installation`);
-    }
-
-    // Unified download path: all adapters use downloadBundle()
-    this.logger.debug(`Downloading bundle from ${source.type} adapter`);
-    const bundleBuffer = await adapter.downloadBundle(bundle);
-    this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
-
-    // Install from buffer (pass sourceType and sourceName for OLAF bundle detection)
-    const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options, source.type, source.name);
-
-    // Add profileId if provided
-    if (options.profileId) {
-      installation.profileId = options.profileId;
-    }
-
-    // Ensure sourceId and sourceType are set for identity matching
-    installation.sourceId = bundle.sourceId;
-    installation.sourceType = source.type;
-
-    // Call adapter post-installation hook if available (for OLAF skills)
-    if (source.type === 'olaf' || source.type === 'local-olaf') {
-      this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
-      this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
-
-      if (typeof (adapter as any).postInstall === 'function') {
-        this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
-        try {
-          await (adapter as any).postInstall(bundle.id, installation.installPath);
-          this.logger.info(`Post-installation hook completed successfully`);
-        } catch (error) {
-          this.logger.warn(`Post-installation hook failed: ${error}`);
-          // Don't fail the installation if post-install fails
-        }
-      } else {
-        this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
-      }
-    }
-
-    return installation;
-  }
-
-  /**
    * Uninstall a bundle
    * @param bundleId
    * @param scope
@@ -1525,72 +1816,6 @@ export class RegistryManager {
 
     this._onBundleUpdated.fire(updated);
     this.logger.info(`Bundle '${bundleId}' updated from v${current.version} to v${bundle.version}`);
-  }
-
-  /**
-   * Check for local modifications and handle user response before updating
-   *
-   * For repository-scoped bundles, this method:
-   * 1. Detects if any bundle files have been modified locally
-   * 2. Shows a warning dialog if modifications are found
-   * 3. Handles user response (contribute, override, or cancel)
-   * @param bundleId - The bundle ID being updated
-   * @param current - The current installed bundle
-   * @throws UpdateCancelledError if user chooses to contribute or cancel
-   *
-   * Requirements: 14.1-14.10
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async checkLocalModificationsBeforeUpdate(
-    bundleId: string,
-    current: InstalledBundle
-  ): Promise<void> {
-    // Only check for repository-scoped bundles
-    if (current.scope !== 'repository') {
-      return;
-    }
-
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) {
-      return;
-    }
-
-    const lockfileManager = LockfileManager.getInstance(workspaceRoot);
-    const warningService = new LocalModificationWarningService(lockfileManager);
-
-    // Get bundle repository URL for "Contribute Changes" action
-    const bundleRepoUrl = current.manifest?.metadata?.repository?.url
-      || current.manifest?.metadata?.homepage;
-
-    const warningResult = await warningService.checkAndWarn(bundleId, bundleRepoUrl);
-
-    if (warningResult === null) {
-      // No modifications detected, proceed with update
-      return;
-    }
-
-    // Handle user response
-    switch (warningResult) {
-      case WARNING_RESULTS.CONTRIBUTE: {
-        this.logger.info(`Update aborted for '${bundleId}': user chose to contribute changes`);
-        throw new UpdateCancelledError(bundleId, 'contribute');
-      }
-
-      case WARNING_RESULTS.CANCEL: {
-        this.logger.info(`Update cancelled for '${bundleId}': user cancelled`);
-        throw new UpdateCancelledError(bundleId, 'cancel');
-      }
-
-      case WARNING_RESULTS.OVERRIDE: {
-        this.logger.info(`User chose to override local modifications for '${bundleId}'`);
-        return;
-      }
-
-      default: {
-        // Unknown result, proceed with update
-        return;
-      }
-    }
   }
 
   /**
@@ -1912,10 +2137,6 @@ export class RegistryManager {
 
       progress.report({ message: 'Installing bundles...' });
 
-      // Get all sources to find adapters
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _allSources = await this.storage.getSources();
-
       // Get and activate the target profile
       const profile = await this.getProfileById(validatedProfileId);
       if (profile) {
@@ -1939,213 +2160,6 @@ export class RegistryManager {
   }
 
   /**
-   * Validate and normalize profile ID
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private validateProfileId(profileId: any): string {
-    if (typeof profileId !== 'string') {
-      const profileObj = profileId;
-      if (profileObj && typeof profileObj === 'object' && profileObj.id) {
-        this.logger.warn('Profile object passed to activateProfile, extracting ID');
-        return profileObj.id;
-      }
-      throw new Error(`Invalid profile identifier: expected string, got ${typeof profileId}`);
-    }
-    return profileId;
-  }
-
-  /**
-   * Deactivate all active profiles except the target
-   * @param targetProfileId
-   * @param progress
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async deactivateOtherProfiles(targetProfileId: string, progress: vscode.Progress<any>): Promise<void> {
-    const profiles = await this.storage.getProfiles();
-    progress.report({ message: 'Checking for active profiles...' });
-
-    for (const profile of profiles) {
-      if (profile.active && profile.id !== targetProfileId) {
-        this.logger.info(`Deactivating previous profile: ${profile.id}`);
-        try {
-          await this.deactivateProfile(profile.id);
-        } catch (error) {
-          this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
-        }
-      }
-    }
-  }
-
-  /**
-   * Get profile by ID or throw error
-   * @param profileId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async getProfileById(profileId: string): Promise<Profile> {
-    const profiles = await this.storage.getProfiles();
-    const profile = profiles.find((p) => p.id === profileId);
-
-    if (!profile) {
-      throw new Error(`Profile not found: ${profileId}`);
-    }
-
-    return profile;
-  }
-
-  /**
-   * Install all bundles associated with a profile
-   * @param profile
-   * @param profileId
-   * @param progress
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async installProfileBundles(
-    profile: Profile,
-    profileId: string,
-    progress: vscode.Progress<any>
-  ): Promise<void> {
-    if (!profile.bundles || profile.bundles.length === 0) {
-      return;
-    }
-
-    progress.report({ message: `Installing ${profile.bundles.length} bundle(s)...` });
-    this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
-
-    const allSources = await this.storage.getSources();
-    const installed: InstalledBundle[] = [];
-    const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
-
-    for (let i = 0; i < profile.bundles.length; i += CONCURRENCY_LIMIT) {
-      const chunk = profile.bundles.slice(i, i + CONCURRENCY_LIMIT);
-
-      const results = await Promise.all(chunk.map(async (bundleRef) => {
-        progress.report({ message: `Installing ${bundleRef.id}...` });
-        try {
-          return await this.installProfileBundle(bundleRef, profileId, allSources, true);
-        } catch (error) {
-          this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
-          return null;
-        }
-      }));
-
-      for (const result of results) {
-        if (result) {
-          installed.push(result);
-        }
-      }
-    }
-
-    if (installed.length > 0) {
-      this._onBundlesInstalled.fire(installed);
-    }
-
-    this.logger.info(`Profile bundle installation complete: ${installed.length} installed`);
-  }
-
-  /**
-   * Install a single bundle for a profile
-   * @param bundleRef
-   * @param profileId
-   * @param allSources
-   * @param silent
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async installProfileBundle(
-    bundleRef: ProfileBundle,
-    profileId: string,
-    allSources: RegistrySource[],
-    silent = false
-  ): Promise<InstalledBundle | null> {
-    // Check if bundle is already installed
-    const installedBundles = await this.storage.getInstalledBundles();
-    const alreadyInstalled = installedBundles.find((b) => b.bundleId === bundleRef.id);
-
-    if (alreadyInstalled) {
-      this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
-      return null;
-    }
-
-    // Search for the bundle
-    this.logger.info(`Searching for bundle: ${bundleRef.id} v${bundleRef.version}`);
-    const queryBySourceAndBundleId = { text: bundleRef.id, tags: [], sourceId: bundleRef.sourceId };
-    const searchResults = await this.searchBundles(queryBySourceAndBundleId);
-    this.logger.info(`Found ${searchResults.length} matching bundles.`, searchResults);
-
-    // Find matching bundle
-    const matchingBundle = searchResults.find((b) => {
-      const idMatch = b.id === bundleRef.id || b.name.toLowerCase().includes(bundleRef.id.toLowerCase());
-      if (bundleRef.sourceId) {
-        return idMatch && b.sourceId === bundleRef.sourceId;
-      }
-      return idMatch;
-    });
-
-    if (!matchingBundle) {
-      this.logger.warn(`Bundle not found: ${bundleRef.id}`);
-      return null;
-    }
-
-    // Get source and adapter
-    const source = allSources.find((s) => s.id === matchingBundle.sourceId);
-    if (!source) {
-      this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
-      return null;
-    }
-
-    const adapter = this.getAdapter(source);
-
-    // Download and install
-    this.logger.info(`Installing bundle: ${matchingBundle.id} from source ${matchingBundle.sourceId}`);
-    this.logger.debug(`Downloading bundle from ${source.type} adapter`);
-
-    const bundleBuffer = await adapter.downloadBundle(matchingBundle);
-    this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
-
-    const options: InstallOptions = {
-      scope: 'user',
-      force: false,
-      profileId: profileId
-    };
-
-    const installation: InstalledBundle = await this.installer.installFromBuffer(matchingBundle, bundleBuffer, options, source.type, source.name);
-
-    // Ensure sourceId and sourceType are set for identity matching
-    installation.sourceId = matchingBundle.sourceId;
-    installation.sourceType = source.type;
-
-    // Call adapter post-installation hook if available (for OLAF skills)
-    if (source.type === 'olaf' || source.type === 'local-olaf') {
-      this.logger.debug(`Checking for post-installation hook on ${source.type} adapter`);
-      this.logger.debug(`Adapter type: ${typeof adapter}, postInstall type: ${typeof (adapter as any).postInstall}`);
-
-      if (typeof (adapter as any).postInstall === 'function') {
-        this.logger.info(`Calling post-installation hook for ${source.type} adapter`);
-        try {
-          await (adapter as any).postInstall(matchingBundle.id, installation.installPath);
-          this.logger.info(`Post-installation hook completed successfully`);
-        } catch (error) {
-          this.logger.warn(`Post-installation hook failed: ${error}`);
-          // Don't fail the installation if post-install fails
-        }
-      } else {
-        this.logger.warn(`Post-installation hook not found on ${source.type} adapter`);
-      }
-    }
-
-    // Record installation and fire event
-    await this.storage.recordInstallation(installation);
-
-    if (!silent) {
-      this._onBundleInstalled.fire(installation);
-    }
-
-    this.logger.info(`Successfully installed: ${matchingBundle.id}`);
-
-    return installation;
-  }
-
-  /**
    * Deactivate a profile and uninstall its bundles
    * @param profileId
    */
@@ -2160,8 +2174,7 @@ export class RegistryManager {
         const hubProfiles = await this.hubManager.listActiveHubProfiles();
         const hubProfile = hubProfiles.find((p) => p.id === profileId);
         if (hubProfile && hubProfile.hubId) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-          const _result = await this.hubManager.deactivateProfile(hubProfile.hubId, profileId);
+          await this.hubManager.deactivateProfile(hubProfile.hubId, profileId);
 
           // Uninstall only the bundles that were installed BY THIS PROFILE
           // (not bundles installed manually or by other profiles)
@@ -2364,52 +2377,6 @@ export class RegistryManager {
     }
 
     // Settings imported - triggering UI refresh via source/profile events
-  }
-  // ===== Helper Methods =====
-
-  /**
-   * Sort bundles by criteria
-   * @param bundles
-   * @param sortBy
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private sortBundles(bundles: Bundle[], sortBy: string): Bundle[] {
-    switch (sortBy) {
-      case 'downloads': {
-        return bundles.toSorted((a, b) => (b.downloads || 0) - (a.downloads || 0));
-      }
-      case 'rating': {
-        return bundles.toSorted((a, b) => (b.rating || 0) - (a.rating || 0));
-      }
-      case 'recent': {
-        return bundles.toSorted((a, b) =>
-          new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
-        );
-      }
-      default: {
-        return bundles;
-      }
-    }
-  }
-
-  /**
-   * Get source type for a source ID
-   * Used by version consolidator for identity matching
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getSourceType(sourceId: string): SourceType {
-    const source = this.sourcesCache.find((s) => s.id === sourceId);
-    return source?.type ?? 'local';
-  }
-
-  /**
-   * Get a source by its ID from the cache
-   * @param sourceId
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private getSourceById(sourceId: string): RegistrySource | undefined {
-    return this.sourcesCache.find((s) => s.id === sourceId);
   }
 
   /**

@@ -321,29 +321,12 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   }
 
   /**
-   * Toggle view mode between all hubs and favorites
-   */
-  public toggleViewMode(): void {
-    this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
-    vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', this.viewMode === 'favorites');
-    this.refresh();
-  }
-
-  /**
-   * Refresh tree view
-   */
-  public refresh(): void {
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  /**
    * Handle source synced event with debouncing
    * Debounces refresh calls to prevent excessive updates when multiple sources sync
    * @param event
    * @param event.sourceId
    * @param event.bundleCount
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private handleSourceSynced(event: { sourceId: string; bundleCount: number }): void {
     this.logger.debug(`Source synced: ${event.sourceId} (${event.bundleCount} bundles)`);
 
@@ -360,44 +343,9 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   }
 
   /**
-   * Dispose of resources
-   */
-  public dispose(): void {
-    // Clear debounce timer
-    if (this.sourceSyncDebounceTimer) {
-      clearTimeout(this.sourceSyncDebounceTimer);
-    }
-
-    // Dispose all event listeners
-    this.disposables.forEach((d) => d.dispose());
-    this.disposables = [];
-  }
-
-  /**
-   * Update tree view when updates are detected
-   * Stores update information and refreshes the tree
-   * @param updates
-   */
-  public onUpdatesDetected(updates: UpdateCheckResult[]): void {
-    this.logger.debug(`Updates detected for ${updates.length} bundles`);
-
-    // Clear existing updates
-    this.availableUpdates.clear();
-
-    // Store new updates
-    for (const update of updates) {
-      this.availableUpdates.set(update.bundleId, update);
-    }
-
-    // Refresh tree to show update indicators
-    this.refresh();
-  }
-
-  /**
    * Check if a bundle has an available update
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private hasUpdate(bundleId: string): boolean {
     return this.availableUpdates.has(bundleId);
   }
@@ -406,7 +354,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get update information for a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getUpdateInfo(bundleId: string): UpdateCheckResult | undefined {
     return this.availableUpdates.get(bundleId);
   }
@@ -417,7 +364,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param autoUpdateEnabled - Whether auto-update is enabled
    * @param filesMissing - Whether bundle files are missing (repository scope only)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getBundleStatusPresentation(hasUpdate: boolean, autoUpdateEnabled: boolean, filesMissing?: boolean): {
     prefix: string;
     contextValue: string;
@@ -457,7 +403,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param bundleId
    * @param currentVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string): void {
     const updateInfo = this.getUpdateInfo(bundleId);
 
@@ -479,7 +424,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param baseContextValue - The base context value (e.g., 'installed_bundle_auto_disabled')
    * @param bundle - The installed bundle with scope information
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getContextValue(baseContextValue: string, bundle?: InstalledBundle): string {
     if (!bundle) {
       return baseContextValue;
@@ -497,98 +441,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   }
 
   /**
-   * Get tree item
-   * @param element
-   */
-  public getTreeItem(element: RegistryTreeItem): vscode.TreeItem {
-    return element;
-  }
-
-  /**
-   * Get children for tree item
-   * @param element
-   */
-  public async getChildren(element?: RegistryTreeItem): Promise<RegistryTreeItem[]> {
-    if (!element) {
-      // Root level items
-      return this.getRootItems();
-    }
-
-    // Get children based on parent type
-    switch (element.type) {
-      case TreeItemType.PROFILES_ROOT: {
-        return this.getProfileItems();
-      }
-
-      case TreeItemType.HUBS_ROOT: {
-        return this.getHubsItems();
-      }
-
-      case TreeItemType.FAVORITES_ROOT: {
-        return this.getFavoritesItems();
-      }
-
-      case TreeItemType.ACTIVE_PROFILE_SECTION: {
-        return this.getActiveProfileItems();
-      }
-
-      case TreeItemType.HUB: {
-        if (this.viewMode === 'favorites') {
-          // In favorites view, HUB item data contains pre-filtered profiles
-          // We need to organize them. If element.data is the Hub object, we need to fetch favorites.
-          const hub = element.data;
-          const profiles = await this.hubManager.listProfilesFromHub(hub.id);
-          const favorites = await this.hubManager.getFavoriteProfiles();
-          const hubFavorites = favorites[hub.id] || [];
-          const favoriteProfiles = profiles.filter((p) => hubFavorites.includes(p.id));
-          return this.organizeProfiles(hub.id, favoriteProfiles, [], hubFavorites);
-        }
-        return this.getHubChildren(element.data);
-      }
-
-      case TreeItemType.PROFILE_FOLDER: {
-        return this.getFolderChildren(element.data);
-      }
-
-      case TreeItemType.PROFILE: {
-        return this.getProfileBundleItems(element.data as Profile);
-      }
-
-      case TreeItemType.HUB_PROFILE: {
-        // Reuse getProfileBundleItems as compatible
-        return this.getProfileBundleItems(element.data as Profile);
-      }
-
-      case TreeItemType.INSTALLED_ROOT: {
-        return this.getInstalledBundleItems();
-      }
-
-      case TreeItemType.DISCOVER_ROOT: {
-        return this.getDiscoverItems();
-      }
-
-      case TreeItemType.DISCOVER_CATEGORY: {
-        return this.getCategoryBundles(element.label);
-      }
-
-      case TreeItemType.SOURCES_ROOT: {
-        return this.getSourceItems();
-      }
-
-      case TreeItemType.LOCAL_PROFILES_FOLDER: {
-        return this.getLocalProfileItems();
-      }
-
-      default: {
-        return [];
-      }
-    }
-  }
-
-  /**
    * Get root level items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getRootItems(): RegistryTreeItem[] {
     const profileRootLabel = this.viewMode === 'all' ? 'Shared Profiles' : 'Favorites';
     const profileRootType = this.viewMode === 'all' ? TreeItemType.HUBS_ROOT : TreeItemType.FAVORITES_ROOT;
@@ -618,7 +472,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get hub items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubsItems(): Promise<RegistryTreeItem[]> {
     const hubs = await this.hubManager.listHubs();
     return hubs.map((hub) => new RegistryTreeItem(
@@ -632,7 +485,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get favorite profile items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getFavoritesItems(): Promise<RegistryTreeItem[]> {
     // Cleanup orphaned favorites (from previously deleted hubs)
     await this.hubManager.cleanupOrphanedFavorites();
@@ -707,7 +559,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     return items;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getActiveProfileItems(): Promise<RegistryTreeItem[]> {
     try {
       const localProfiles = await this.registryManager.listLocalProfiles();
@@ -768,7 +619,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get children for a hub
    * @param hub
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubChildren(hub: any): Promise<RegistryTreeItem[]> {
     const profiles = await this.hubManager.listProfilesFromHub(hub.id);
     const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
@@ -781,7 +631,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get children for a folder
    * @param folder
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getFolderChildren(folder: any): Promise<RegistryTreeItem[]> {
     const profiles = await this.hubManager.listProfilesFromHub(folder.hubId);
     const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
@@ -803,7 +652,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param currentPath
    * @param favorites
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private organizeProfiles(hubId: string, profiles: any[], currentPath: string[], favorites: string[] = []): RegistryTreeItem[] {
     const items: RegistryTreeItem[] = [];
     const folders = new Set<string>();
@@ -875,7 +723,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get local profile items (for Local Profiles folder in Favorites view)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getLocalProfileItems(): Promise<RegistryTreeItem[]> {
     const items: RegistryTreeItem[] = [];
     try {
@@ -905,7 +752,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get profile items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getProfileItems(): Promise<RegistryTreeItem[]> {
     try {
       const profiles = await this.registryManager.listProfiles();
@@ -948,7 +794,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get bundles for a profile
    * @param profile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getProfileBundleItems(profile: Profile): Promise<RegistryTreeItem[]> {
     const items: RegistryTreeItem[] = [];
 
@@ -985,7 +830,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get installed bundle items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getInstalledBundleItems(): Promise<RegistryTreeItem[]> {
     try {
       const installed = await this.registryManager.listInstalledBundles();
@@ -1082,7 +926,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get discover section items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getDiscoverItems(): RegistryTreeItem[] {
     return [
       new RegistryTreeItem(
@@ -1116,7 +959,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get bundles by category
    * @param _category
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async getCategoryBundles(_category: string): Promise<RegistryTreeItem[]> {
     // TODO: Implement category filtering
     // For now, return empty
@@ -1126,7 +969,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get source items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getSourceItems(): Promise<RegistryTreeItem[]> {
     try {
       const sources = await this.registryManager.listSources();
@@ -1157,6 +999,145 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     } catch (error) {
       this.logger.error('Failed to load sources', error as Error);
       return [];
+    }
+  }
+
+  /**
+   * Toggle view mode between all hubs and favorites
+   */
+  public toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
+    vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', this.viewMode === 'favorites');
+    this.refresh();
+  }
+
+  /**
+   * Refresh tree view
+   */
+  public refresh(): void {
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  /**
+   * Dispose of resources
+   */
+  public dispose(): void {
+    // Clear debounce timer
+    if (this.sourceSyncDebounceTimer) {
+      clearTimeout(this.sourceSyncDebounceTimer);
+    }
+
+    // Dispose all event listeners
+    this.disposables.forEach((d) => d.dispose());
+    this.disposables = [];
+  }
+
+  /**
+   * Update tree view when updates are detected
+   * Stores update information and refreshes the tree
+   * @param updates
+   */
+  public onUpdatesDetected(updates: UpdateCheckResult[]): void {
+    this.logger.debug(`Updates detected for ${updates.length} bundles`);
+
+    // Clear existing updates
+    this.availableUpdates.clear();
+
+    // Store new updates
+    for (const update of updates) {
+      this.availableUpdates.set(update.bundleId, update);
+    }
+
+    // Refresh tree to show update indicators
+    this.refresh();
+  }
+
+  /**
+   * Get tree item
+   * @param element
+   */
+  public getTreeItem(element: RegistryTreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  /**
+   * Get children for tree item
+   * @param element
+   */
+  public async getChildren(element?: RegistryTreeItem): Promise<RegistryTreeItem[]> {
+    if (!element) {
+      // Root level items
+      return this.getRootItems();
+    }
+
+    // Get children based on parent type
+    switch (element.type) {
+      case TreeItemType.PROFILES_ROOT: {
+        return this.getProfileItems();
+      }
+
+      case TreeItemType.HUBS_ROOT: {
+        return this.getHubsItems();
+      }
+
+      case TreeItemType.FAVORITES_ROOT: {
+        return this.getFavoritesItems();
+      }
+
+      case TreeItemType.ACTIVE_PROFILE_SECTION: {
+        return this.getActiveProfileItems();
+      }
+
+      case TreeItemType.HUB: {
+        if (this.viewMode === 'favorites') {
+          // In favorites view, HUB item data contains pre-filtered profiles
+          // We need to organize them. If element.data is the Hub object, we need to fetch favorites.
+          const hub = element.data;
+          const profiles = await this.hubManager.listProfilesFromHub(hub.id);
+          const favorites = await this.hubManager.getFavoriteProfiles();
+          const hubFavorites = favorites[hub.id] || [];
+          const favoriteProfiles = profiles.filter((p) => hubFavorites.includes(p.id));
+          return this.organizeProfiles(hub.id, favoriteProfiles, [], hubFavorites);
+        }
+        return this.getHubChildren(element.data);
+      }
+
+      case TreeItemType.PROFILE_FOLDER: {
+        return this.getFolderChildren(element.data);
+      }
+
+      case TreeItemType.PROFILE: {
+        return this.getProfileBundleItems(element.data as Profile);
+      }
+
+      case TreeItemType.HUB_PROFILE: {
+        // Reuse getProfileBundleItems as compatible
+        return this.getProfileBundleItems(element.data as Profile);
+      }
+
+      case TreeItemType.INSTALLED_ROOT: {
+        return this.getInstalledBundleItems();
+      }
+
+      case TreeItemType.DISCOVER_ROOT: {
+        return this.getDiscoverItems();
+      }
+
+      case TreeItemType.DISCOVER_CATEGORY: {
+        return this.getCategoryBundles(element.label);
+      }
+
+      case TreeItemType.SOURCES_ROOT: {
+        return this.getSourceItems();
+      }
+
+      case TreeItemType.LOCAL_PROFILES_FOLDER: {
+        return this.getLocalProfileItems();
+      }
+
+      default: {
+        return [];
+      }
     }
   }
 }

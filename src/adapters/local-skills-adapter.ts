@@ -159,11 +159,329 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Scan skills/ directory for skill folders
+   */
+  private async scanSkillsDirectory(): Promise<SkillItem[]> {
+    const localPath = this.getLocalPath();
+    const skillsPath = path.join(localPath, 'skills');
+
+    this.logger.debug(`[LocalSkillsAdapter] Scanning skills directory: ${skillsPath}`);
+
+    try {
+      const entries = await readdir(skillsPath, { withFileTypes: true });
+      const skills: SkillItem[] = [];
+
+      const directories = entries.filter((entry) => entry.isDirectory());
+      this.logger.debug(`[LocalSkillsAdapter] Found ${directories.length} directories in skills/`);
+
+      for (const dir of directories) {
+        try {
+          const skill = await this.processSkillDirectory(dir.name, skillsPath);
+          if (skill) {
+            skills.push(skill);
+          }
+        } catch (error) {
+          this.logger.warn(`[LocalSkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`);
+        }
+      }
+
+      return skills;
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Failed to scan skills directory: ${error}`);
+      throw new Error(`Failed to scan skills directory: ${error}`);
+    }
+  }
+
+  /**
+   * Process a skill directory
+   * @param skillId
+   * @param skillsPath
+   */
+  private async processSkillDirectory(skillId: string, skillsPath: string): Promise<SkillItem | null> {
+    const skillPath = path.join(skillsPath, skillId);
+    const skillMdPath = path.join(skillPath, 'SKILL.md');
+
+    this.logger.debug(`[LocalSkillsAdapter] Processing skill directory: ${skillId}`);
+
+    try {
+      try {
+        await access(skillMdPath, fs.constants.R_OK);
+      } catch {
+        this.logger.debug(`[LocalSkillsAdapter] Skill ${skillId} missing SKILL.md, skipping`);
+        return null;
+      }
+
+      const parsedSkillMd = await this.parseSkillMd(skillMdPath);
+
+      const entries = await readdir(skillPath);
+      const files = entries.filter((entry) => {
+        const entryPath = path.join(skillPath, entry);
+        try {
+          return fs.statSync(entryPath).isFile();
+        } catch {
+          return false;
+        }
+      });
+      // Calculate content hash of skill directory
+      const contentHash = await this.calculateContentHash(skillPath, files);
+
+      const skillItem: SkillItem = {
+        id: skillId,
+        name: parsedSkillMd.frontmatter.name || skillId,
+        description: parsedSkillMd.frontmatter.description || 'No description',
+        license: parsedSkillMd.frontmatter.license,
+        path: `skills/${skillId}`,
+        skillMdPath: `skills/${skillId}/SKILL.md`,
+        files,
+        contentHash,
+        parsedSkillMd
+      };
+
+      this.logger.debug(`[LocalSkillsAdapter] Successfully processed skill: ${skillItem.name}`);
+      return skillItem;
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Error processing skill ${skillId}: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Parse SKILL.md file
+   * @param skillMdPath
+   */
+  private async parseSkillMd(skillMdPath: string): Promise<ParsedSkillFile> {
+    this.logger.debug(`[LocalSkillsAdapter] Parsing SKILL.md: ${skillMdPath}`);
+
+    try {
+      const raw = await readFile(skillMdPath, 'utf8');
+
+      const frontmatterMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+
+      if (!frontmatterMatch) {
+        this.logger.warn(`[LocalSkillsAdapter] SKILL.md missing valid frontmatter`);
+        return {
+          frontmatter: { name: '', description: '' },
+          content: raw,
+          raw
+        };
+      }
+
+      const frontmatterYaml = frontmatterMatch[1];
+      const markdownContent = frontmatterMatch[2];
+
+      let frontmatter: SkillFrontmatter;
+      try {
+        frontmatter = yaml.load(frontmatterYaml) as SkillFrontmatter;
+      } catch (yamlError) {
+        this.logger.warn(`[LocalSkillsAdapter] Failed to parse YAML frontmatter: ${yamlError}`);
+        frontmatter = { name: '', description: '' };
+      }
+
+      return {
+        frontmatter,
+        content: markdownContent,
+        raw
+      };
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Failed to parse SKILL.md: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Create Bundle from SkillItem
+   * @param skill
+   */
+  private createBundleFromSkill(skill: SkillItem): Bundle {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+
+    const bundleId = `local-skills-${sourceName}-${skill.id}`;
+
+    const bundle: Bundle = {
+      id: bundleId,
+      name: skill.name,
+      // Content hash drives hash-based versioning for update detection.
+      version: this.formatSkillVersion(skill.contentHash),
+      description: skill.description,
+      author: 'Local',
+      sourceId: this.source.id,
+      environments: ['claude', 'vscode', 'claude-code'],
+      tags: ['skill', 'anthropic', 'local'],
+      lastUpdated: new Date().toISOString(),
+      size: this.estimateSkillSize(skill.files),
+      dependencies: [],
+      license: skill.license || 'Unknown',
+      repository: this.source.url,
+      homepage: this.source.url,
+      manifestUrl: this.getManifestUrl(bundleId),
+      downloadUrl: this.getDownloadUrl(bundleId)
+    };
+
+    return bundle;
+  }
+
+  /**
+   * Calculate a stable hash from skill file contents.
+   * @param skillPath
+   * @param files
+   */
+  private async calculateContentHash(skillPath: string, files: string[]): Promise<string> {
+    const hash = crypto.createHash('sha256');
+    const sortedFiles = files.toSorted((a, b) => a.localeCompare(b));
+
+    for (const file of sortedFiles) {
+      const filePath = path.join(skillPath, file);
+      const content = await readFile(filePath);
+      hash.update(file);
+      hash.update(':');
+      hash.update(content);
+      hash.update('|');
+    }
+
+    return hash.digest('hex');
+  }
+
+  /**
+   * Format skill version from content hash.
+   * @param contentHash
+   */
+  private formatSkillVersion(contentHash?: string): string {
+    return contentHash ? `hash:${contentHash}` : '1.0.0';
+  }
+
+  /**
+   * Estimate skill size
+   * @param files
+   */
+  private estimateSkillSize(files: string[]): string {
+    const estimatedBytes = files.length * 4096;
+
+    if (estimatedBytes < 1024) {
+      return `${estimatedBytes} B`;
+    }
+    if (estimatedBytes < 1024 * 1024) {
+      return `${(estimatedBytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(estimatedBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  /**
+   * Package skill as ZIP
+   * @param skill
+   */
+  private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
+    const localPath = this.getLocalPath();
+    const skillPath = path.join(localPath, skill.path);
+
+    this.logger.debug(`[LocalSkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
+
+    try {
+      const zip = new AdmZip();
+
+      const deploymentManifest = this.generateDeploymentManifest(skill);
+      const manifestYaml = yaml.dump(deploymentManifest);
+      zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
+
+      // Use skills/{skill-id}/ structure to match CopilotSyncService expectations
+      await this.addDirectoryToZip(zip, skillPath, `skills/${skill.id}`);
+
+      const zipBuffer = zip.toBuffer();
+      this.logger.debug(`[LocalSkillsAdapter] Created ZIP bundle: ${zipBuffer.length} bytes`);
+      return zipBuffer;
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Failed to package skill ${skill.id}: ${error}`);
+      throw new Error(`Failed to package skill as ZIP: ${error}`);
+    }
+  }
+
+  /**
+   * Add directory contents to ZIP recursively
+   * @param zip
+   * @param dirPath
+   * @param zipPath
+   */
+  private async addDirectoryToZip(zip: AdmZip, dirPath: string, zipPath: string): Promise<void> {
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const entryPath = path.join(dirPath, entry.name);
+        const entryZipPath = `${zipPath}/${entry.name}`;
+
+        if (entry.isFile()) {
+          const content = await readFile(entryPath);
+          zip.addFile(entryZipPath, content);
+          this.logger.debug(`[LocalSkillsAdapter] Added file to ZIP: ${entryZipPath}`);
+        } else if (entry.isDirectory()) {
+          await this.addDirectoryToZip(zip, entryPath, entryZipPath);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`[LocalSkillsAdapter] Failed to add directory ${dirPath} to ZIP: ${error}`);
+    }
+  }
+
+  /**
+   * Generate deployment manifest
+   * @param skill
+   */
+  private generateDeploymentManifest(skill: SkillItem): any {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+
+    return {
+      id: `local-skills-${sourceName}-${skill.id}`,
+      version: this.formatSkillVersion(skill.contentHash),
+      name: skill.name,
+
+      metadata: {
+        manifest_version: '1.0',
+        description: skill.description,
+        author: 'Local',
+        last_updated: new Date().toISOString(),
+        repository: {
+          type: 'local',
+          url: this.source.url,
+          directory: skill.path
+        },
+        license: skill.license || 'Unknown',
+        keywords: ['skill', 'anthropic', 'local']
+      },
+
+      common: {
+        directories: [`skills/${skill.id}`],
+        files: [],
+        include_patterns: ['**/*'],
+        exclude_patterns: []
+      },
+
+      bundle_settings: {
+        include_common_in_environment_bundles: true,
+        create_common_bundle: true,
+        compression: 'zip',
+        naming: {
+          common_bundle: skill.id
+        }
+      },
+
+      prompts: [
+        {
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          file: `SKILL.md`,
+          type: 'skill',
+          tags: ['skill', 'anthropic', 'local']
+        }
+      ]
+    };
+  }
+
+  /**
    * Validate local skills source
    */
   public async validate(): Promise<ValidationResult> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-    const _errors: string[] = [];
     const warnings: string[] = [];
 
     try {
@@ -254,221 +572,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Scan skills/ directory for skill folders
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async scanSkillsDirectory(): Promise<SkillItem[]> {
-    const localPath = this.getLocalPath();
-    const skillsPath = path.join(localPath, 'skills');
-
-    this.logger.debug(`[LocalSkillsAdapter] Scanning skills directory: ${skillsPath}`);
-
-    try {
-      const entries = await readdir(skillsPath, { withFileTypes: true });
-      const skills: SkillItem[] = [];
-
-      const directories = entries.filter((entry) => entry.isDirectory());
-      this.logger.debug(`[LocalSkillsAdapter] Found ${directories.length} directories in skills/`);
-
-      for (const dir of directories) {
-        try {
-          const skill = await this.processSkillDirectory(dir.name, skillsPath);
-          if (skill) {
-            skills.push(skill);
-          }
-        } catch (error) {
-          this.logger.warn(`[LocalSkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`);
-        }
-      }
-
-      return skills;
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to scan skills directory: ${error}`);
-      throw new Error(`Failed to scan skills directory: ${error}`);
-    }
-  }
-
-  /**
-   * Process a skill directory
-   * @param skillId
-   * @param skillsPath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async processSkillDirectory(skillId: string, skillsPath: string): Promise<SkillItem | null> {
-    const skillPath = path.join(skillsPath, skillId);
-    const skillMdPath = path.join(skillPath, 'SKILL.md');
-
-    this.logger.debug(`[LocalSkillsAdapter] Processing skill directory: ${skillId}`);
-
-    try {
-      try {
-        await access(skillMdPath, fs.constants.R_OK);
-      } catch {
-        this.logger.debug(`[LocalSkillsAdapter] Skill ${skillId} missing SKILL.md, skipping`);
-        return null;
-      }
-
-      const parsedSkillMd = await this.parseSkillMd(skillMdPath);
-
-      const entries = await readdir(skillPath);
-      const files = entries.filter((entry) => {
-        const entryPath = path.join(skillPath, entry);
-        try {
-          return fs.statSync(entryPath).isFile();
-        } catch {
-          return false;
-        }
-      });
-      // Calculate content hash of skill directory
-      const contentHash = await this.calculateContentHash(skillPath, files);
-
-      const skillItem: SkillItem = {
-        id: skillId,
-        name: parsedSkillMd.frontmatter.name || skillId,
-        description: parsedSkillMd.frontmatter.description || 'No description',
-        license: parsedSkillMd.frontmatter.license,
-        path: `skills/${skillId}`,
-        skillMdPath: `skills/${skillId}/SKILL.md`,
-        files,
-        contentHash,
-        parsedSkillMd
-      };
-
-      this.logger.debug(`[LocalSkillsAdapter] Successfully processed skill: ${skillItem.name}`);
-      return skillItem;
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Error processing skill ${skillId}: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Parse SKILL.md file
-   * @param skillMdPath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async parseSkillMd(skillMdPath: string): Promise<ParsedSkillFile> {
-    this.logger.debug(`[LocalSkillsAdapter] Parsing SKILL.md: ${skillMdPath}`);
-
-    try {
-      const raw = await readFile(skillMdPath, 'utf8');
-
-      const frontmatterMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-
-      if (!frontmatterMatch) {
-        this.logger.warn(`[LocalSkillsAdapter] SKILL.md missing valid frontmatter`);
-        return {
-          frontmatter: { name: '', description: '' },
-          content: raw,
-          raw
-        };
-      }
-
-      const frontmatterYaml = frontmatterMatch[1];
-      const markdownContent = frontmatterMatch[2];
-
-      let frontmatter: SkillFrontmatter;
-      try {
-        frontmatter = yaml.load(frontmatterYaml) as SkillFrontmatter;
-      } catch (yamlError) {
-        this.logger.warn(`[LocalSkillsAdapter] Failed to parse YAML frontmatter: ${yamlError}`);
-        frontmatter = { name: '', description: '' };
-      }
-
-      return {
-        frontmatter,
-        content: markdownContent,
-        raw
-      };
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to parse SKILL.md: ${error}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Create Bundle from SkillItem
-   * @param skill
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private createBundleFromSkill(skill: SkillItem): Bundle {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-
-    const bundleId = `local-skills-${sourceName}-${skill.id}`;
-
-    const bundle: Bundle = {
-      id: bundleId,
-      name: skill.name,
-      // Content hash drives hash-based versioning for update detection.
-      version: this.formatSkillVersion(skill.contentHash),
-      description: skill.description,
-      author: 'Local',
-      sourceId: this.source.id,
-      environments: ['claude', 'vscode', 'claude-code'],
-      tags: ['skill', 'anthropic', 'local'],
-      lastUpdated: new Date().toISOString(),
-      size: this.estimateSkillSize(skill.files),
-      dependencies: [],
-      license: skill.license || 'Unknown',
-      repository: this.source.url,
-      homepage: this.source.url,
-      manifestUrl: this.getManifestUrl(bundleId),
-      downloadUrl: this.getDownloadUrl(bundleId)
-    };
-
-    return bundle;
-  }
-
-  /**
-   * Calculate a stable hash from skill file contents.
-   * @param skillPath
-   * @param files
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async calculateContentHash(skillPath: string, files: string[]): Promise<string> {
-    const hash = crypto.createHash('sha256');
-    const sortedFiles = files.toSorted((a, b) => a.localeCompare(b));
-
-    for (const file of sortedFiles) {
-      const filePath = path.join(skillPath, file);
-      const content = await readFile(filePath);
-      hash.update(file);
-      hash.update(':');
-      hash.update(content);
-      hash.update('|');
-    }
-
-    return hash.digest('hex');
-  }
-
-  /**
-   * Format skill version from content hash.
-   * @param contentHash
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private formatSkillVersion(contentHash?: string): string {
-    return contentHash ? `hash:${contentHash}` : '1.0.0';
-  }
-
-  /**
-   * Estimate skill size
-   * @param files
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private estimateSkillSize(files: string[]): string {
-    const estimatedBytes = files.length * 4096;
-
-    if (estimatedBytes < 1024) {
-      return `${estimatedBytes} B`;
-    }
-    if (estimatedBytes < 1024 * 1024) {
-      return `${(estimatedBytes / 1024).toFixed(1)} KB`;
-    }
-    return `${(estimatedBytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  /**
    * Get manifest URL
    * @param bundleId
    * @param _version
@@ -543,120 +646,5 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     const localPath = this.getLocalPath();
     const sourceName = path.basename(localPath);
     return bundle.id.replace(`local-skills-${sourceName}-`, '');
-  }
-
-  /**
-   * Package skill as ZIP
-   * @param skill
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
-    const localPath = this.getLocalPath();
-    const skillPath = path.join(localPath, skill.path);
-
-    this.logger.debug(`[LocalSkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
-
-    try {
-      const zip = new AdmZip();
-
-      const deploymentManifest = this.generateDeploymentManifest(skill);
-      const manifestYaml = yaml.dump(deploymentManifest);
-      zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
-
-      // Use skills/{skill-id}/ structure to match CopilotSyncService expectations
-      await this.addDirectoryToZip(zip, skillPath, `skills/${skill.id}`);
-
-      const zipBuffer = zip.toBuffer();
-      this.logger.debug(`[LocalSkillsAdapter] Created ZIP bundle: ${zipBuffer.length} bytes`);
-      return zipBuffer;
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to package skill ${skill.id}: ${error}`);
-      throw new Error(`Failed to package skill as ZIP: ${error}`);
-    }
-  }
-
-  /**
-   * Add directory contents to ZIP recursively
-   * @param zip
-   * @param dirPath
-   * @param zipPath
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private async addDirectoryToZip(zip: AdmZip, dirPath: string, zipPath: string): Promise<void> {
-    try {
-      const entries = await readdir(dirPath, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const entryPath = path.join(dirPath, entry.name);
-        const entryZipPath = `${zipPath}/${entry.name}`;
-
-        if (entry.isFile()) {
-          const content = await readFile(entryPath);
-          zip.addFile(entryZipPath, content);
-          this.logger.debug(`[LocalSkillsAdapter] Added file to ZIP: ${entryZipPath}`);
-        } else if (entry.isDirectory()) {
-          await this.addDirectoryToZip(zip, entryPath, entryZipPath);
-        }
-      }
-    } catch (error) {
-      this.logger.warn(`[LocalSkillsAdapter] Failed to add directory ${dirPath} to ZIP: ${error}`);
-    }
-  }
-
-  /**
-   * Generate deployment manifest
-   * @param skill
-   */
-  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
-  private generateDeploymentManifest(skill: SkillItem): any {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-
-    return {
-      id: `local-skills-${sourceName}-${skill.id}`,
-      version: this.formatSkillVersion(skill.contentHash),
-      name: skill.name,
-
-      metadata: {
-        manifest_version: '1.0',
-        description: skill.description,
-        author: 'Local',
-        last_updated: new Date().toISOString(),
-        repository: {
-          type: 'local',
-          url: this.source.url,
-          directory: skill.path
-        },
-        license: skill.license || 'Unknown',
-        keywords: ['skill', 'anthropic', 'local']
-      },
-
-      common: {
-        directories: [`skills/${skill.id}`],
-        files: [],
-        include_patterns: ['**/*'],
-        exclude_patterns: []
-      },
-
-      bundle_settings: {
-        include_common_in_environment_bundles: true,
-        create_common_bundle: true,
-        compression: 'zip',
-        naming: {
-          common_bundle: skill.id
-        }
-      },
-
-      prompts: [
-        {
-          id: skill.id,
-          name: skill.name,
-          description: skill.description,
-          file: `SKILL.md`,
-          type: 'skill',
-          tags: ['skill', 'anthropic', 'local']
-        }
-      ]
-    };
   }
 }
