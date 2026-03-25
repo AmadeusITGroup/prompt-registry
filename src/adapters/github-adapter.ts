@@ -690,9 +690,8 @@ export class GitHubAdapter extends RepositoryAdapter {
       manifest = JSON.parse(manifestText);
     } else {
       // Assume YAML for .yml or .yaml
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const yaml = require('js-yaml');
-      manifest = yaml.load(manifestText);
+      const yaml = await import('js-yaml');
+      manifest = yaml.default.load(manifestText);
     }
 
     // Cache the parsed manifest

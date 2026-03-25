@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- top-level import, cannot use await import
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import {
@@ -68,7 +68,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     }
 
     if (localPath.startsWith('~/')) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync method cannot use await import
       const os = require('node:os');
       localPath = path.join(os.homedir(), localPath.slice(2));
     }

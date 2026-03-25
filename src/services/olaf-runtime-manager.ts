@@ -13,7 +13,7 @@
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as path from 'node:path';
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- top-level import, cannot use await import
 import AdmZip = require('adm-zip');
 import * as vscode from 'vscode';
 import {

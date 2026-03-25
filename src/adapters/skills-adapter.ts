@@ -592,10 +592,9 @@ export class SkillsAdapter extends RepositoryAdapter {
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
-    // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-require-imports -- matches library export name; dynamic require needed at runtime
-    const AdmZip = require('adm-zip');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const yamlLib = require('js-yaml');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
+    const { default: AdmZip } = await import('adm-zip');
+    const { default: yamlLib } = await import('js-yaml');
 
     this.logger.debug(`[SkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
 
@@ -732,8 +731,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadFileContent(url: string): Promise<Buffer> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const https = require('node:https');
+    const https = await import('node:https');
 
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = {
@@ -771,14 +769,10 @@ export class SkillsAdapter extends RepositoryAdapter {
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async makeGitHubRequest(url: string): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const https = require('node:https');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const vscode = require('vscode');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const { exec } = require('node:child_process');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const { promisify } = require('node:util');
+    const https = await import('node:https');
+    const vscode = await import('vscode');
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
     const execAsync = promisify(exec);
 
     let authToken: string | undefined;

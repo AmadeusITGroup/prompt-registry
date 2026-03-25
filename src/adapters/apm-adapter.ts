@@ -514,8 +514,6 @@ export class ApmAdapter extends RepositoryAdapter {
       const promptFiles = await this.findPromptFiles(modulesDir);
       for (const file of promptFiles) {
         const content = await fs.promises.readFile(file, 'utf8');
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-        const _relativePath = path.relative(modulesDir, file);
         archive.append(content, { name: `prompts/${path.basename(file)}` });
       }
     }

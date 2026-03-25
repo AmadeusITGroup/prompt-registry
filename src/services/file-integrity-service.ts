@@ -270,8 +270,7 @@ export class FileIntegrityService {
    * @param patterns
    */
   public async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const glob = require('glob');
+    const glob = await import('glob');
     const files: string[] = [];
 
     if (patterns && patterns.length > 0) {

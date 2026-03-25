@@ -2261,9 +2261,8 @@ export class RegistryManager {
     };
 
     if (format === 'yaml') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const yaml = require('js-yaml');
-      return yaml.dump(settings, {
+      const yaml = await import('js-yaml');
+      return yaml.default.dump(settings, {
         indent: 2,
         lineWidth: 120,
         noRefs: true
@@ -2288,9 +2287,8 @@ export class RegistryManager {
     let settings: ExportedSettings;
     try {
       if (format === 'yaml') {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-        const yaml = require('js-yaml');
-        settings = yaml.load(data) as ExportedSettings;
+        const yaml = await import('js-yaml');
+        settings = yaml.default.load(data) as ExportedSettings;
       } else {
         settings = JSON.parse(data);
       }

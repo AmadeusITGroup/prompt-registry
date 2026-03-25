@@ -187,9 +187,8 @@ Provide example interactions or use cases.
       return true; // Skip validation, dependencies not installed yet
     }
 
+    const { exec } = await import('node:child_process');
     return new Promise((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const { exec } = require('node:child_process');
       exec(`node "${validateScript}"`, { cwd: workspaceRoot }, (error: Error | null, stdout: string, stderr: string) => {
         if (error) {
           this.logger.error('Skill validation failed', error);

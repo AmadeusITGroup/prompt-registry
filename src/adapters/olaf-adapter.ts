@@ -797,8 +797,7 @@ export class OlafAdapter extends RepositoryAdapter {
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadManifestContent(url: string): Promise<Buffer> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const https = require('node:https');
+    const https = await import('node:https');
 
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = {
@@ -1050,8 +1049,8 @@ export class OlafAdapter extends RepositoryAdapter {
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/naming-convention -- dynamic require needed at runtime; matches library export name
-    const AdmZip = require('adm-zip');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
+    const { default: AdmZip } = await import('adm-zip');
 
     this.logger.debug(`[OlafAdapter] Packaging bundle as ZIP: ${bundleInfo.fileName}`);
 
@@ -1061,9 +1060,8 @@ export class OlafAdapter extends RepositoryAdapter {
 
       // Generate and add deployment manifest with all skills
       const deploymentManifest = this.generateBundleDeploymentManifest(bundleInfo);
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const yaml = require('js-yaml');
-      const manifestYaml = yaml.dump(deploymentManifest);
+      const jsYaml = await import('js-yaml');
+      const manifestYaml = jsYaml.default.dump(deploymentManifest);
       zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
 
       // Download and add each skill to the ZIP
@@ -1257,8 +1255,8 @@ export class OlafAdapter extends RepositoryAdapter {
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageSkillAsBundle(skill: SkillInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/naming-convention -- dynamic require needed at runtime; matches library export name
-    const AdmZip = require('adm-zip');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
+    const { default: AdmZip } = await import('adm-zip');
 
     this.logger.debug(`[OlafAdapter] Packaging skill as bundle: ${skill.folderName}`);
 
@@ -1268,8 +1266,8 @@ export class OlafAdapter extends RepositoryAdapter {
 
       // Generate and add deployment manifest
       const deploymentManifest = this.generateDeploymentManifest(skill);
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const manifestYaml = require('js-yaml').dump(deploymentManifest);
+      const jsYaml = await import('js-yaml');
+      const manifestYaml = jsYaml.default.dump(deploymentManifest);
       zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
 
       // Get all files in the skill directory
@@ -1346,12 +1344,10 @@ export class OlafAdapter extends RepositoryAdapter {
   /**
    * Download file content from GitHub
    * @param url
-   // eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS import required by module
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadFileContent(url: string): Promise<Buffer> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const https = require('node:https');
+    const https = await import('node:https');
 
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = {
@@ -1484,10 +1480,8 @@ export class OlafAdapter extends RepositoryAdapter {
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const fs = require('node:fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const path = require('node:path');
+      const fs = await import('node:fs');
+      const path = await import('node:path');
 
       // Get workspace path
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -1659,10 +1653,8 @@ export class OlafAdapter extends RepositoryAdapter {
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const fs = require('node:fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const path = require('node:path');
+      const fs = await import('node:fs');
+      const path = await import('node:path');
 
       // Get workspace path
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -1781,14 +1773,11 @@ export class OlafAdapter extends RepositoryAdapter {
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async makeGitHubRequest(url: string): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const https = require('node:https');
-    // eslint-disable-next-line @typescript-eslint/no-shadow, @typescript-eslint/no-require-imports -- intentional shadowing in nested scope; dynamic require needed at runtime
-    const vscode = require('vscode');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const { exec } = require('node:child_process');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-    const { promisify } = require('node:util');
+    const https = await import('node:https');
+    // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
+    const vscode = await import('vscode');
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
     const execAsync = promisify(exec);
 
     // Get authentication token using the same fallback chain as GitHubAdapter

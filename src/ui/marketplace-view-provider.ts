@@ -660,8 +660,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async openPromptFileInEditor(installPath: string, filePath: string): Promise<void> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
-      const path = require('node:path');
+      const path = await import('node:path');
       const fullPath = path.join(installPath, filePath);
 
       this.logger.debug(`Opening prompt file: ${fullPath}`);
