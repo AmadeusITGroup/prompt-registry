@@ -155,6 +155,14 @@ export class HubManager {
   }
 
   /**
+   * Get the active hub ID from storage
+   * @returns Active hub ID or null if no hub is active
+   */
+  async getActiveHubId(): Promise<string | null> {
+    return this.storage.getActiveHubId();
+  }
+
+  /**
    * Import hub from remote or local source
    * @param reference Hub reference (GitHub, URL, or local path)
    * @param hubId Optional hub identifier (auto-generated if not provided)

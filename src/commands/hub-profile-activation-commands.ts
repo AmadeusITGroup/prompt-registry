@@ -15,7 +15,7 @@ import {
 export async function activateHubProfile(hubManager: HubManager, item?: any): Promise<void> {
   try {
     // Get the active hub ID first
-    const activeHubId = await (hubManager as any).storage.getActiveHubId();
+    const activeHubId = await hubManager.getActiveHubId();
 
     if (!activeHubId) {
       vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');
@@ -122,7 +122,7 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 export async function deactivateHubProfile(hubManager: HubManager, item?: any): Promise<void> {
   try {
     // Get the active hub ID first
-    const activeHubId = await (hubManager as any).storage.getActiveHubId();
+    const activeHubId = await hubManager.getActiveHubId();
 
     if (!activeHubId) {
       vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');
@@ -203,7 +203,7 @@ export async function deactivateHubProfile(hubManager: HubManager, item?: any): 
 export async function showActiveProfiles(hubManager: HubManager): Promise<void> {
   try {
     // Get the active hub ID first
-    const activeHubId = await (hubManager as any).storage.getActiveHubId();
+    const activeHubId = await hubManager.getActiveHubId();
 
     if (!activeHubId) {
       vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');

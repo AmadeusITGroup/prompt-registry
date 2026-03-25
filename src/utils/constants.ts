@@ -107,6 +107,14 @@ export const UPDATE_CONSTANTS = {
 } as const;
 
 /**
+ * Hub sync constants
+ */
+export const HUB_SYNC_CONSTANTS = {
+  /** Interval for periodic hub sync (24 hours) */
+  SYNC_INTERVAL_MS: 24 * 60 * 60 * 1000,
+} as const;
+
+/**
  * UI constants
  */
 export const UI_CONSTANTS = {

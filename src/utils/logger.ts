@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import {
+  isTestEnvironment,
+} from './environment';
 
 /**
  * Log levels for filtering
@@ -22,9 +25,7 @@ export class Logger {
 
   private constructor() {
     // Detect test environment
-    this.isTestEnvironment = process.env.NODE_ENV === 'test'
-      || process.argv.some((arg) => arg.includes('mocha'))
-      || process.argv.some((arg) => arg.includes('test'));
+    this.isTestEnvironment = isTestEnvironment();
 
     // Check for LOG_LEVEL environment variable
     const envLogLevel = process.env.LOG_LEVEL?.toUpperCase();

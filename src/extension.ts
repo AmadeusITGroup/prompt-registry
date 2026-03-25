@@ -80,6 +80,9 @@ import {
   HubManager,
 } from './services/hub-manager';
 import {
+  HubSyncScheduler,
+} from './services/hub-sync-scheduler';
+import {
   InstallationManager,
 } from './services/installation-manager';
 import {
@@ -172,6 +175,9 @@ export class PromptRegistryExtension {
   private validateApmCommand: ValidateApmCommand | undefined;
   private createCollectionCommand: CreateCollectionCommand | undefined;
   private copilotIntegration: CopilotIntegration | undefined;
+
+  // Hub sync scheduler
+  private hubSyncScheduler: HubSyncScheduler | undefined;
 
   // Update notification services
   private updateScheduler: UpdateScheduler | undefined;
@@ -273,6 +279,12 @@ export class PromptRegistryExtension {
       // Always sync active hub on activation to keep it up-to-date
       await this.syncActiveHub();
 
+      // Start periodic hub sync scheduler (24h interval)
+      if (this.hubManager) {
+        this.hubSyncScheduler = new HubSyncScheduler(this.context, this.hubManager);
+        this.hubSyncScheduler.initialize();
+      }
+
       // Ensure only one profile is active (cleanup any multi-active state)
       await this.ensureSingleActiveProfile();
 
@@ -303,6 +315,9 @@ export class PromptRegistryExtension {
 
       // Dispose telemetry event subscriptions
       this.telemetryService?.dispose();
+
+      // Dispose hub sync scheduler
+      this.hubSyncScheduler?.dispose();
 
       // Dispose update scheduler
       this.updateScheduler?.dispose();
@@ -379,6 +394,32 @@ export class PromptRegistryExtension {
     this.hubCommands = new HubCommands(this.hubManager, this.registryManager, this.context);
     this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
     this.hubProfileCommands = new HubProfileCommands(this.context);
+
+    // Wire onHubSynced → syncAllSources so every hub sync (manual, periodic, activation)
+    // automatically refreshes sources. This single wiring replaces ad-hoc calls.
+    // Uses a coalescing guard so rapid-fire events (e.g. syncAllHubs iterating N hubs)
+    // collapse into a single syncAllSources call.
+    let sourceSyncPending = false;
+    const hubSyncDisposable = this.hubManager.onHubSynced(() => {
+      if (!this.sourceCommands || sourceSyncPending) {
+        return;
+      }
+      sourceSyncPending = true;
+      // Defer to next microtask so multiple synchronous onHubSynced fires coalesce
+      Promise.resolve().then(async () => {
+        try {
+          await this.sourceCommands!.syncAllSources({ silent: true });
+          this.logger.info('Sources synced after hub sync');
+          vscode.commands.executeCommand('promptRegistry.refresh');
+        } catch (error) {
+          this.logger.warn('Failed to sync sources after hub sync', error as Error);
+        } finally {
+          sourceSyncPending = false;
+        }
+      });
+    });
+    this.disposables.push(hubSyncDisposable);
+
     // Note: scaffoldCommand is registered inline in command handler
     const addResourceCommand = new AddResourceCommand(this.context.extensionPath);
     const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
@@ -1496,39 +1537,24 @@ export class PromptRegistryExtension {
         return;
       }
 
-      // Check if there's an active hub
-      const activeHub = await hubManager.getActiveHub();
-      if (!activeHub) {
+      const activeHubId = await hubManager.getActiveHubId();
+      if (!activeHubId) {
         this.logger.info('No active hub configured, skipping auto-sync');
         return;
       }
 
-      // Get active hub ID
-      const activeProfiles = await hubManager.listActiveHubProfiles();
-      if (activeProfiles.length === 0 || !activeProfiles[0].hubId) {
-        this.logger.warn('Active hub has no profiles or hub ID, skipping auto-sync');
+      // Validate hub still exists (clears stale activeHubId if hub was deleted)
+      const activeHub = await hubManager.getActiveHub();
+      if (!activeHub) {
+        this.logger.info('Active hub no longer exists, cleared stale reference');
         return;
       }
 
-      const activeHubId = activeProfiles[0].hubId;
       this.logger.info(`Auto-syncing active hub: ${activeHubId}`);
-
-      // Sync hub configuration
+      // syncHub fires onHubSynced → triggers syncAllSources via event wiring
       await hubManager.syncHub(activeHubId);
-
-      // Sync all sources from the active hub in the background (non-blocking)
-      // This allows the extension to finish activation quickly so the webview can resolve
-      // and show cached bundles while sync happens progressively
-      sourceCommands.syncAllSources({ silent: true }).then(() => {
-        this.logger.info('Active hub synchronized successfully on activation');
-        // Refresh tree view after sync completes
-        vscode.commands.executeCommand('promptRegistry.refresh');
-      }).catch((error) => {
-        this.logger.warn('Background sync failed', error as Error);
-      });
     } catch (error) {
       this.logger.warn('Failed to auto-sync active hub on activation', error as Error);
-      // Don't fail extension activation if sync fails
     }
   }
 

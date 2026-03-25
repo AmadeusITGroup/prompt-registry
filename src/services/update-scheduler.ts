@@ -13,6 +13,12 @@ import {
   UpdateCheckFrequency,
 } from '../utils/config-type-guards';
 import {
+  UPDATE_CONSTANTS,
+} from '../utils/constants';
+import {
+  isTestEnvironment,
+} from '../utils/environment';
+import {
   Logger,
 } from '../utils/logger';
 import {
@@ -35,16 +41,6 @@ export interface UpdateSchedulerConfig {
   frequency: UpdateCheckFrequency;
   startupCheckDelay: number; // milliseconds
 }
-
-/**
- * Update scheduler constants
- */
-const SCHEDULER_CONSTANTS = {
-  STARTUP_CHECK_DELAY_MS: 5000, // 5 seconds per requirements
-  DAILY_INTERVAL_MS: 24 * 60 * 60 * 1000, // 24 hours
-  WEEKLY_INTERVAL_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
-  UPDATE_CHECK_TIMEOUT_MS: 30_000 // 30 seconds timeout for update checks
-} as const;
 
 /**
  * Update scheduler service
@@ -78,21 +74,7 @@ export class UpdateScheduler {
     this.autoUpdateService = autoUpdateService;
     this.logger = Logger.getInstance();
 
-    // Test Environment Detection
-    // ---------------------------
-    // This detection exists because Node.js timers (setTimeout/setInterval) keep the
-    // process alive, causing test runners to hang. While dependency injection for a
-    // TimerStrategy interface would be more "pure", this pragmatic approach:
-    // 1. Avoids adding complexity for a single use case
-    // 2. Is well-tested via property tests (UpdateScheduler.property.test.ts)
-    // 3. Allows opt-in via UPDATE_SCHEDULER_ALLOW_TIMERS_IN_TESTS for integration tests
-    // 4. Uses explicit detection rather than mocking internals
-    const isNodeTestEnvironment =
-      process.env.NODE_ENV === 'test'
-      || process.argv.some((arg) => arg.includes('mocha'))
-      || process.argv.some((arg) => arg.includes('test'));
-    const allowTimersOverride = process.env.UPDATE_SCHEDULER_ALLOW_TIMERS_IN_TESTS === 'true';
-    this.isTestEnvironment = isNodeTestEnvironment && !allowTimersOverride;
+    this.isTestEnvironment = isTestEnvironment('UPDATE_SCHEDULER_ALLOW_TIMERS_IN_TESTS');
 
     // Load configuration
     this.config = this.loadConfiguration();
@@ -252,7 +234,7 @@ export class UpdateScheduler {
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(
           () => reject(new Error('Update check timed out')),
-          SCHEDULER_CONSTANTS.UPDATE_CHECK_TIMEOUT_MS
+          UPDATE_CONSTANTS.UPDATE_CHECK_TIMEOUT_MS
         );
       });
 
@@ -341,10 +323,10 @@ export class UpdateScheduler {
   private getCheckInterval(): number {
     switch (this.config.frequency) {
       case 'daily': {
-        return SCHEDULER_CONSTANTS.DAILY_INTERVAL_MS;
+        return UPDATE_CONSTANTS.DAILY_INTERVAL_MS;
       }
       case 'weekly': {
-        return SCHEDULER_CONSTANTS.WEEKLY_INTERVAL_MS;
+        return UPDATE_CONSTANTS.WEEKLY_INTERVAL_MS;
       }
       default: {
         return 0;
@@ -372,7 +354,7 @@ export class UpdateScheduler {
     return {
       enabled: config.get<boolean>('enabled', true),
       frequency,
-      startupCheckDelay: SCHEDULER_CONSTANTS.STARTUP_CHECK_DELAY_MS
+      startupCheckDelay: UPDATE_CONSTANTS.STARTUP_CHECK_DELAY_MS
     };
   }
 
