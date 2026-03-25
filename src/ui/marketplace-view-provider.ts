@@ -1165,7 +1165,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     <div class="mcp-env-vars">
                         <strong style="font-size: 12px;">Headers:</strong>
                         ${Object.entries(remoteConfig.headers).map(([key, value]) => `
-                            <div class="mcp-env-var">• <code>${this.escapeHtml(key)}</code>: <code>${this.escapeHtml(String(value).substring(0, 20))}${String(value).length > 20 ? '...' : ''}</code></div>
+                            <div class="mcp-env-var">• <code>${this.escapeHtml(key)}</code>: <code>${this.escapeHtml(String(value).substring(0, 20))}${
+                              String(value).length > 20 ? '...' : ''}</code></div>
                         `).join('')}
                     </div>`
                       : ''}`;

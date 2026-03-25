@@ -287,9 +287,8 @@ suite('SetupStateManager - Property Tests', () => {
               SetupState.INCOMPLETE,
               `Should migrate to INCOMPLETE state (${testParams})`
             );
-          }
+          } else if (!firstRun && hasAnyHub) {
           // Requirement 1.2 & 5.4, 5.5: firstRun=false AND has hub → complete (backward compat)
-          else if (!firstRun && hasAnyHub) {
             assert.strictEqual(
               isIncomplete,
               false,
@@ -303,17 +302,15 @@ suite('SetupStateManager - Property Tests', () => {
               SetupState.NOT_STARTED,
               `Should not migrate state when hub is configured (${testParams})`
             );
-          }
+          } else if (firstRun) {
           // firstRun=true → not incomplete (fresh install)
-          else if (firstRun) {
             assert.strictEqual(
               isIncomplete,
               false,
               `Fresh install (firstRun=true) should not be incomplete (${testParams})`
             );
-          }
+          } else {
           // Other cases (hubInitialized=true) → not incomplete
-          else {
             assert.strictEqual(
               isIncomplete,
               false,

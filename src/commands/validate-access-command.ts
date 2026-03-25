@@ -89,7 +89,12 @@ export class ValidateAccessCommand {
     accessMessage: string;
     connectivity: boolean;
   }): Promise<void> {
-    const statusItems: string[] = [`**Repository**: ${results.owner}/${results.repo}`, `**Private Repository Mode**: ${results.usePrivateRepo ? 'Enabled' : 'Disabled'}`, `**Authentication Token**: ${results.hasToken ? 'Configured' : 'Not set'}`, ''];
+    const statusItems: string[] = [
+      `**Repository**: ${results.owner}/${results.repo}`,
+      `**Private Repository Mode**: ${results.usePrivateRepo ? 'Enabled' : 'Disabled'}`,
+      `**Authentication Token**: ${results.hasToken ? 'Configured' : 'Not set'}`,
+      ''
+    ];
 
     // Repository configuration
 

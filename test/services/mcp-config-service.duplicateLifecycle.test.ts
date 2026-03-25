@@ -164,9 +164,18 @@ suite('McpConfigService - Duplicate Server Lifecycle', () => {
       };
       let tracking: McpTrackingMetadata = {
         managedServers: {
-          'prompt-registry:bundle-a:shared': { bundleId: 'bundle-a', bundleVersion: '1.0.0', originalName: 'shared', originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user' },
-          'prompt-registry:bundle-b:shared': { bundleId: 'bundle-b', bundleVersion: '1.0.0', originalName: 'shared', originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user' },
-          'prompt-registry:bundle-c:shared': { bundleId: 'bundle-c', bundleVersion: '1.0.0', originalName: 'shared', originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user' }
+          'prompt-registry:bundle-a:shared': {
+            bundleId: 'bundle-a', bundleVersion: '1.0.0', originalName: 'shared',
+            originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user'
+          },
+          'prompt-registry:bundle-b:shared': {
+            bundleId: 'bundle-b', bundleVersion: '1.0.0', originalName: 'shared',
+            originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user'
+          },
+          'prompt-registry:bundle-c:shared': {
+            bundleId: 'bundle-c', bundleVersion: '1.0.0', originalName: 'shared',
+            originalConfig: sharedServer, installedAt: new Date().toISOString(), scope: 'user'
+          }
         },
         lastUpdated: new Date().toISOString(),
         version: '1.0.0'

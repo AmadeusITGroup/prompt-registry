@@ -101,12 +101,5 @@ export const temporaryWarnRules = {
   'prefer-const': 'warn',
   'import/no-cycle': 'warn',
   'import-newlines/enforce': 'warn',
-  '@stylistic/max-len': 'warn',
-  '@stylistic/max-statements-per-line': 'warn',
-  '@stylistic/indent-binary-ops': 'warn',
-  '@stylistic/comma-dangle': 'warn',
-  '@stylistic/brace-style': 'warn',
-  '@stylistic/semi': 'warn',
-  '@stylistic/indent': 'warn',
   '@eslint-community/eslint-comments/require-description': 'warn'
 };

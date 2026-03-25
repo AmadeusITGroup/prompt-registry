@@ -56,9 +56,6 @@ import {
   checkPathExists,
 } from '../utils/symlink-utils';
 import {
-  IScopeService,
-} from './scope-service';
-import {
   LockfileManager,
 } from './lockfile-manager';
 import {
@@ -67,6 +64,9 @@ import {
 import {
   RepositoryScopeService,
 } from './repository-scope-service';
+import {
+  IScopeService,
+} from './scope-service';
 import {
   ScopeServiceFactory,
 } from './scope-service-factory';

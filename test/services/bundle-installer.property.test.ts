@@ -17,14 +17,14 @@ import * as fc from 'fast-check';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
-  IScopeService,
-} from '../../src/services/scope-service';
-import {
   LockfileManager,
 } from '../../src/services/lockfile-manager';
 import {
   RegistryManager,
 } from '../../src/services/registry-manager';
+import {
+  IScopeService,
+} from '../../src/services/scope-service';
 import {
   ScopeServiceFactory,
 } from '../../src/services/scope-service-factory';

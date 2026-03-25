@@ -1314,7 +1314,10 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         if (Array.isArray(verifyIndex) && verifyIndex.length >= bundleInfo.validatedSkills.length) {
           this.logger.info(`[LocalOlafAdapter] Competency index verification successful: ${verifyIndex.length} total skills`);
         } else {
-          this.logger.error(`[LocalOlafAdapter] Competency index verification failed: expected at least ${bundleInfo.validatedSkills.length} skills, found ${Array.isArray(verifyIndex) ? verifyIndex.length : 'invalid format'}`);
+          this.logger.error(
+            '[LocalOlafAdapter] Competency index verification failed: expected at least '
+            + `${bundleInfo.validatedSkills.length} skills, found ${Array.isArray(verifyIndex) ? verifyIndex.length : 'invalid format'}`
+          );
         }
       } else {
         this.logger.error(`[LocalOlafAdapter] Competency index file does not exist after write`);

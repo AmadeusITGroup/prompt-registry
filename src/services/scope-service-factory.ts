@@ -15,11 +15,11 @@ import {
   InstallationScope,
 } from '../types/registry';
 import {
-  IScopeService,
-} from './scope-service';
-import {
   RepositoryScopeService,
 } from './repository-scope-service';
+import {
+  IScopeService,
+} from './scope-service';
 import {
   UserScopeService,
 } from './user-scope-service';

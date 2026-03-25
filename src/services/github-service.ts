@@ -54,7 +54,9 @@ export class GitHubService {
     this.defaultVersion = config.get<string>('defaultVersion') || 'latest';
 
     if (this.usePrivateRepo && !this.token && !this.useGitHubCli) {
-      this.logger.warn('Private repository access enabled but no GitHub token provided and GitHub CLI is disabled. Please set promptregistry.githubToken in settings or enable promptregistry.useGitHubCli.');
+      this.logger.warn(
+        'Private repository access enabled but no GitHub token provided and GitHub CLI is disabled. Please set promptregistry.githubToken in settings or enable promptregistry.useGitHubCli.'
+      );
     }
 
     this.logger.debug(`GitHubService initialized for ${this.owner}/${this.repo} (private: ${this.usePrivateRepo}, gh-cli: ${this.useGitHubCli}, default-version: ${this.defaultVersion})`);

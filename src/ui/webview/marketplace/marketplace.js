@@ -428,7 +428,11 @@
         + renderBundleButtons(bundle)
         + '<button class="btn btn-secondary" data-action="openDetails" data-bundle-id="' + bundle.id + '">Details</button>'
         + '<button class="btn btn-link" data-action="openSourceRepo" data-bundle-id="' + bundle.id + '" title="Open Source Repository">'
-        + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 1 1 0v2a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2h2a.5.5 0 0 1 0 1h-2zM9 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V3.707l-5.146 5.147a.5.5 0 0 1-.708-.708L12.293 3H9.5a.5.5 0 0 1-.5-.5z"/></svg>'
+        + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">'
+        + '<path d="M4.5 3A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 1 1 0v2'
+        + 'a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2h2a.5.5 0 0 1 0 1h-2z'
+        + 'M9 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V3.707l-5.146 5.147a.5.5 0 0 1-.708-.708L12.293 3H9.5a.5.5 0 0 1-.5-.5z"/>'
+        + '</svg>'
         + '</button>'
         + '</div>'
         + '</div>';
@@ -439,39 +443,57 @@
     if (bundle.buttonState === 'update') {
       if (bundle.availableVersions && bundle.availableVersions.length > 1) {
         return '<div class="version-selector-group">'
-          + '<button class="btn btn-primary" data-action="updateBundle" data-bundle-id="' + bundle.id + '">Update' + (bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : '') + '</button>'
-          + '<button class="version-selector-arrow" data-action="toggleVersionDropdown" data-dropdown-id="' + bundle.id + '-update">▾</button>'
+          + '<button class="btn btn-primary" data-action="updateBundle" data-bundle-id="'
+          + bundle.id + '">Update'
+          + (bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : '') + '</button>'
+          + '<button class="version-selector-arrow" data-action="toggleVersionDropdown" data-dropdown-id="'
+          + bundle.id + '-update">▾</button>'
           + '<div class="version-dropdown" id="version-dropdown-' + bundle.id + '-update">'
           + '<div class="version-item uninstall" data-action="uninstallBundle" data-bundle-id="' + bundle.id + '">'
           + '<span>Uninstall</span>'
           + '</div>'
           + '<div class="version-dropdown-header">Switch Version</div>'
           + (bundle.availableVersions || []).map(function (versionObj, index) {
-            return '<div class="version-item ' + (versionObj.version === bundle.installedVersion ? 'current' : '') + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id + '" data-version="' + versionObj.version + '">'
+            return '<div class="version-item '
+              + (versionObj.version === bundle.installedVersion ? 'current' : '')
+              + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id
+              + '" data-version="' + versionObj.version + '">'
               + '<span>v' + versionObj.version + '</span>'
-              + (versionObj.version === bundle.installedVersion ? '<span class="version-badge">Current</span>' : (index === 0 ? '<span class="version-badge latest">Latest</span>' : ''))
+              + (versionObj.version === bundle.installedVersion
+                ? '<span class="version-badge">Current</span>'
+                : (index === 0 ? '<span class="version-badge latest">Latest</span>' : ''))
               + '</div>';
           }).join('')
           + '</div>'
           + '</div>';
       }
-      return '<button class="btn btn-primary" data-action="updateBundle" data-bundle-id="' + bundle.id + '">Update' + (bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : '') + '</button>';
+      return '<button class="btn btn-primary" data-action="updateBundle" data-bundle-id="'
+        + bundle.id + '">Update'
+        + (bundle.installedVersion ? formatUpdateLabel(bundle.installedVersion, bundle.version) : '')
+        + '</button>';
     }
 
     if (bundle.buttonState === 'uninstall') {
       if (bundle.availableVersions && bundle.availableVersions.length > 1) {
         return '<div class="version-selector-group">'
-          + '<button class="btn btn-danger" data-action="uninstallBundle" data-bundle-id="' + bundle.id + '">Uninstall</button>'
-          + '<button class="version-selector-arrow danger" data-action="toggleVersionDropdown" data-dropdown-id="' + bundle.id + '-installed">▾</button>'
+          + '<button class="btn btn-danger" data-action="uninstallBundle" data-bundle-id="'
+          + bundle.id + '">Uninstall</button>'
+          + '<button class="version-selector-arrow danger" data-action="toggleVersionDropdown" data-dropdown-id="'
+          + bundle.id + '-installed">▾</button>'
           + '<div class="version-dropdown" id="version-dropdown-' + bundle.id + '-installed">'
           + '<div class="version-item uninstall" data-action="uninstallBundle" data-bundle-id="' + bundle.id + '">'
           + '<span>Uninstall</span>'
           + '</div>'
           + '<div class="version-dropdown-header">Switch Version</div>'
           + (bundle.availableVersions || []).map(function (versionObj, index) {
-            return '<div class="version-item ' + (versionObj.version === bundle.installedVersion ? 'current' : '') + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id + '" data-version="' + versionObj.version + '">'
+            return '<div class="version-item '
+              + (versionObj.version === bundle.installedVersion ? 'current' : '')
+              + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id
+              + '" data-version="' + versionObj.version + '">'
               + '<span>v' + versionObj.version + '</span>'
-              + (versionObj.version === bundle.installedVersion ? '<span class="version-badge">Current</span>' : (index === 0 ? '<span class="version-badge latest">Latest</span>' : ''))
+              + (versionObj.version === bundle.installedVersion
+                ? '<span class="version-badge">Current</span>'
+                : (index === 0 ? '<span class="version-badge latest">Latest</span>' : ''))
               + '</div>';
           }).join('')
           + '</div>'
@@ -599,37 +621,43 @@
         }
         case 'installBundle': {
           if (bundleId) {
-            e.stopPropagation(); installBundle(bundleId);
+            e.stopPropagation();
+            installBundle(bundleId);
           }
           break;
         }
         case 'installBundleVersion': {
           if (bundleId && version) {
-            e.stopPropagation(); installBundleVersion(bundleId, version);
+            e.stopPropagation();
+            installBundleVersion(bundleId, version);
           }
           break;
         }
         case 'updateBundle': {
           if (bundleId) {
-            e.stopPropagation(); updateBundle(bundleId);
+            e.stopPropagation();
+            updateBundle(bundleId);
           }
           break;
         }
         case 'uninstallBundle': {
           if (bundleId) {
-            e.stopPropagation(); uninstallBundle(bundleId);
+            e.stopPropagation();
+            uninstallBundle(bundleId);
           }
           break;
         }
         case 'openSourceRepo': {
           if (bundleId) {
-            e.stopPropagation(); openSourceRepo(bundleId);
+            e.stopPropagation();
+            openSourceRepo(bundleId);
           }
           break;
         }
         case 'toggleVersionDropdown': {
           if (dropdownId) {
-            e.stopPropagation(); toggleVersionDropdown(dropdownId);
+            e.stopPropagation();
+            toggleVersionDropdown(dropdownId);
           }
           break;
         }

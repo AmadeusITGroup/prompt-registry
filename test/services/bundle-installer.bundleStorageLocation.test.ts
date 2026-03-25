@@ -22,11 +22,11 @@ import {
   BundleInstaller,
 } from '../../src/services/bundle-installer';
 import {
-  IScopeService,
-} from '../../src/services/scope-service';
-import {
   LockfileManager,
 } from '../../src/services/lockfile-manager';
+import {
+  IScopeService,
+} from '../../src/services/scope-service';
 import {
   ScopeServiceFactory,
 } from '../../src/services/scope-service-factory';

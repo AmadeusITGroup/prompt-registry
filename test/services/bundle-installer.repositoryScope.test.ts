@@ -18,14 +18,14 @@ import {
   BundleInstaller,
 } from '../../src/services/bundle-installer';
 import {
-  IScopeService,
-} from '../../src/services/scope-service';
-import {
   LockfileManager,
 } from '../../src/services/lockfile-manager';
 import {
   RepositoryScopeService,
 } from '../../src/services/repository-scope-service';
+import {
+  IScopeService,
+} from '../../src/services/scope-service';
 import {
   ScopeServiceFactory,
 } from '../../src/services/scope-service-factory';

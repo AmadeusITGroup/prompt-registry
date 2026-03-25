@@ -367,14 +367,12 @@ export class ProfileCommands {
       if (profileId && typeof profileId === 'object' && 'data' in profileId) {
         targetProfileId = profileId.data.id;
         this.logger.info(`Activating profile from tree item: ${targetProfileId}`);
-      }
-      // Handle direct profile ID
-      else if (typeof profileId === 'string') {
+      } else if (typeof profileId === 'string') {
+        // Handle direct profile ID
         targetProfileId = profileId;
         this.logger.info(`Activating profile by ID: ${targetProfileId}`);
-      }
-      // No profile specified - show picker
-      else {
+      } else {
+        // No profile specified - show picker
         const profiles = await this.registryManager.listProfiles();
 
         if (profiles.length === 0) {
@@ -424,14 +422,12 @@ export class ProfileCommands {
       if (profileIdOrItem && typeof profileIdOrItem === 'object' && 'data' in profileIdOrItem) {
         targetProfileId = profileIdOrItem.data.id;
         this.logger.info(`Deactivating profile from tree item: ${targetProfileId}`);
-      }
-      // Handle direct profile ID
-      else if (typeof profileIdOrItem === 'string') {
+      } else if (typeof profileIdOrItem === 'string') {
+        // Handle direct profile ID
         targetProfileId = profileIdOrItem;
         this.logger.info(`Deactivating profile by ID: ${targetProfileId}`);
-      }
-      // No profile specified - show picker
-      else {
+      } else {
+        // No profile specified - show picker
         const profiles = await this.registryManager.listProfiles();
         const activeProfiles = profiles.filter((p) => p.active);
 

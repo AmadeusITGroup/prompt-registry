@@ -36,7 +36,10 @@ export class AddResourceCommand {
     // Otherwise treat as extensionPath and append templates/resources path
     let templatesPath: string;
     if (extensionPathOrTemplateRoot) {
-      templatesPath = extensionPathOrTemplateRoot.includes('templates/resources') || extensionPathOrTemplateRoot.includes('templates\\resources') ? extensionPathOrTemplateRoot : path.join(extensionPathOrTemplateRoot, 'templates/resources');
+      templatesPath = extensionPathOrTemplateRoot.includes('templates/resources')
+        || extensionPathOrTemplateRoot.includes('templates\\resources')
+        ? extensionPathOrTemplateRoot
+        : path.join(extensionPathOrTemplateRoot, 'templates/resources');
     } else {
       templatesPath = path.join(__dirname, '../templates/resources');
     }

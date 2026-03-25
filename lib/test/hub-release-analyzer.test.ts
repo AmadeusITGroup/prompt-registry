@@ -376,10 +376,26 @@ sources: []
     const { aggregateData } = analyzer;
 
     const mockRecords = [
-      { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-      { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a', version: '2.0.0', assetName: 'a-2.0.0.zip', assetSize: 1000, downloadCount: 200, releaseTag: 'v2.0.0', releaseDate: '2024-02-01' },
-      { sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-b', version: '1.0.0', assetName: 'b-1.0.0.zip', assetSize: 1000, downloadCount: 50, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-      { sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 150, releaseTag: 'v1.0.0', releaseDate: '2024-01-15' }
+      {
+        sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a',
+        version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 100,
+        releaseTag: 'v1.0.0', releaseDate: '2024-01-01'
+      },
+      {
+        sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-a',
+        version: '2.0.0', assetName: 'a-2.0.0.zip', assetSize: 1000, downloadCount: 200,
+        releaseTag: 'v2.0.0', releaseDate: '2024-02-01'
+      },
+      {
+        sourceId: 'src1', sourceName: 'Source 1', sourceRepo: 'owner/repo1', bundleId: 'bundle-b',
+        version: '1.0.0', assetName: 'b-1.0.0.zip', assetSize: 1000, downloadCount: 50,
+        releaseTag: 'v1.0.0', releaseDate: '2024-01-01'
+      },
+      {
+        sourceId: 'src2', sourceName: 'Source 2', sourceRepo: 'owner/repo2', bundleId: 'bundle-a',
+        version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1000, downloadCount: 150,
+        releaseTag: 'v1.0.0', releaseDate: '2024-01-15'
+      }
     ];
 
     it('should aggregate by source', () => {
@@ -439,7 +455,11 @@ sources: []
         { bundleId: 'bundle-b', totalDownloads: 700, versionCount: 2, sourceCount: 1, topVersion: { version: '1.5.0', downloads: 500 } }
       ],
       detailed: [
-        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' }
+        {
+          sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0',
+          assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100,
+          releaseTag: 'v1.0.0', releaseDate: '2024-01-01'
+        }
       ]
     };
 
@@ -507,8 +527,16 @@ sources: []
         { bundleId: 'bundle-a', totalDownloads: 800, versionCount: 3, sourceCount: 2, topVersion: { version: '2.0.0', downloads: 400 } }
       ],
       detailed: [
-        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0', assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100, releaseTag: 'v1.0.0', releaseDate: '2024-01-01' },
-        { sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-b', version: '2.0.0', assetName: 'b-2.0.0.zip', assetSize: 2048, downloadCount: 200, releaseTag: 'v2.0.0', releaseDate: '2024-02-01' }
+        {
+          sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-a', version: '1.0.0',
+          assetName: 'a-1.0.0.zip', assetSize: 1024, downloadCount: 100,
+          releaseTag: 'v1.0.0', releaseDate: '2024-01-01'
+        },
+        {
+          sourceId: 'src1', sourceName: 'Source 1', bundleId: 'bundle-b', version: '2.0.0',
+          assetName: 'b-2.0.0.zip', assetSize: 2048, downloadCount: 200,
+          releaseTag: 'v2.0.0', releaseDate: '2024-02-01'
+        }
       ]
     };
 

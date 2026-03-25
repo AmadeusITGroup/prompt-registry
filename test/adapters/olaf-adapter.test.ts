@@ -460,7 +460,10 @@ suite('OlafAdapter Integration Tests', () => {
         ])
         .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill')
         .reply(200, [
-          { name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' }
+          {
+            name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file',
+            download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json'
+          }
         ])
         .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill/manifest.json')
         .reply(200, { download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' });
@@ -555,7 +558,10 @@ suite('OlafAdapter Integration Tests', () => {
         ])
         .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill')
         .reply(200, [
-          { name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' }
+          {
+            name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file',
+            download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json'
+          }
         ])
         .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill/manifest.json')
         .reply(200, { download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' });

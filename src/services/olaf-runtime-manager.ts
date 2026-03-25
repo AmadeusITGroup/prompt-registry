@@ -321,7 +321,9 @@ export class OlafRuntimeManager {
       const commonAsset = releaseInfo.assets?.find((a: any) => a.name === commonAssetName);
 
       if (!commonAsset) {
-        throw new Error(`No runtime bundle found for ${ide} in release ${actualVersion}. Looking for: ${assetName} or ${commonAssetName}. Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ')}`);
+        throw new Error(
+          `No runtime bundle found for ${ide} in release ${actualVersion}. Looking for: ${assetName} or ${commonAssetName}. Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ')}`
+        );
       }
 
       this.logger.warn(`[OlafRuntime] IDE-specific asset not found, using common bundle: ${commonAsset.name}`);

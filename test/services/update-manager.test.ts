@@ -239,7 +239,7 @@ suite('UpdateManager', () => {
     test('should process scheduled updates', async () => {
       const scheduled = new Map<string, Date>([
         ['bundle-1', new Date(Date.now() - 1000)], // Past
-        ['bundle-2', new Date(Date.now() + 1000)], // Future
+        ['bundle-2', new Date(Date.now() + 1000)] // Future (not yet due)
       ]);
 
       const due = Array.from(scheduled.entries())
@@ -253,7 +253,7 @@ suite('UpdateManager', () => {
     test('should cancel scheduled updates', () => {
       const scheduled = new Map<string, Date>([
         ['bundle-1', new Date()],
-        ['bundle-2', new Date()],
+        ['bundle-2', new Date()]
       ]);
 
       scheduled.delete('bundle-1');

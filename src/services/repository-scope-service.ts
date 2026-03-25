@@ -35,13 +35,13 @@ import {
   Logger,
 } from '../utils/logger';
 import {
+  LockfileManager,
+} from './lockfile-manager';
+import {
   IScopeService,
   ScopeStatus,
   SyncBundleOptions,
 } from './scope-service';
-import {
-  LockfileManager,
-} from './lockfile-manager';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);

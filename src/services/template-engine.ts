@@ -197,13 +197,13 @@ export class TemplateEngine {
 
         break;
       }
-      default: { if (templatePath.endsWith('.template')) {
-        relativePath = templatePath.slice(0, -9);
-      }
-      // Handle .template. in the middle (e.g., file.template.yml -> file.yml)
-      else if (templatePath.includes('.template.')) {
-        relativePath = templatePath.replace('.template.', '.');
-      }
+      default: {
+        if (templatePath.endsWith('.template')) {
+          relativePath = templatePath.slice(0, -9);
+        } else if (templatePath.includes('.template.')) {
+          // Handle .template. in the middle (e.g., file.template.yml -> file.yml)
+          relativePath = templatePath.replace('.template.', '.');
+        }
       }
     }
 

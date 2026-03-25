@@ -151,11 +151,17 @@ export class ValidateApmCommand {
   private log(message: string, type?: 'error' | 'warning' | 'success'): void {
     let prefix = '';
     switch (type) {
-      case 'error': { prefix = '❌ '; break;
+      case 'error': {
+        prefix = '❌ ';
+        break;
       }
-      case 'warning': { prefix = '⚠️  '; break;
+      case 'warning': {
+        prefix = '⚠️  ';
+        break;
       }
-      case 'success': { prefix = '✅ '; break;
+      case 'success': {
+        prefix = '✅ ';
+        break;
       }
     }
     this.outputChannel.appendLine(prefix + message);
