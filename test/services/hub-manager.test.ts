@@ -863,6 +863,139 @@ suite('Hub Source Loading - SourceId Format', () => {
   });
 });
 
+suite('HubManager Ghost Hub Cleanup on Failed Import', () => {
+  // Bug: When importHub fails during loadHubSources (e.g., source validation 404),
+  // the hub is already saved to storage (line 196) but the error propagates up.
+  // This leaves a "ghost hub" in storage that:
+  // 1. Causes initializeHub to enter migration path instead of fresh install
+  // 2. Cannot be recovered from via "Reset First Run" (which only clears state + active hub)
+  // 3. Accumulates on each retry (timestamp-based IDs create new ghost each time)
+  // See: https://github.com/AmadeusITGroup/prompt-registry/issues/213
+
+  let hubManager: HubManager;
+  let hubStorage: HubStorage;
+  let mockValidator: MockSchemaValidator;
+  let tempDir: string;
+
+  setup(() => {
+    tempDir = path.join(__dirname, '..', '..', 'test-temp-hubmanager-ghost');
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    hubStorage = new HubStorage(tempDir);
+    mockValidator = new MockSchemaValidator();
+  });
+
+  teardown(() => {
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true });
+    }
+  });
+
+  test('should save hub even when all sources fail validation (no ghost)', async () => {
+    // Source validation failures are non-fatal: hub is saved, failing sources are skipped.
+    const failingRegistry = {
+      async listSources() {
+        return [];
+      },
+      async addSource(_source: any) {
+        throw new Error('Source validation failed: Failed to validate repository: HTTP 404: Not Found');
+      },
+      async updateSource() {
+        // no-op
+      }
+    };
+
+    hubManager = new HubManager(
+      hubStorage,
+      mockValidator as any,
+      process.cwd(),
+      undefined,
+      failingRegistry as any
+    );
+
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+    const ref = { type: 'local' as const, location: fixturePath };
+
+    // importHub should succeed — source failures are non-fatal
+    const hubId = await hubManager.importHub(ref, 'test-ghost');
+    assert.strictEqual(hubId, 'test-ghost');
+
+    // Hub IS saved in storage (this is intentional, not a ghost)
+    const hubs = await hubStorage.listHubs();
+    assert.strictEqual(hubs.length, 1, 'Hub should be saved even when all sources fail');
+  });
+
+  test('should handle repeated imports with source failures gracefully', async () => {
+    // Source validation failures are non-fatal: each import succeeds, hub is saved.
+    const failingRegistry = {
+      async listSources() {
+        return [];
+      },
+      async addSource(_source: any) {
+        throw new Error('Source validation failed: HTTP 404');
+      },
+      async updateSource() {
+        // no-op
+      }
+    };
+
+    hubManager = new HubManager(
+      hubStorage,
+      mockValidator as any,
+      process.cwd(),
+      undefined,
+      failingRegistry as any
+    );
+
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+    const ref = { type: 'local' as const, location: fixturePath };
+
+    // Each import succeeds (source failures are non-fatal)
+    for (let i = 0; i < 3; i++) {
+      const hubId = await hubManager.importHub(ref, `retry-hub-${i}`);
+      assert.strictEqual(hubId, `retry-hub-${i}`, `Import ${i + 1} should succeed`);
+    }
+
+    // All 3 hubs are saved (they are intentional, not ghosts)
+    const hubs = await hubStorage.listHubs();
+    assert.strictEqual(hubs.length, 3, 'All 3 imports should be saved');
+  });
+
+  test('deleteAllHubs should clean up hubs, allowing fresh hub selector after reset', async () => {
+    // Simulate a ghost hub left by a failed import
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+    const hubConfig = yaml.load(fs.readFileSync(fixturePath, 'utf8')) as any;
+
+    // Save a "ghost hub" to storage
+    await hubStorage.saveHub('ghost-hub-123456', hubConfig, {
+      type: 'local',
+      location: fixturePath
+    });
+
+    // Verify ghost hub exists
+    const hubs = await hubStorage.listHubs();
+    assert.ok(hubs.includes('ghost-hub-123456'), 'Ghost hub should exist in storage');
+
+    // Simulate what resetFirstRun now does: deleteAllHubs()
+    const hubManagerForCleanup = new HubManager(
+      hubStorage,
+      mockValidator as any,
+      process.cwd(),
+      undefined,
+      undefined
+    );
+    await hubManagerForCleanup.deleteAllHubs();
+
+    // After cleanup, listHubs should return 0 — initializeHub enters fresh install path
+    const hubList = await hubManagerForCleanup.listHubs();
+    assert.strictEqual(hubList.length, 0,
+      'After deleteAllHubs, listHubs should return 0 hubs');
+  });
+});
+
 suite('HubManager HTTP Redirect Handling', () => {
   let hubManager: HubManager;
   let storage: HubStorage;

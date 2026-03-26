@@ -635,6 +635,17 @@ export class HubManager {
     this._onHubDeleted.fire(hubId);
   }
 
+  public async deleteAllHubs(): Promise<void> {
+    const hubIds = await this.storage.listHubs();
+    for (const hubId of hubIds) {
+      try {
+        await this.deleteHub(hubId);
+      } catch (error) {
+        this.logger.warn(`Failed to delete hub ${hubId} during cleanup`, error as Error);
+      }
+    }
+  }
+
   /**
    * Sync hub from remote source
    * @param hubId Hub identifier to sync
@@ -944,8 +955,16 @@ export class HubManager {
           hubId: hubId
         };
 
-        await this.registryManager.addSource(registrySource);
-        addedCount++;
+        try {
+          await this.registryManager.addSource(registrySource);
+          addedCount++;
+        } catch (sourceError) {
+          this.logger.warn(
+            `Failed to add hub source ${sourceId} (${hubSource.name}): `
+            + `${sourceError instanceof Error ? sourceError.message : String(sourceError)}`
+          );
+          skippedCount++;
+        }
       }
 
       this.logger.info(

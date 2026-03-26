@@ -380,6 +380,83 @@ suite('Hub Source Loading', () => {
     });
   });
 
+  suite('Source Validation Failure Handling', () => {
+    test('should continue loading other sources when one source fails validation (addSource throws)', async () => {
+      // Bug: When a hub has multiple sources and one fails validation (e.g., private repo returns 404),
+      // the entire hub import fails. It should gracefully skip the failing source and continue.
+      // See: https://github.com/AmadeusITGroup/prompt-registry/issues/213
+
+      // Create a mock that throws on the second source to simulate validation failure
+      const failingRegistry = new MockRegistryManager();
+      const originalAddSource = failingRegistry.addSource.bind(failingRegistry);
+      let callCount = 0;
+      failingRegistry.addSource = async (source: RegistrySource): Promise<void> => {
+        callCount++;
+        if (callCount === 2) {
+          // Simulate what RegistryManager.addSource does when adapter.validate() fails
+          throw new Error('Source validation failed: Failed to validate repository: HTTP 404: Not Found - Repository not found or not accessible. Check authentication.');
+        }
+        return originalAddSource(source);
+      };
+
+      const failingHubManager = new HubManager(
+        storage,
+        mockValidator as any,
+        process.cwd(),
+        undefined,
+        failingRegistry as any
+      );
+
+      // Import hub with 2 sources (second one will fail validation)
+      const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+      const ref: HubReference = {
+        type: 'local',
+        location: fixturePath
+      };
+
+      // This should NOT throw — it should gracefully skip the failing source
+      await failingHubManager.importHub(ref, 'test-hub-partial-fail');
+
+      // The first source should still have been added successfully
+      const sources = await failingRegistry.listSources();
+      assert.strictEqual(sources.length, 1, 'Should have 1 source (the one that succeeded)');
+    });
+
+    test('should not fail hub import when all sources fail validation', async () => {
+      // Even if ALL sources fail validation, the hub itself should still be imported
+      // (hub config is saved, just sources failed to load)
+      const alwaysFailRegistry = new MockRegistryManager();
+      alwaysFailRegistry.addSource = async (_source: RegistrySource): Promise<void> => {
+        throw new Error('Source validation failed: Failed to validate repository: HTTP 404: Not Found');
+      };
+
+      const failingHubManager = new HubManager(
+        storage,
+        mockValidator as any,
+        process.cwd(),
+        undefined,
+        alwaysFailRegistry as any
+      );
+
+      const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+      const ref: HubReference = {
+        type: 'local',
+        location: fixturePath
+      };
+
+      // This should NOT throw — hub is saved even if sources fail
+      await failingHubManager.importHub(ref, 'test-hub-all-fail');
+
+      // Hub should still be saved in storage
+      const hubs = await storage.listHubs();
+      assert.ok(hubs.includes('test-hub-all-fail'), 'Hub should be saved even if all sources fail validation');
+
+      // No sources should have been added
+      const sources = await alwaysFailRegistry.listSources();
+      assert.strictEqual(sources.length, 0, 'No sources should be added when all fail');
+    });
+  });
+
   suite('Integration with Hub Operations', () => {
     test('should load sources automatically when importing hub', async () => {
       const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
