@@ -30,7 +30,7 @@ suite('SkillsAdapter Tests', () => {
    * @param options.skills
    * @param options.skillsDirectoryExists
    */
-  function setupSkillsStructureMocks(options: {
+  const setupSkillsStructureMocks = (options: {
     skills?: {
       id: string;
       name: string;
@@ -39,7 +39,7 @@ suite('SkillsAdapter Tests', () => {
       files?: string[];
     }[];
     skillsDirectoryExists?: boolean;
-  }) {
+  }): void => {
     const { skills = [], skillsDirectoryExists = true } = options;
 
     if (!skillsDirectoryExists) {
@@ -98,12 +98,12 @@ Instructions for ${skill.name}
         .get(`/test-owner/test-skills-repo/main/skills/${skill.id}/SKILL.md`)
         .reply(200, skillMdContent);
     }
-  }
+  };
 
   /**
    * Helper to set up GitHub repository validation mocks
    */
-  function setupValidationMocks() {
+  const setupValidationMocks = (): void => {
     // Mock GitHub releases endpoint for GitHubAdapter validation
     nock('https://api.github.com')
       .get('/repos/test-owner/test-skills-repo/releases')
@@ -117,7 +117,7 @@ Instructions for ${skill.name}
         full_name: 'test-owner/test-skills-repo',
         default_branch: 'main'
       });
-  }
+  };
 
   setup(() => {
     nock.cleanAll();

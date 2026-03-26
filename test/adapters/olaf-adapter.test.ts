@@ -37,7 +37,7 @@ suite('OlafAdapter Integration Tests', () => {
    * @param options.skillManifests
    * @param options.skillFiles
    */
-  function setupBundleStructureMocks(options: {
+  const setupBundleStructureMocks = (options: {
     bundleDefinitions?: {
       fileName: string;
       metadata: { name: string; description: string; version?: string; author?: string; tags?: string[] };
@@ -47,7 +47,7 @@ suite('OlafAdapter Integration Tests', () => {
     skillManifests?: Record<string, { name: string; version?: string; entry_points: { protocol: string; path: string; patterns: string[] }[] }>;
     // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     skillFiles?: Record<string, { name: string; type: 'file' | 'dir'; download_url?: string }[]>;
-  }) {
+  }): void => {
     const { bundleDefinitions = [], skillManifests = {}, skillFiles = {} } = options;
 
     // Mock bundles/ directory listing
@@ -94,7 +94,7 @@ suite('OlafAdapter Integration Tests', () => {
         .get(`/test-owner/test-olaf-repo/main/${manifestPath}`)
         .reply(200, JSON.stringify(manifest));
     }
-  }
+  };
 
   setup(() => {
     // Mock OlafRuntimeManager

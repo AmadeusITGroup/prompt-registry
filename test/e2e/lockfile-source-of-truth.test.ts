@@ -78,11 +78,11 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
    * @param options.commitMode
    * @param options.version
    */
-  async function installBundleOrSkip(
-        context: MochaTestContext,
-        bundleId: string,
-        options: { scope: 'repository' | 'user'; commitMode?: RepositoryCommitMode; version: string }
-  ): Promise<void> {
+  const installBundleOrSkip = async (
+    context: MochaTestContext,
+    bundleId: string,
+    options: { scope: 'repository' | 'user'; commitMode?: RepositoryCommitMode; version: string }
+  ): Promise<void> => {
     try {
       await testContext.registryManager.installBundle(bundleId, {
         scope: options.scope,
@@ -95,12 +95,12 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       }
       throw error;
     }
-  }
+  };
 
   /**
    * Helper to clear adapter authentication for isolated testing.
    */
-  function clearAdapterAuth(): void {
+  const clearAdapterAuth = (): void => {
     const adapters = (testContext.registryManager as any).adapters;
     if (adapters) {
       adapters.forEach((adapter: any) => {
@@ -110,7 +110,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
         }
       });
     }
-  }
+  };
 
   /**
    * Helper to set up a source and get a bundle for testing.
@@ -118,10 +118,10 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
    * @param testIdSuffix
    * @param content
    */
-  async function setupSourceAndGetBundle(
-        testIdSuffix: string,
-        content: string
-  ): Promise<{ sourceId: string; bundle: any }> {
+  const setupSourceAndGetBundle = async (
+    testIdSuffix: string,
+    content: string
+  ): Promise<{ sourceId: string; bundle: any }> => {
     const sourceId = `${testId}-${testIdSuffix}`;
     const source = createMockGitHubSource(sourceId, TEST_CONFIG);
     const releases: ReleaseConfig[] = [{ tag: 'v1.0.0', version: '1.0.0', content }];
@@ -142,7 +142,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
     }
 
     return { sourceId, bundle };
-  }
+  };
 
   setup(async function () {
     this.timeout(30_000);

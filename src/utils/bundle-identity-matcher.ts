@@ -47,11 +47,11 @@ export const BundleIdentityMatcher = {
    * ); // Returns: false
    * ```
    */
-  matches(
+  matches: (
     bundleId1: string,
     bundleId2: string,
     sourceType: SourceType
-  ): boolean {
+  ): boolean => {
     if (sourceType === 'github') {
       // For GitHub, extract identity without version suffix
       const identity1 = VersionManager.extractBundleIdentity(bundleId1, sourceType);
@@ -73,7 +73,7 @@ export const BundleIdentityMatcher = {
    * // Returns: 'my-bundle'
    * ```
    */
-  extractBaseId(bundleId: string): string {
+  extractBaseId: (bundleId: string): string => {
     return bundleId.replace(VERSION_SUFFIX_REGEX, '');
   },
 
@@ -82,7 +82,7 @@ export const BundleIdentityMatcher = {
    * @param bundleId - Bundle ID to check
    * @returns True if bundle ID contains version suffix
    */
-  hasVersionSuffix(bundleId: string): boolean {
+  hasVersionSuffix: (bundleId: string): boolean => {
     return VERSION_SUFFIX_REGEX.test(bundleId);
   }
 };

@@ -625,7 +625,7 @@ prompts: []
   suite('Scope-Specific Behavior', () => {
     test('should use UserScopeService for user scope', async () => {
       // Requirements: 9.1-9.5
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- method reference is used as a callback
+
       const factoryStub = ScopeServiceFactory.create as sinon.SinonStub;
       factoryStub.resetHistory();
 
@@ -656,7 +656,7 @@ prompts: []
 
     test('should use RepositoryScopeService for repository scope', async () => {
       // Requirements: 1.1-1.8
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- method reference is used as a callback
+
       const factoryStub = ScopeServiceFactory.create as sinon.SinonStub;
       factoryStub.resetHistory();
 

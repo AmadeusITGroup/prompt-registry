@@ -108,7 +108,7 @@ Version: ${version}
    * Note: Using different versions to make it crystal clear these are separate bundles.
    * The key differentiator is the tag name which includes the collection ID.
    */
-  function setupMultiCollectionMocks(): void {
+  const setupMultiCollectionMocks = (): void => {
     // Define two collections as separate releases with different versions
     const collections = [
       { id: 'collection-a', version: '1.0.0', tag: 'collection-a-v1.0.0' },
@@ -177,7 +177,7 @@ Version: ${version}
         .get(`/test-owner/test-repo/${col.tag}/bundle.zip`)
         .reply(200, bundleZip);
     });
-  }
+  };
 
   setup(async function () {
     this.timeout(30_000);

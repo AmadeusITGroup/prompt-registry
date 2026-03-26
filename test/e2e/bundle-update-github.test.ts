@@ -150,11 +150,11 @@ license: MIT
    * Helper to set up nock mocks for GitHub releases API
    * @param releases
    */
-  function setupReleaseMocks(releases: {
+  const setupReleaseMocks = (releases: {
     tag: string;
     version: string;
     content: string;
-  }[]): void {
+  }[]): void => {
     // Mock GitHub API for releases listing
     const releasesResponse = releases.map((r, index) => ({
       tag_name: r.tag,
@@ -217,7 +217,7 @@ license: MIT
         .get(`/test-owner/test-repo/${r.tag}/bundle.zip`)
         .reply(200, bundleZip);
     });
-  }
+  };
 
   suite('Test Setup Validation', () => {
     test('should create isolated test context with unique storage path', function () {

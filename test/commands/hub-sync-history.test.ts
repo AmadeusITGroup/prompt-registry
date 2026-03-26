@@ -40,7 +40,7 @@ suite('Hub Sync History', () => {
     }
   });
 
-  async function createTestHub(hubId: string) {
+  const createTestHub = async (hubId: string) => {
     const hubConfig = {
       version: '1.0.0',
       metadata: {
@@ -88,7 +88,7 @@ suite('Hub Sync History', () => {
     };
 
     await storage.saveHub(hubId, hubConfig, reference);
-  }
+  };
 
   suite('Record Sync Operation', () => {
     test('should record successful sync operation', async () => {

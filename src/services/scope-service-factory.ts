@@ -42,12 +42,12 @@ export const ScopeServiceFactory = {
    * @returns An IScopeService implementation appropriate for the scope
    * @throws {Error} if scope is unknown or required parameters are missing
    */
-  create(
+  create: (
     scope: InstallationScope,
     context: vscode.ExtensionContext,
     workspaceRoot?: string,
     storage?: RegistryStorage
-  ): IScopeService {
+  ): IScopeService => {
     switch (scope) {
       case 'user':
       case 'workspace': {

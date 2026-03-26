@@ -457,10 +457,10 @@ export class ProfileCommands {
       let profileId = this.generateProfileId(name);
 
       // Check if ID conflicts with existing profiles (hub or local)
-      const existingProfiles = await this.registryManager.listProfiles();
+      const existingProfileIds = new Set((await this.registryManager.listProfiles()).map((p) => p.id));
       let counter = 1;
       const originalId = profileId;
-      while (existingProfiles.some((p) => p.id === profileId)) {
+      while (existingProfileIds.has(profileId)) {
         profileId = `${originalId}-${counter}`;
         counter++;
       }

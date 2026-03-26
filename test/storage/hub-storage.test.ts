@@ -390,6 +390,7 @@ suite('HubStorage - TDD', () => {
 
       for (const id of invalidIds) {
         await assert.rejects(
+          // eslint-disable-next-line no-loop-func -- sequential loop, outer variables are stable per iteration
           async () => await storage.saveHub(id, testHubConfig, testHubReference),
           /Invalid hub ID/
         );
@@ -401,6 +402,7 @@ suite('HubStorage - TDD', () => {
 
       for (const id of invalidIds) {
         await assert.rejects(
+          // eslint-disable-next-line no-loop-func -- sequential loop, outer variables are stable per iteration
           async () => await storage.saveHub(id, testHubConfig, testHubReference),
           /Invalid hub ID/
         );

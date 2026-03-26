@@ -52,7 +52,7 @@ export class PromptExecutor {
     }
   ): vscode.LanguageModelChatMessage[] {
     const messages: vscode.LanguageModelChatMessage[] = [
-      // System prompt (the loaded prompt content)
+      // eslint-disable-next-line new-cap -- VS Code API static factory method
       vscode.LanguageModelChatMessage.User(promptContent)
     ];
 
@@ -69,12 +69,14 @@ export class PromptExecutor {
       }
 
       if (contextMessage) {
+        // eslint-disable-next-line new-cap -- VS Code API static factory method
         messages.push(vscode.LanguageModelChatMessage.User(contextMessage));
       }
     }
 
     // User's input
     if (userInput && userInput.trim()) {
+      // eslint-disable-next-line new-cap -- VS Code API static factory method
       messages.push(vscode.LanguageModelChatMessage.User(userInput));
     }
 

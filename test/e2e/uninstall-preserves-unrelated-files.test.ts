@@ -71,11 +71,11 @@ suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
    * @param options.commitMode
    * @param options.version
    */
-  async function installBundleOrSkip(
-        context: { skip: () => void },
-        bundleId: string,
-        options: { scope: 'repository' | 'user'; commitMode?: 'commit' | 'local-only'; version: string }
-  ): Promise<boolean> {
+  const installBundleOrSkip = async (
+    context: { skip: () => void },
+    bundleId: string,
+    options: { scope: 'repository' | 'user'; commitMode?: 'commit' | 'local-only'; version: string }
+  ): Promise<boolean> => {
     try {
       await testContext.registryManager.installBundle(bundleId, {
         scope: options.scope,
@@ -91,12 +91,12 @@ suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
       }
       throw error;
     }
-  }
+  };
 
   /**
    * Helper to clear adapter authentication for isolated testing.
    */
-  function clearAdapterAuth(): void {
+  const clearAdapterAuth = (): void => {
     const adapters = (testContext.registryManager as any).adapters;
     if (adapters) {
       adapters.forEach((adapter: any) => {
@@ -106,36 +106,36 @@ suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
         }
       });
     }
-  }
+  };
 
   /**
    * Helper to stub VS Code workspace folders for repository scope tests.
    */
-  function setupWorkspaceStub(): void {
+  const setupWorkspaceStub = (): void => {
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([
       { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
     ]);
-  }
+  };
 
   /**
    * Helper to add and sync a mock GitHub source with release mocks.
    * @param sourceId
    * @param content
    */
-  async function addAndSyncSource(sourceId: string, content: string): Promise<void> {
+  const addAndSyncSource = async (sourceId: string, content: string): Promise<void> => {
     const source = createMockGitHubSource(sourceId, TEST_CONFIG);
     const releases: ReleaseConfig[] = [{ tag: 'v1.0.0', version: '1.0.0', content }];
     setupReleaseMocks(TEST_CONFIG, releases);
 
     await testContext.registryManager.addSource(source);
     await testContext.registryManager.syncSource(sourceId);
-  }
+  };
 
   /**
    * Helper to get a bundle from a synced source.
    * @param sourceId
    */
-  async function getBundleFromSource(sourceId: string): Promise<any> {
+  const getBundleFromSource = async (sourceId: string): Promise<any> => {
     const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
     const bundle = rawBundles.find((b) => b.id === BUNDLE_ID);
 
@@ -144,17 +144,17 @@ suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
     }
 
     return bundle;
-  }
+  };
 
   /**
    * Helper to set up a source and get a bundle for testing.
    * @param testIdSuffix
    * @param content
    */
-  async function setupSourceAndGetBundle(
-        testIdSuffix: string,
-        content: string
-  ): Promise<{ sourceId: string; bundle: any }> {
+  const setupSourceAndGetBundle = async (
+    testIdSuffix: string,
+    content: string
+  ): Promise<{ sourceId: string; bundle: any }> => {
     const sourceId = `${testId}-${testIdSuffix}`;
 
     setupWorkspaceStub();
@@ -162,7 +162,7 @@ suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
     const bundle = await getBundleFromSource(sourceId);
 
     return { sourceId, bundle };
-  }
+  };
 
   setup(async function () {
     this.timeout(30_000);

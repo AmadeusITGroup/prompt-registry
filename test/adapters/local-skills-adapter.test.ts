@@ -22,12 +22,12 @@ suite('LocalSkillsAdapter Tests', () => {
   /**
    * Create a temporary directory structure for testing
    */
-  function createTempSkillsStructure(): string {
+  const createTempSkillsStructure = (): string => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-test-'));
     skillsDir = path.join(tempDir, 'skills');
     fs.mkdirSync(skillsDir);
     return tempDir;
-  }
+  };
 
   /**
    * Create a skill in the temporary directory
@@ -38,12 +38,12 @@ suite('LocalSkillsAdapter Tests', () => {
    * @param options.license
    * @param options.additionalFiles
    */
-  function createSkill(skillId: string, options: {
+  const createSkill = (skillId: string, options: {
     name?: string;
     description?: string;
     license?: string;
     additionalFiles?: string[];
-  } = {}): void {
+  } = {}): void => {
     const skillPath = path.join(skillsDir, skillId);
     fs.mkdirSync(skillPath, { recursive: true });
 
@@ -67,16 +67,16 @@ Instructions for ${name}
     for (const file of options.additionalFiles || []) {
       fs.writeFileSync(path.join(skillPath, file), `Content of ${file}`);
     }
-  }
+  };
 
   /**
    * Clean up temporary directory
    */
-  function cleanupTempDir(): void {
+  const cleanupTempDir = (): void => {
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
-  }
+  };
 
   setup(() => {
     createTempSkillsStructure();

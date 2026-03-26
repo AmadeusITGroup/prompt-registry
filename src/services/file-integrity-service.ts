@@ -74,7 +74,7 @@ export class FileIntegrityService {
       size: stats.size,
       mtime: stats.mtime.toISOString(),
       permissions: stats.mode.toString(8),
-      isExecutable: !!(stats.mode & fs.constants.S_IXUSR),
+      isExecutable: !!(stats.mode & fs.constants.S_IXUSR), // eslint-disable-line no-bitwise -- file permission check
       isSymlink: stats.isSymbolicLink(),
       symlinkTarget: stats.isSymbolicLink() ? await fs.promises.readlink(filePath) : undefined
     };

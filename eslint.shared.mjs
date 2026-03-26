@@ -74,15 +74,8 @@ export const temporaryWarnRulesTs = {
 // TODO to be discussed and fixed in future PRs
 export const temporaryWarnRules = {
   'import/order': 'warn',
-  'prefer-arrow/prefer-arrow-functions': 'warn',
   'no-underscore-dangle': 'warn',
   'no-console': 'warn',
-  'no-undef': 'warn',
-  'no-loop-func': 'warn',
-  'no-bitwise': 'warn',
-  'new-cap': 'warn',
-  'prefer-const': 'warn',
   'import/no-cycle': 'warn',
-  'import-newlines/enforce': 'warn',
-  '@eslint-community/eslint-comments/require-description': 'warn'
+  'import-newlines/enforce': 'warn'
 };

@@ -258,7 +258,7 @@ export class ErrorHandler {
    */
   public static createServiceHandler(serviceName: string) {
     return {
-      async handle(error: unknown, operation: string, context?: Record<string, any>): Promise<void> {
+      handle: async (error: unknown, operation: string, context?: Record<string, any>): Promise<void> => {
         await ErrorHandler.handle(error, {
           operation: `${serviceName}.${operation}`,
           context,
@@ -266,7 +266,7 @@ export class ErrorHandler {
         });
       },
 
-      async handleWithUserMessage(error: unknown, operation: string, context?: Record<string, any>): Promise<void> {
+      handleWithUserMessage: async (error: unknown, operation: string, context?: Record<string, any>): Promise<void> => {
         await ErrorHandler.handle(error, {
           operation: `${serviceName}.${operation}`,
           context,
@@ -275,7 +275,7 @@ export class ErrorHandler {
         });
       },
 
-      async wrap<T>(operation: () => Promise<T>, operationName: string, context?: Record<string, any>): Promise<T | undefined> {
+      wrap: async <T>(operation: () => Promise<T>, operationName: string, context?: Record<string, any>): Promise<T | undefined> => {
         return await ErrorHandler.withErrorHandling(operation, {
           operation: `${serviceName}.${operationName}`,
           context,

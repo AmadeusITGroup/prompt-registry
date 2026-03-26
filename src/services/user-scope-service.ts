@@ -319,8 +319,7 @@ export class UserScopeService implements IScopeService {
     const tags = promptDef.tags || [];
 
     // Use manifest type if provided, otherwise detect from file
-    let type: CopilotFileType;
-    type = promptDef.type ? promptDef.type as CopilotFileType : determineFileType(sourcePath, tags);
+    const type: CopilotFileType = promptDef.type ? promptDef.type as CopilotFileType : determineFileType(sourcePath, tags);
 
     // Create target path: promptId.type.md directly in prompts directory
     const targetFileName = getTargetFileName(promptDef.id, type);

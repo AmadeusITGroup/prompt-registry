@@ -34,12 +34,12 @@ export const AutoUpdateTestHelpers = {
    * @param getReturns - Single boolean or array of booleans for multiple calls
    * @param setResolves - Whether setUpdatePreference should resolve (default: true)
    */
-  setupStorageMock(
+  setupStorageMock: (
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,
     bundleId: string,
     getReturns: boolean | boolean[],
     setResolves = true
-  ): void {
+  ): void => {
     const getStub = mockStorage.getUpdatePreference.withArgs(bundleId);
 
     if (Array.isArray(getReturns)) {
@@ -72,12 +72,12 @@ export const AutoUpdateTestHelpers = {
    * @param enabled
    * @param errorMessage
    */
-  setupStorageError(
+  setupStorageError: (
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,
     bundleId: string,
     enabled: boolean,
     errorMessage: string
-  ): void {
+  ): void => {
     mockStorage.setUpdatePreference
       .withArgs(bundleId, enabled)
       .rejects(new Error(errorMessage));
@@ -90,11 +90,11 @@ export const AutoUpdateTestHelpers = {
    * @param loggerStub
    * @param {...sinon.SinonStubbedInstance} otherMocks
    */
-  resetAutoUpdateMocks(
+  resetAutoUpdateMocks: (
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,
     loggerStub?: sinon.SinonStubbedInstance<Logger>,
     ...otherMocks: any[]
-  ): void {
+  ): void => {
     // Reset storage mocks
     mockStorage.getUpdatePreference.reset();
     mockStorage.setUpdatePreference.reset();
@@ -123,7 +123,7 @@ export const AutoUpdateTestHelpers = {
    * @param sandbox
    * @param mockStorage
    */
-  createMockAutoUpdateService(
+  createMockAutoUpdateService: (
     sandbox: sinon.SinonSandbox,
     mockStorage?: sinon.SinonStubbedInstance<RegistryStorage>
   ): {
@@ -132,7 +132,7 @@ export const AutoUpdateTestHelpers = {
     mockNotifications: sinon.SinonStubbedInstance<BundleUpdateNotifications>;
     mockBundleOps: sinon.SinonStubbedInstance<any>;
     mockSourceOps: sinon.SinonStubbedInstance<any>;
-  } {
+  } => {
     const storage = mockStorage || sandbox.createStubInstance(RegistryStorage);
     const mockNotifications = sandbox.createStubInstance(BundleUpdateNotifications);
 
@@ -161,7 +161,7 @@ export const AutoUpdateTestHelpers = {
       mockNotifications,
       mockBundleOps,
       mockSourceOps
-    };
+    } as const;
   },
 
   /**
@@ -178,12 +178,12 @@ export const AutoUpdateTestHelpers = {
    * @param expectedValue
    * @param callIndex
    */
-  assertPreferenceStored(
+  assertPreferenceStored: (
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,
     bundleId: string,
     expectedValue: boolean,
     callIndex = 0
-  ): void {
+  ): void => {
     const assert = require('node:assert');
     assert.strictEqual(mockStorage.setUpdatePreference.callCount, callIndex + 1,
       `Expected setUpdatePreference to be called ${callIndex + 1} times`);
@@ -200,11 +200,11 @@ export const AutoUpdateTestHelpers = {
    * @param bundleId
    * @param callIndex
    */
-  assertPreferenceRetrieved(
+  assertPreferenceRetrieved: (
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,
     bundleId: string,
     callIndex = 0
-  ): void {
+  ): void => {
     const assert = require('node:assert');
     assert.ok(mockStorage.getUpdatePreference.callCount > callIndex,
       `Expected getUpdatePreference to be called at least ${callIndex + 1} times`);
@@ -224,11 +224,11 @@ export const AutoUpdateTestHelpers = {
    * @param version
    * @param overrides
    */
-  createTestInstalledBundle(
+  createTestInstalledBundle: (
     bundleId: string,
     version: string,
     overrides?: any
-  ) {
+  ) => {
     return createMockInstalledBundle(bundleId, version, overrides);
   },
 
@@ -240,12 +240,12 @@ export const AutoUpdateTestHelpers = {
    * @param latestVersion
    * @param overrides
    */
-  createTestUpdateResult(
+  createTestUpdateResult: (
     bundleId: string,
     currentVersion: string,
     latestVersion: string,
     overrides?: any
-  ) {
+  ) => {
     return createMockUpdateCheckResult(bundleId, currentVersion, latestVersion, overrides);
   }
 };

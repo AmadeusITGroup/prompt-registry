@@ -77,11 +77,11 @@ suite('E2E: Context Menu Regression Prevention', () => {
    * @param scope
    * @param commitMode
    */
-  function createMockInstalledBundle(
-        bundleId: string,
-        scope: 'user' | 'repository',
-        commitMode?: 'commit' | 'local-only'
-  ): InstalledBundle {
+  const createMockInstalledBundle = (
+    bundleId: string,
+    scope: 'user' | 'repository',
+    commitMode?: 'commit' | 'local-only'
+  ): InstalledBundle => {
     const bundle: InstalledBundle = {
       bundleId,
       version: '1.0.0',
@@ -96,25 +96,23 @@ suite('E2E: Context Menu Regression Prevention', () => {
     }
 
     return bundle;
-  }
+  };
 
   /**
    * Creates the installed bundles root tree item for testing.
    */
-  function createInstalledRoot(): RegistryTreeItem {
-    return new RegistryTreeItem(
-      'Installed Bundles',
-      TreeItemType.INSTALLED_ROOT,
-      undefined,
-      vscode.TreeItemCollapsibleState.Expanded
-    );
-  }
+  const createInstalledRoot = (): RegistryTreeItem => new RegistryTreeItem(
+    'Installed Bundles',
+    TreeItemType.INSTALLED_ROOT,
+    undefined,
+    vscode.TreeItemCollapsibleState.Expanded
+  );
 
   /**
    * Sets up mocks for a single bundle and returns its tree item.
    * @param bundle
    */
-  async function setupBundleAndGetTreeItem(bundle: InstalledBundle): Promise<RegistryTreeItem> {
+  const setupBundleAndGetTreeItem = async (bundle: InstalledBundle): Promise<RegistryTreeItem> => {
     registryManagerStub.listInstalledBundles.resolves([bundle]);
     registryManagerStub.getBundleDetails.withArgs(bundle.bundleId).resolves(
       createMockBundleDetails(bundle.bundleId)
@@ -123,7 +121,7 @@ suite('E2E: Context Menu Regression Prevention', () => {
     const items = await provider.getChildren(createInstalledRoot());
     assert.strictEqual(items.length, 1, 'Should have one installed bundle');
     return items[0];
-  }
+  };
 
   setup(() => {
     sandbox = sinon.createSandbox();

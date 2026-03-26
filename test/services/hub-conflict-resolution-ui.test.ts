@@ -24,7 +24,7 @@ suite('Hub Conflict Resolution UI', () => {
   let hubManager: HubManager;
   let tempDir: string;
 
-  function createTestHub(): HubConfig {
+  const createTestHub = (): HubConfig => {
     return {
       version: '1.0',
       metadata: {
@@ -66,7 +66,7 @@ suite('Hub Conflict Resolution UI', () => {
         }
       ]
     };
-  }
+  };
 
   setup(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-conflict-ui-test-'));

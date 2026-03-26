@@ -116,11 +116,11 @@ suite('E2E: Repository-Level Installation Tests', () => {
    * @param options.version
    * @returns true if installation succeeded, false if test was skipped
    */
-  async function installBundleOrSkip(
-        context: { skip: () => void },
-        bundleId: string,
-        options: { scope: 'repository' | 'user'; commitMode?: RepositoryCommitMode; version: string }
-  ): Promise<boolean> {
+  const installBundleOrSkip = async (
+    context: { skip: () => void },
+    bundleId: string,
+    options: { scope: 'repository' | 'user'; commitMode?: RepositoryCommitMode; version: string }
+  ): Promise<boolean> => {
     try {
       await testContext.registryManager.installBundle(bundleId, {
         scope: options.scope,
@@ -136,14 +136,14 @@ suite('E2E: Repository-Level Installation Tests', () => {
       }
       throw error;
     }
-  }
+  };
 
   /**
    * Helper to clear adapter authentication for isolated testing.
    * Accesses private members - consider adding test helper to RegistryManager.
    * TODO: Add public test helper method to RegistryManager to avoid accessing private members
    */
-  function clearAdapterAuth(): void {
+  const clearAdapterAuth = (): void => {
     const adapters = (testContext.registryManager as any).adapters;
     if (adapters) {
       adapters.forEach((adapter: any) => {
@@ -153,30 +153,30 @@ suite('E2E: Repository-Level Installation Tests', () => {
         }
       });
     }
-  }
+  };
 
   /**
    * Helper to stub VS Code workspace folders for repository scope tests.
    */
-  function setupWorkspaceStub(): void {
+  const setupWorkspaceStub = (): void => {
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([
       { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
     ]);
-  }
+  };
 
   /**
    * Helper to add and sync a mock GitHub source with release mocks.
    * @param sourceId - Unique source identifier
    * @param content - Content identifier for the bundle
    */
-  async function addAndSyncSource(sourceId: string, content: string): Promise<void> {
+  const addAndSyncSource = async (sourceId: string, content: string): Promise<void> => {
     const source = createMockGitHubSource(sourceId, TEST_CONFIG);
     const releases: ReleaseConfig[] = [{ tag: 'v1.0.0', version: '1.0.0', content }];
     setupReleaseMocks(TEST_CONFIG, releases);
 
     await testContext.registryManager.addSource(source);
     await testContext.registryManager.syncSource(sourceId);
-  }
+  };
 
   /**
    * Helper to get a bundle from a synced source.
@@ -184,7 +184,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
    * @returns The found bundle
    * @throws {Error} if bundle is not found
    */
-  async function getBundleFromSource(sourceId: string): Promise<any> {
+  const getBundleFromSource = async (sourceId: string): Promise<any> => {
     const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);
     const bundle = rawBundles.find((b) => b.id === BUNDLE_ID);
 
@@ -193,7 +193,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
     }
 
     return bundle;
-  }
+  };
 
   /**
    * Helper to set up a source and get a bundle for testing.
@@ -202,10 +202,10 @@ suite('E2E: Repository-Level Installation Tests', () => {
    * @param content - Content identifier for the bundle
    * @returns Object containing sourceId and the found bundle
    */
-  async function setupSourceAndGetBundle(
-        testIdSuffix: string,
-        content: string
-  ): Promise<{ sourceId: string; bundle: any }> {
+  const setupSourceAndGetBundle = async (
+    testIdSuffix: string,
+    content: string
+  ): Promise<{ sourceId: string; bundle: any }> => {
     const sourceId = `${testId}-${testIdSuffix}`;
 
     setupWorkspaceStub();
@@ -213,7 +213,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
     const bundle = await getBundleFromSource(sourceId);
 
     return { sourceId, bundle };
-  }
+  };
 
   setup(async function () {
     this.timeout(30_000);
@@ -473,22 +473,22 @@ suite('E2E: Repository-Level Installation Tests', () => {
     /**
      * Helper to read .git/info/exclude content
      */
-    function readGitExclude(): string {
+    const readGitExclude = (): string => {
       const excludePath = path.join(workspaceRoot, GIT_EXCLUDE_PATH);
       if (!fs.existsSync(excludePath)) {
         return '';
       }
       return fs.readFileSync(excludePath, 'utf8');
-    }
+    };
 
     /**
      * Helper to check if a path is in .git/info/exclude
      * @param relativePath
      */
-    function isPathExcluded(relativePath: string): boolean {
+    const isPathExcluded = (relativePath: string): boolean => {
       const content = readGitExclude();
       return content.includes(relativePath);
-    }
+    };
 
     test('Requirement 3.1: Commit mode should NOT modify .git/info/exclude', async function () {
       this.timeout(60_000);
@@ -678,7 +678,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
      * @param bundleId
      * @param version
      */
-    async function installAtUserScope(context: { skip: () => void }, bundleId: string, version: string): Promise<boolean> {
+    const installAtUserScope = async (context: { skip: () => void }, bundleId: string, version: string): Promise<boolean> => {
       try {
         await testContext.registryManager.installBundle(bundleId, {
           scope: 'user',
@@ -692,7 +692,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
         }
         throw error;
       }
-    }
+    };
 
     test('Requirement 6.1: Should check if bundle exists at other scope before installation', async function () {
       this.timeout(90_000);
@@ -1020,7 +1020,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
      * @param bundleId
      * @param version
      */
-    async function installAtUserScopeForMigration(context: { skip: () => void }, bundleId: string, version: string): Promise<boolean> {
+    const installAtUserScopeForMigration = async (context: { skip: () => void }, bundleId: string, version: string): Promise<boolean> => {
       try {
         await testContext.registryManager.installBundle(bundleId, {
           scope: 'user',
@@ -1034,13 +1034,13 @@ suite('E2E: Repository-Level Installation Tests', () => {
         }
         throw error;
       }
-    }
+    };
 
     /**
      * Helper to create BundleScopeCommands instance for testing.
      * This tests through the actual command handler class, not by reimplementing its logic.
      */
-    function createBundleScopeCommands(): BundleScopeCommands {
+    const createBundleScopeCommands = (): BundleScopeCommands => {
       const scopeConflictResolver = new ScopeConflictResolver(testContext.storage);
       const bundleInstaller = testContext.registryManager.getBundleInstaller();
       const repositoryScopeService = bundleInstaller.createRepositoryScopeService();
@@ -1054,7 +1054,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
         scopeConflictResolver,
         repositoryScopeService
       );
-    }
+    };
 
     test('Requirement 7.2-7.3: Move to Repository (Commit) moves bundle from user to repository scope', async function () {
       this.timeout(90_000);
@@ -1297,11 +1297,11 @@ suite('E2E: Repository-Level Installation Tests', () => {
      * @param sourceIdSuffix
      * @param content
      */
-    async function installAndGetBundleId(
-            context: { skip: () => void },
-            sourceIdSuffix: string,
-            content: string
-    ): Promise<{ bundleId: string; promptFilePath: string }> {
+    const installAndGetBundleId = async (
+      context: { skip: () => void },
+      sourceIdSuffix: string,
+      content: string
+    ): Promise<{ bundleId: string; promptFilePath: string }> => {
       const { bundle } = await setupSourceAndGetBundle(sourceIdSuffix, content);
 
       try {
@@ -1328,7 +1328,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
       const promptFilePath = path.join(workspaceRoot, GITHUB_PROMPTS_DIR, 'test-prompt.prompt.md');
 
       return { bundleId, promptFilePath };
-    }
+    };
 
     test('Requirement 14.1-14.3: Should detect local file modifications before update', async function () {
       this.timeout(90_000);
@@ -1660,21 +1660,21 @@ suite('E2E: Repository-Level Installation Tests', () => {
     /**
      * Helper to read .git/info/exclude content
      */
-    function readGitExclude(): string {
+    const readGitExclude = (): string => {
       const excludePath = path.join(workspaceRoot, GIT_EXCLUDE_PATH);
       if (!fs.existsSync(excludePath)) {
         return '';
       }
       return fs.readFileSync(excludePath, 'utf8');
-    }
+    };
 
     /**
      * Helper to check if local lockfile is in git exclude
      */
-    function isLocalLockfileExcluded(): boolean {
+    const isLocalLockfileExcluded = (): boolean => {
       const content = readGitExclude();
       return content.includes(LOCAL_LOCKFILE_NAME);
-    }
+    };
 
     test('11.1: Installing local-only bundle creates local lockfile and git exclude entry', async function () {
       this.timeout(60_000);

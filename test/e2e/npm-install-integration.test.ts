@@ -129,7 +129,7 @@ suite('E2E: Npm Install Integration Tests', () => {
 
       // Mock VS Code withProgress
       sandbox.stub(vscode.window, 'withProgress')
-        .callsFake((_options: any, task: (progress: any, token: any) => Thenable<unknown>) => {
+        .callsFake((_options: any, task: (progress: any, token: any) => PromiseLike<unknown>) => {
           const progress = { report: sandbox.stub() };
           const token = {
             isCancellationRequested: false,

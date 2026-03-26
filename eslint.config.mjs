@@ -72,7 +72,8 @@ export default defineConfig([
       ecmaVersion: 2020,
       sourceType: 'module',
       globals: {
-        ...globals.browser
+        ...globals.browser,
+        acquireVsCodeApi: 'readonly'
       }
     }
   },
@@ -81,7 +82,9 @@ export default defineConfig([
     files: ['test/**/*.ts'],
     languageOptions: {
       globals: {
-        ...globals.node
+        ...globals.node,
+        ...globals.mocha,
+        NodeJS: true
       }
     }
   }

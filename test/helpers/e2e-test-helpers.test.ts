@@ -97,12 +97,11 @@ suite('E2E Test Helpers', () => {
     test('should cleanup even on test failure (Example 3.3)', async function () {
       this.timeout(10_000);
 
-      let storagePath: string | undefined;
       let cleanupCalled = false;
 
       // Create test context
       const context = await createE2ETestContext();
-      storagePath = context.tempStoragePath;
+      const storagePath = context.tempStoragePath;
 
       // Wrap cleanup to track if it was called
       const originalCleanup = context.cleanup;

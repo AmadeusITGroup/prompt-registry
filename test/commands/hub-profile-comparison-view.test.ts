@@ -39,7 +39,7 @@ suite('Hub Profile Comparison View', () => {
     }
   });
 
-  async function createTestHub(hubId: string): Promise<void> {
+  const createTestHub = async (hubId: string): Promise<void> => {
     const config: HubConfig = {
       version: '1.0.0',
       metadata: {
@@ -88,7 +88,7 @@ suite('Hub Profile Comparison View', () => {
     };
 
     await storage.saveHub(hubId, config, reference);
-  }
+  };
 
   suite('Get Profile Comparison Data', () => {
     test('should generate comparison data for active profile with changes', async () => {

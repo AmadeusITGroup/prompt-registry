@@ -881,7 +881,7 @@ suite('HubManager HTTP Redirect Handling', () => {
     // Initialize services
     storage = new HubStorage(tempDir);
     mockValidator = {
-      validate() {
+      validate: () => {
         return { valid: true, errors: [], warnings: [] };
       }
     };

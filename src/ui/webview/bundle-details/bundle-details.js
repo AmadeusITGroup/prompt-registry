@@ -1,7 +1,7 @@
 // Bundle Details View JavaScript
 // Initialized with data from TypeScript via window.bundleDetailsData
 
-(function () {
+(() => {
   var vscode = acquireVsCodeApi();
 
   // Get initial data from window object (set by TypeScript)
@@ -9,22 +9,32 @@
   var bundleId = window.bundleDetailsData ? window.bundleDetailsData.bundleId : '';
 
   /**
+   * Update the toggle UI to reflect current state
+   */
+  const updateToggleUI = () => {
+    var toggle = document.querySelector('#autoUpdateToggle');
+    if (toggle) {
+      toggle.classList.toggle('enabled', autoUpdateEnabled);
+    }
+  };
+
+  /**
    * Open a prompt file in the editor
    * @param {string} installPath
    * @param {string} filePath
    */
-  function openPromptFile(installPath, filePath) {
+  const openPromptFile = (installPath, filePath) => {
     vscode.postMessage({
       type: 'openPromptFile',
       installPath: installPath,
       filePath: filePath
     });
-  }
+  };
 
   /**
    * Toggle auto-update setting
    */
-  function toggleAutoUpdate() {
+  const toggleAutoUpdate = () => {
     autoUpdateEnabled = !autoUpdateEnabled;
     updateToggleUI();
     vscode.postMessage({
@@ -32,20 +42,10 @@
       bundleId: bundleId,
       enabled: autoUpdateEnabled
     });
-  }
-
-  /**
-   * Update the toggle UI to reflect current state
-   */
-  function updateToggleUI() {
-    var toggle = document.querySelector('#autoUpdateToggle');
-    if (toggle) {
-      toggle.classList.toggle('enabled', autoUpdateEnabled);
-    }
-  }
+  };
 
   // Listen for status updates from extension
-  window.addEventListener('message', function (event) {
+  window.addEventListener('message', (event) => {
     var message = event.data;
     if (message.type === 'autoUpdateStatusChanged') {
       autoUpdateEnabled = message.enabled;
@@ -54,7 +54,7 @@
   });
 
   // Event delegation for all click handlers (CSP compliant)
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var target = e.target;
     var actionElement = target.closest('[data-action]');
 

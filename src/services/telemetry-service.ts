@@ -54,10 +54,10 @@ export class TelemetryService {
     const logger = Logger.getInstance();
 
     const sender: vscode.TelemetrySender = {
-      sendEventData(eventName: string, data?: Record<string, any>): void {
+      sendEventData: (eventName: string, data?: Record<string, any>): void => {
         logger.info(`[Telemetry] ${eventName} ${JSON.stringify(data)}`);
       },
-      sendErrorData(error: Error, data?: Record<string, any>): void {
+      sendErrorData: (error: Error, data?: Record<string, any>): void => {
         logger.error(`[Telemetry] ${error.message} ${JSON.stringify(data)}`);
       }
     };

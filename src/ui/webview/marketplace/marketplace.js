@@ -1,7 +1,7 @@
 // Marketplace View JavaScript
 // Uses IIFE pattern for encapsulation and CSP compliance
 
-(function () {
+(() => {
   const vscode = acquireVsCodeApi();
   let allBundles = [];
   let filterOptions = { tags: [], sources: [] };
@@ -11,7 +11,7 @@
   let setupState = 'complete'; // Default to complete to avoid showing setup prompt unnecessarily
 
   // Handle messages from extension
-  window.addEventListener('message', function (event) {
+  window.addEventListener('message', (event) => {
     const message = event.data;
 
     if (message.type === 'bundlesLoaded') {
@@ -28,7 +28,7 @@
   vscode.postMessage({ type: 'refresh' });
 
   // Update filter dropdowns with dynamic data
-  function updateFilterUI() {
+  const updateFilterUI = () => {
     var sourceList = document.querySelector('#sourceList');
     var tagList = document.querySelector('#tagList');
 
@@ -45,7 +45,7 @@
     sourceList.append(allItem);
 
     // Add source options
-    filterOptions.sources.forEach(function (source) {
+    filterOptions.sources.forEach((source) => {
       var sourceItem = document.createElement('div');
       sourceItem.className = 'source-item' + (selectedSource === source.id ? ' active' : '');
       sourceItem.dataset.source = source.id;
@@ -55,8 +55,8 @@
       sourceList.append(sourceItem);
 
       // Add click handler
-      sourceItem.addEventListener('click', function () {
-        document.querySelectorAll('.source-item').forEach(function (i) {
+      sourceItem.addEventListener('click', () => {
+        document.querySelectorAll('.source-item').forEach((i) => {
           i.classList.remove('active');
         });
         sourceItem.classList.add('active');
@@ -69,8 +69,8 @@
     });
 
     // Add click handler for "All Sources"
-    allItem.addEventListener('click', function () {
-      document.querySelectorAll('.source-item').forEach(function (i) {
+    allItem.addEventListener('click', () => {
+      document.querySelectorAll('.source-item').forEach((i) => {
         i.classList.remove('active');
       });
       allItem.classList.add('active');
@@ -83,7 +83,7 @@
 
     // Populate tag list with checkboxes
     tagList.innerHTML = '';
-    filterOptions.tags.forEach(function (tag) {
+    filterOptions.tags.forEach((tag) => {
       var tagItem = document.createElement('div');
       tagItem.className = 'tag-item';
       tagItem.dataset.tag = tag;
@@ -103,7 +103,7 @@
       tagItem.append(label);
 
       // Toggle checkbox on item click
-      tagItem.addEventListener('click', function (e) {
+      tagItem.addEventListener('click', (e) => {
         if (e.target !== checkbox) {
           checkbox.checked = !checkbox.checked;
         }
@@ -112,20 +112,20 @@
 
       tagList.append(tagItem);
     });
-  }
+  };
 
   // Update selected tags from checkboxes
-  function updateSelectedTags() {
+  const updateSelectedTags = () => {
     var checkboxes = document.querySelectorAll('#tagList input[type="checkbox"]:checked');
-    selectedTags = Array.from(checkboxes).map(function (cb) {
+    selectedTags = Array.from(checkboxes).map((cb) => {
       return cb.value;
     });
     updateTagButtonText();
     renderBundles();
-  }
+  };
 
   // Update the tag button text based on selection
-  function updateTagButtonText() {
+  const updateTagButtonText = () => {
     var tagSelectorText = document.querySelector('#tagSelectorText');
     if (selectedTags.length === 0) {
       tagSelectorText.textContent = 'All Tags';
@@ -134,10 +134,10 @@
     } else {
       tagSelectorText.textContent = selectedTags.length + ' tags';
     }
-  }
+  };
 
   // Toggle tag dropdown
-  document.querySelector('#tagSelectorBtn').addEventListener('click', function () {
+  document.querySelector('#tagSelectorBtn').addEventListener('click', () => {
     var dropdown = document.querySelector('#tagDropdown');
     dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
 
@@ -147,7 +147,7 @@
   });
 
   // Close dropdown when clicking outside
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var tagSelector = document.querySelector('.tag-selector');
     var dropdown = document.querySelector('#tagDropdown');
 
@@ -157,23 +157,23 @@
   });
 
   // Tag search functionality
-  document.querySelector('#tagSearch').addEventListener('input', function (e) {
+  document.querySelector('#tagSearch').addEventListener('input', (e) => {
     var searchTerm = e.target.value.toLowerCase();
     var tagItems = document.querySelectorAll('.tag-item');
 
-    tagItems.forEach(function (item) {
+    tagItems.forEach((item) => {
       var tagName = item.dataset.tag.toLowerCase();
       item.classList.toggle('hidden', !tagName.includes(searchTerm));
     });
   });
 
   // Search functionality
-  document.querySelector('#searchBox').addEventListener('input', function () {
+  document.querySelector('#searchBox').addEventListener('input', () => {
     renderBundles();
   });
 
   // Source selector button click
-  document.querySelector('#sourceSelectorBtn').addEventListener('click', function (e) {
+  document.querySelector('#sourceSelectorBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     var dropdown = document.querySelector('#sourceDropdown');
     dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
@@ -184,7 +184,7 @@
   });
 
   // Close source dropdown when clicking outside
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var sourceSelector = document.querySelector('.source-selector');
     var dropdown = document.querySelector('#sourceDropdown');
 
@@ -194,21 +194,21 @@
   });
 
   // Source search functionality
-  document.querySelector('#sourceSearch').addEventListener('input', function (e) {
+  document.querySelector('#sourceSearch').addEventListener('input', (e) => {
     var searchTerm = e.target.value.toLowerCase();
     var sourceItems = document.querySelectorAll('.source-item');
 
-    sourceItems.forEach(function (item) {
+    sourceItems.forEach((item) => {
       var sourceName = item.dataset.source.toLowerCase();
       item.classList.toggle('hidden', !sourceName.includes(searchTerm));
     });
   });
 
   // Source item selection
-  document.querySelectorAll('.source-item').forEach(function (item) {
-    item.addEventListener('click', function () {
+  document.querySelectorAll('.source-item').forEach((item) => {
+    item.addEventListener('click', () => {
       // Update selection
-      document.querySelectorAll('.source-item').forEach(function (i) {
+      document.querySelectorAll('.source-item').forEach((i) => {
         i.classList.remove('active');
       });
       item.classList.add('active');
@@ -232,13 +232,13 @@
   });
 
   // Installed filter checkbox
-  document.querySelector('#installedCheckbox').addEventListener('change', function (e) {
+  document.querySelector('#installedCheckbox').addEventListener('change', (e) => {
     showInstalledOnly = e.target.checked;
     renderBundles();
   });
 
   // Make the filter div clickable to toggle checkbox
-  document.querySelector('#installedFilter').addEventListener('click', function (e) {
+  document.querySelector('#installedFilter').addEventListener('click', (e) => {
     if (e.target.id !== 'installedCheckbox') {
       var checkbox = document.querySelector('#installedCheckbox');
       checkbox.checked = !checkbox.checked;
@@ -248,7 +248,7 @@
   });
 
   // Clear filters button
-  document.querySelector('#clearFiltersBtn').addEventListener('click', function () {
+  document.querySelector('#clearFiltersBtn').addEventListener('click', () => {
     document.querySelector('#searchBox').value = '';
     document.querySelector('#sourceSearch').value = '';
     document.querySelector('#tagSearch').value = '';
@@ -257,7 +257,7 @@
     // Reset source selector
     selectedSource = 'all';
     document.querySelector('#sourceSelectorText').textContent = 'All Sources';
-    document.querySelectorAll('.source-item').forEach(function (item) {
+    document.querySelectorAll('.source-item').forEach((item) => {
       item.classList.remove('active');
       if (item.dataset.source === 'all') {
         item.classList.add('active');
@@ -267,13 +267,13 @@
 
     // Uncheck all tag checkboxes
     var checkboxes = document.querySelectorAll('#tagList input[type="checkbox"]');
-    checkboxes.forEach(function (cb) {
+    checkboxes.forEach((cb) => {
       cb.checked = false;
     });
 
     // Show all tags
     var tagItems = document.querySelectorAll('.tag-item');
-    tagItems.forEach(function (item) {
+    tagItems.forEach((item) => {
       item.classList.remove('hidden');
     });
 
@@ -285,12 +285,12 @@
   });
 
   // Refresh button
-  document.querySelector('#refreshBtn').addEventListener('click', function () {
+  document.querySelector('#refreshBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'refresh' });
   });
 
   // Shorten hash-based versions for compact UI labels.
-  function formatVersionLabel(version) {
+  const formatVersionLabel = (version) => {
     if (!version) {
       return '';
     }
@@ -300,16 +300,16 @@
       return 'vhash:' + suffix;
     }
     return 'v' + version;
-  }
+  };
 
-  function formatUpdateLabel(installedVersion, latestVersion) {
+  const formatUpdateLabel = (installedVersion, latestVersion) => {
     if (!installedVersion) {
       return '';
     }
     return ' (' + formatVersionLabel(installedVersion) + ' -> ' + formatVersionLabel(latestVersion) + ')';
-  }
+  };
 
-  function renderBundles() {
+  const renderBundles = () => {
     var marketplace = document.querySelector('#marketplace');
     var searchTerm = document.querySelector('#searchBox').value;
 
@@ -317,26 +317,26 @@
 
     // Apply source filter
     if (selectedSource && selectedSource !== 'all') {
-      filteredBundles = filteredBundles.filter(function (bundle) {
+      filteredBundles = filteredBundles.filter((bundle) => {
         return bundle.sourceId === selectedSource;
       });
     }
 
     // Apply installed filter
     if (showInstalledOnly) {
-      filteredBundles = filteredBundles.filter(function (bundle) {
+      filteredBundles = filteredBundles.filter((bundle) => {
         return bundle.installed === true;
       });
     }
 
     // Apply tag filter (OR logic - bundle matches if it has ANY of the selected tags)
     if (selectedTags.length > 0) {
-      filteredBundles = filteredBundles.filter(function (bundle) {
+      filteredBundles = filteredBundles.filter((bundle) => {
         if (!bundle.tags || bundle.tags.length === 0) {
           return false;
         }
-        return bundle.tags.some(function (bundleTag) {
-          return selectedTags.some(function (selectedTag) {
+        return bundle.tags.some((bundleTag) => {
+          return selectedTags.some((selectedTag) => {
             return bundleTag.toLowerCase() === selectedTag.toLowerCase();
           });
         });
@@ -346,10 +346,10 @@
     // Apply search filter
     if (searchTerm && searchTerm.trim() !== '') {
       var term = searchTerm.toLowerCase();
-      filteredBundles = filteredBundles.filter(function (bundle) {
+      filteredBundles = filteredBundles.filter((bundle) => {
         return bundle.name.toLowerCase().includes(term)
           || bundle.description.toLowerCase().includes(term)
-          || (bundle.tags && bundle.tags.some(function (tag) {
+          || (bundle.tags && bundle.tags.some((tag) => {
             return tag.toLowerCase().includes(term);
           }))
           || (bundle.author && bundle.author.toLowerCase().includes(term));
@@ -397,7 +397,7 @@
       return;
     }
 
-    marketplace.innerHTML = filteredBundles.map(function (bundle) {
+    marketplace.innerHTML = filteredBundles.map((bundle) => {
       return '<div class="bundle-card ' + (bundle.installed ? 'installed' : '') + '" data-bundle-id="' + bundle.id + '" data-action="openDetails">'
         + (bundle.installed && bundle.autoUpdateEnabled ? '<div class="installed-badge">🔄 Auto-Update</div>' : (bundle.installed ? '<div class="installed-badge">✓ Installed</div>' : ''))
 
@@ -419,7 +419,7 @@
         + '</div>'
 
         + '<div class="bundle-tags">'
-        + (bundle.tags || []).slice(0, 4).map(function (tag) {
+        + (bundle.tags || []).slice(0, 4).map((tag) => {
           return '<span class="tag">' + tag + '</span>';
         }).join('')
         + '</div>'
@@ -437,9 +437,9 @@
         + '</div>'
         + '</div>';
     }).join('');
-  }
+  };
 
-  function renderBundleButtons(bundle) {
+  const renderBundleButtons = (bundle) => {
     if (bundle.buttonState === 'update') {
       if (bundle.availableVersions && bundle.availableVersions.length > 1) {
         return '<div class="version-selector-group">'
@@ -453,7 +453,7 @@
           + '<span>Uninstall</span>'
           + '</div>'
           + '<div class="version-dropdown-header">Switch Version</div>'
-          + (bundle.availableVersions || []).map(function (versionObj, index) {
+          + (bundle.availableVersions || []).map((versionObj, index) => {
             return '<div class="version-item '
               + (versionObj.version === bundle.installedVersion ? 'current' : '')
               + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id
@@ -485,7 +485,7 @@
           + '<span>Uninstall</span>'
           + '</div>'
           + '<div class="version-dropdown-header">Switch Version</div>'
-          + (bundle.availableVersions || []).map(function (versionObj, index) {
+          + (bundle.availableVersions || []).map((versionObj, index) => {
             return '<div class="version-item '
               + (versionObj.version === bundle.installedVersion ? 'current' : '')
               + '" data-action="installBundleVersion" data-bundle-id="' + bundle.id
@@ -509,7 +509,7 @@
         + '<button class="version-selector-arrow" data-action="toggleVersionDropdown" data-dropdown-id="' + bundle.id + '">▾</button>'
         + '<div class="version-dropdown" id="version-dropdown-' + bundle.id + '">'
         + '<div class="version-dropdown-header">Select Version</div>'
-        + (bundle.availableVersions || []).map(function (versionObj, index) {
+        + (bundle.availableVersions || []).map((versionObj, index) => {
           return '<div class="version-item" data-action="installBundleVersion" data-bundle-id="' + bundle.id + '" data-version="' + versionObj.version + '">'
             + '<span>v' + versionObj.version + '</span>'
             + (index === 0 ? '<span class="version-badge latest">Latest</span>' : '')
@@ -519,9 +519,9 @@
         + '</div>';
     }
     return '<button class="btn btn-primary" data-action="installBundle" data-bundle-id="' + bundle.id + '">Install</button>';
-  }
+  };
 
-  function renderContentItem(icon, label, count) {
+  const renderContentItem = (icon, label, count) => {
     if (count === 0) {
       return '';
     }
@@ -530,40 +530,40 @@
       + '<span class="content-count">' + count + '</span>'
       + '<span>' + label + '</span>'
       + '</div>';
-  }
+  };
 
-  function installBundle(bundleId) {
+  const installBundle = (bundleId) => {
     vscode.postMessage({ type: 'install', bundleId: bundleId });
-  }
+  };
 
-  function updateBundle(bundleId) {
+  const updateBundle = (bundleId) => {
     vscode.postMessage({ type: 'update', bundleId: bundleId });
-  }
+  };
 
-  function uninstallBundle(bundleId) {
+  const uninstallBundle = (bundleId) => {
     vscode.postMessage({ type: 'uninstall', bundleId: bundleId });
-  }
+  };
 
-  function openDetails(bundleId) {
+  const openDetails = (bundleId) => {
     vscode.postMessage({ type: 'openDetails', bundleId: bundleId });
-  }
+  };
 
-  function openSourceRepo(bundleId) {
+  const openSourceRepo = (bundleId) => {
     vscode.postMessage({ type: 'openSourceRepository', bundleId: bundleId });
-  }
+  };
 
-  function completeSetup() {
+  const completeSetup = () => {
     vscode.postMessage({ type: 'completeSetup' });
-  }
+  };
 
-  function toggleVersionDropdown(dropdownId) {
+  const toggleVersionDropdown = (dropdownId) => {
     var dropdown = document.querySelector('#' + CSS.escape('version-dropdown-' + dropdownId));
     if (!dropdown) {
       return;
     }
 
     // Close all other dropdowns
-    document.querySelectorAll('.version-dropdown').forEach(function (d) {
+    document.querySelectorAll('.version-dropdown').forEach((d) => {
       if (d.id !== 'version-dropdown-' + dropdownId) {
         d.classList.remove('show');
       }
@@ -571,11 +571,11 @@
 
     // Toggle this dropdown
     dropdown.classList.toggle('show');
-  }
+  };
 
-  function installBundleVersion(bundleId, version) {
+  const installBundleVersion = (bundleId, version) => {
     // Close dropdown
-    document.querySelectorAll('.version-dropdown').forEach(function (d) {
+    document.querySelectorAll('.version-dropdown').forEach((d) => {
       d.classList.remove('show');
     });
 
@@ -584,19 +584,19 @@
       bundleId: bundleId,
       version: version
     });
-  }
+  };
 
   // Close dropdowns when clicking outside
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     if (!e.target.closest('.version-selector-group')) {
-      document.querySelectorAll('.version-dropdown').forEach(function (d) {
+      document.querySelectorAll('.version-dropdown').forEach((d) => {
         d.classList.remove('show');
       });
     }
   });
 
   // Event delegation for all click handlers (CSP compliant)
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var target = e.target;
 
     // Handle bundle-actions stop propagation

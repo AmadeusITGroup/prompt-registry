@@ -796,7 +796,7 @@ tags:
 
       nock('https://api.github.com')
         .get('/repos/test-owner/test-repo/releases/assets/123')
-        .reply(200, function () {
+        .reply(200, () => {
           manifestDownloadCount++;
           return manifestContent;
         });
@@ -836,7 +836,7 @@ tags:
 
       nock('https://api.github.com')
         .get('/repos/test-owner/test-repo/releases/assets/123')
-        .reply(200, function () {
+        .reply(200, () => {
           manifestDownloadCount++;
           return manifestContent;
         });
@@ -866,7 +866,7 @@ tags:
 
       nock('https://api.github.com')
         .get('/repos/test-owner/test-repo/releases/assets/123')
-        .reply(200, function () {
+        .reply(200, () => {
           manifestDownloadCount++;
           return manifestContent;
         });

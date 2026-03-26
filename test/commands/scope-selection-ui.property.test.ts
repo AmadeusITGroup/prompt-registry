@@ -64,7 +64,7 @@ suite('ScopeSelectionUI - Property Tests', () => {
     }
   };
 
-  const createMockQuickPick = () => {
+  const createMockQuickPick = (): typeof mockQuickPick => {
     mockQuickPick = {
       items: [],
       selectedItems: [],
@@ -73,15 +73,15 @@ suite('ScopeSelectionUI - Property Tests', () => {
       ignoreFocusOut: false,
       onDidChangeSelection: sandbox.stub().callsFake((handler) => {
         selectionChangeHandler = handler;
-        return { dispose: () => {} };
+        return { dispose: () => { /* no-op */ } };
       }),
       onDidAccept: sandbox.stub().callsFake((handler) => {
         acceptHandler = handler;
-        return { dispose: () => {} };
+        return { dispose: () => { /* no-op */ } };
       }),
       onDidHide: sandbox.stub().callsFake((handler) => {
         hideHandler = handler;
-        return { dispose: () => {} };
+        return { dispose: () => { /* no-op */ } };
       }),
       show: sandbox.stub(),
       hide: sandbox.stub(),
