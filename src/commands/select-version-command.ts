@@ -66,7 +66,7 @@ export async function selectVersionCommand(): Promise<void> {
     logger.info(`User selected version: ${selectedVersion}`);
 
     // Update configuration with selected version
-    const config = vscode.workspace.getConfiguration('olaf');
+    const config = vscode.workspace.getConfiguration('promptregistry');
     await config.update('defaultVersion', selectedVersion, vscode.ConfigurationTarget.Global);
 
     // Ask if user wants to install immediately
@@ -101,7 +101,7 @@ export async function selectVersionCommand(): Promise<void> {
       if (validate === 'Validate Access') {
         await vscode.commands.executeCommand('promptregistry.validateAccess');
       } else if (validate === 'Open Settings') {
-        await vscode.commands.executeCommand('workbench.action.openSettings', 'olaf');
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'promptregistry');
       }
     } else if (errorMessage.includes('404') || errorMessage.includes('not found')) {
       await notifications.showError('Repository or releases not found. Please check your repository settings.');

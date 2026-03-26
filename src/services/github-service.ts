@@ -44,7 +44,7 @@ export class GitHubService {
     this.logger = Logger.getInstance();
 
     // Read configuration from VSCode settings
-    const config = vscode.workspace.getConfiguration('olaf');
+    const config = vscode.workspace.getConfiguration('promptregistry');
     this.baseUrl = config.get<string>('githubApiUrl') || 'https://api.github.com';
     this.owner = config.get<string>('repositoryOwner') || 'AmadeusITGroup';
     this.repo = config.get<string>('repositoryName') || 'olaf';

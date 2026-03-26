@@ -132,7 +132,7 @@ const createTestWorkspace = () => {
   const path = require('node:path');
   const fs = require('node:fs');
   const os = require('node:os');
-  const testDir = path.join(os.tmpdir(), `olaf-test-${Date.now()}`);
+  const testDir = path.join(os.tmpdir(), `prompt-registry-test-${Date.now()}`);
   fs.mkdirSync(testDir, { recursive: true });
   return testDir;
 };

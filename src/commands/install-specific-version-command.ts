@@ -53,7 +53,7 @@ export class InstallSpecificVersionCommand {
       }
 
       // Validate access for private repos
-      const config = vscode.workspace.getConfiguration('olaf');
+      const config = vscode.workspace.getConfiguration('promptregistry');
       const usePrivateRepo = config.get<boolean>('usePrivateRepository');
 
       if (usePrivateRepo) {

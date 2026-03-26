@@ -89,7 +89,7 @@ const vscode = {
     getConfiguration: (section) => ({
       get: (key, defaultValue) => {
         // Return mock configuration values for testing
-        if (section === 'olaf') {
+        if (section === 'promptregistry') {
           const config = {
             'repositoryOwner': 'test-owner',
             'repositoryName': 'test-repo',

@@ -663,7 +663,7 @@ suite('LockfileManager Property Tests', () => {
       const validSourceTypes = [
         'github', 'gitlab', 'http', 'local',
         'awesome-copilot', 'local-awesome-copilot',
-        'apm', 'local-apm', 'olaf', 'local-olaf'
+        'apm', 'local-apm'
       ];
 
       await fc.assert(

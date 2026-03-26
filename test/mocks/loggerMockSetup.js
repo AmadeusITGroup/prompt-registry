@@ -36,9 +36,9 @@ const mockVSCode = {
         // Return mock configuration values
         const mockConfig = {
           'promptregistry.githubToken': process.env.GITHUB_TOKEN || null,
-          'olaf.owner': 'microsoft',
-          'olaf.repo': 'olaf',
-          'olaf.enablePrivateRepository': false
+          'promptregistry.owner': 'microsoft',
+          'promptregistry.repo': 'prompt-registry',
+          'promptregistry.enablePrivateRepository': false
         };
         return mockConfig[`${section}.${key}`] || mockConfig[key];
       }
