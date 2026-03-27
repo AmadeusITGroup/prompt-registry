@@ -143,32 +143,6 @@ export class SourceCommands {
         return uris && uris.length > 0 ? uris[0].fsPath : undefined;
       }
 
-      case 'olaf': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitHub repository URL containing OLAF skills',
-          placeHolder: 'https://github.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || !/github\.com/.test(value)) {
-              return 'Please enter a valid GitHub URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'local-olaf': {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          title: 'Select local OLAF skills directory',
-          openLabel: 'Select Directory'
-        });
-
-        return uris && uris.length > 0 ? uris[0].fsPath : undefined;
-      }
-
       case 'skills': {
         return await vscode.window.showInputBox({
           prompt: 'Enter GitHub repository URL containing skills (e.g., anthropics/skills)',
@@ -385,16 +359,6 @@ export class SourceCommands {
             value: 'local-apm' as SourceType
           },
           {
-            label: '$(robot) OLAF Skills Repository',
-            description: 'GitHub repository with AI skills in .olaf/core/skills directory structure',
-            value: 'olaf' as SourceType
-          },
-          {
-            label: '$(folder-library) Local OLAF Skills',
-            description: 'Local filesystem directory with OLAF skills organized in bundle-based structure',
-            value: 'local-olaf' as SourceType
-          },
-          {
             label: '$(sparkle) Skills Repository',
             description: 'GitHub repository with skills in skills/ folder (Anthropic-style SKILL.md files)',
             value: 'skills' as SourceType
@@ -498,7 +462,7 @@ export class SourceCommands {
       // Step 4: Check if private/authentication needed (skip for local sources)
       let token: string | undefined;
       let isPrivate: { label: string; description: string; value: boolean } | undefined;
-      const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot' || sourceType.value === 'local-apm' || sourceType.value === 'local-olaf';
+      const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot' || sourceType.value === 'local-apm';
 
       if (!isLocalSource) {
         isPrivate = await vscode.window.showQuickPick(

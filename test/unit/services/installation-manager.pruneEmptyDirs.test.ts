@@ -30,7 +30,7 @@ class MockPlatformDetector {
   }
 
   public getInstallationPath(_platform: string, scope: InstallationScope): string {
-    return path.join(this.testInstallPath, `.olaf-${scope}`);
+    return path.join(this.testInstallPath, `.prompt-registry-${scope}`);
   }
 }
 
@@ -42,7 +42,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
 
   setup(() => {
     // Create temporary directory for testing
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'olaf-test-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-registry-test-'));
 
     // Get singleton and save original state for restoration
     installationManager = InstallationManager.getInstance();
@@ -68,7 +68,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
   suite('pruneEmptyDirs - Directory Structure Cleanup', () => {
     test('should remove empty directories after file removal', async () => {
       // Arrange - create test structure
-      const installPath = path.join(tempDir, '.olaf-user');
+      const installPath = path.join(tempDir, '.prompt-registry-user');
       const extractionPath = path.join(tempDir, 'extracted');
 
       // Create directory structure
@@ -85,7 +85,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
         platform: 'vscode'
       };
       await fs.promises.writeFile(
-        path.join(installPath, '.olaf-metadata.json'),
+        path.join(installPath, '.prompt-registry-metadata.json'),
         JSON.stringify(metadata, null, 2)
       );
 
@@ -101,7 +101,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
 
     test('should not remove directories that contain other files', async () => {
       // Arrange - create test structure with some files remaining
-      const installPath = path.join(tempDir, '.olaf-user');
+      const installPath = path.join(tempDir, '.prompt-registry-user');
       const extractionPath = path.join(tempDir, 'extracted');
 
       // Create directory structure
@@ -122,7 +122,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
         platform: 'vscode'
       };
       await fs.promises.writeFile(
-        path.join(installPath, '.olaf-metadata.json'),
+        path.join(installPath, '.prompt-registry-metadata.json'),
         JSON.stringify(metadata, null, 2)
       );
 
@@ -138,7 +138,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
 
     test('should handle metadata directory removal when separate from extraction', async () => {
       // Arrange - metadata directory separate from extraction
-      const installPath = path.join(tempDir, '.olaf-user');
+      const installPath = path.join(tempDir, '.prompt-registry-user');
       const extractionPath = path.join(tempDir, 'extracted');
 
       await fs.promises.mkdir(extractionPath, { recursive: true });
@@ -153,7 +153,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
         platform: 'vscode'
       };
       await fs.promises.writeFile(
-        path.join(installPath, '.olaf-metadata.json'),
+        path.join(installPath, '.prompt-registry-metadata.json'),
         JSON.stringify(metadata, null, 2)
       );
 
@@ -177,12 +177,12 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
 
     test('should handle corrupted metadata gracefully', async () => {
       // Arrange - create installation with corrupted metadata
-      const installPath = path.join(tempDir, '.olaf-user');
+      const installPath = path.join(tempDir, '.prompt-registry-user');
       await fs.promises.mkdir(installPath, { recursive: true });
 
       // Create corrupted metadata file
       await fs.promises.writeFile(
-        path.join(installPath, '.olaf-metadata.json'),
+        path.join(installPath, '.prompt-registry-metadata.json'),
         'invalid json content'
       );
 

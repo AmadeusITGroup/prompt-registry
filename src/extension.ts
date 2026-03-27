@@ -92,9 +92,6 @@ import {
   NotificationManager,
 } from './services/notification-manager';
 import {
-  OlafRuntimeManager,
-} from './services/olaf-runtime-manager';
-import {
   RegistryManager,
 } from './services/registry-manager';
 import {
@@ -1633,7 +1630,6 @@ export class PromptRegistryExtension {
 
       // Initialize Runtime Managers with context
       ApmRuntimeManager.getInstance().initialize(this.context);
-      OlafRuntimeManager.getInstance().initialize(this.context);
 
       // Initialize Registry Manager
       await this.registryManager.initialize();

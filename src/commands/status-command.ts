@@ -310,7 +310,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
         `.trim();
 
     const panel = vscode.window.createWebviewPanel(
-      'olafHelp',
+      'promptRegistryHelp',
       'Prompt Registry Help',
       vscode.ViewColumn.One,
       {}

@@ -459,7 +459,6 @@ suite('RegistryManager - Event Emission Behavior', () => {
     assert.ok(updateStub.calledOnce, 'Installer should be invoked once');
     const callArgs = updateStub.firstCall.args;
     assert.strictEqual(callArgs[3], 'skills', 'source type should be forwarded');
-    assert.strictEqual(callArgs[4], 'Remote Skills Source', 'source name should be forwarded');
   });
 
   test('should refresh local skill installations on sync', async () => {

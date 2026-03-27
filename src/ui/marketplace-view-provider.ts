@@ -422,7 +422,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       };
     }
 
-    // Fourth: For local OLAF bundles, show skills separately
+    // Fourth: For bundles with skills array, show skills separately
     if (bundleData.skills && Array.isArray(bundleData.skills)) {
       return {
         prompts: 0,

@@ -169,8 +169,7 @@ export class InstallationManager {
             && !fileName.startsWith('.vscode/')
             && !fileName.startsWith('.windsurf/')
             && !fileName.startsWith('.kiro/')
-            && !fileName.startsWith('.cursor/')
-            && !fileName.startsWith('.olaf/');
+            && !fileName.startsWith('.cursor/');
 
           if (isHiddenFile) {
             processedEntries++;
@@ -262,14 +261,14 @@ export class InstallationManager {
       extractionPath: extractionPath
     };
 
-    const metadataFilePath = path.join(metadataPath, '.olaf-metadata.json');
+    const metadataFilePath = path.join(metadataPath, '.prompt-registry-metadata.json');
     await writeFile(metadataFilePath, JSON.stringify(metadata, null, 2));
 
     this.logger.debug(`Created installation metadata at: ${metadataFilePath}`);
   }
 
   private async readInstallationMetadata(installationPath: string): Promise<any> {
-    const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+    const metadataPath = path.join(installationPath, '.prompt-registry-metadata.json');
     const metadataContent = await readFile(metadataPath, 'utf8');
     return JSON.parse(metadataContent);
   }
@@ -482,7 +481,7 @@ export class InstallationManager {
     if (installationPath !== extractionPath) {
       // Remove metadata file first if it exists
       try {
-        const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+        const metadataPath = path.join(installationPath, '.prompt-registry-metadata.json');
         await fs.promises.unlink(metadataPath);
         this.logger.info(`Removed metadata file: ${metadataPath}`);
       } catch {
@@ -582,7 +581,7 @@ export class InstallationManager {
     try {
       const platform = await this.platformDetector.detectPlatform();
       const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-      const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+      const metadataPath = path.join(installationPath, '.prompt-registry-metadata.json');
 
       await access(metadataPath);
       return true;

@@ -90,7 +90,7 @@ export class ValidateAccessCommand {
         'Open Settings'
       ).then((selection) => {
         if (selection === 'Open Settings') {
-          vscode.commands.executeCommand('workbench.action.openSettings', 'olaf');
+          vscode.commands.executeCommand('workbench.action.openSettings', 'promptregistry');
         }
       });
     } else {
@@ -104,7 +104,7 @@ export class ValidateAccessCommand {
         'View Details'
       ).then((selection) => {
         if (selection === 'Open Settings') {
-          vscode.commands.executeCommand('workbench.action.openSettings', 'olaf');
+          vscode.commands.executeCommand('workbench.action.openSettings', 'promptregistry');
         }
         // Details are already shown in the document
       });
@@ -127,9 +127,9 @@ export class ValidateAccessCommand {
         progress.report({ increment: 20, message: 'Checking repository configuration...' });
 
         // Get current configuration
-        const config = vscode.workspace.getConfiguration('olaf');
+        const config = vscode.workspace.getConfiguration('promptregistry');
         const owner = config.get<string>('repositoryOwner') || 'AmadeusITGroup';
-        const repo = config.get<string>('repositoryName') || 'olaf';
+        const repo = config.get<string>('repositoryName') || 'promptregistry';
         const usePrivateRepo = config.get<boolean>('usePrivateRepository') || false;
         const hasToken = !!config.get<string>('githubToken');
 
