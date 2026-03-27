@@ -298,7 +298,7 @@ suite('lockfileTestHelpers', () => {
     test('sourceType generator should produce valid types', () => {
       const validTypes = [
         'github', 'gitlab', 'http', 'local', 'awesome-copilot',
-        'local-awesome-copilot', 'apm', 'local-apm', 'olaf', 'local-olaf'
+        'local-awesome-copilot', 'apm', 'local-apm'
       ];
       fc.assert(
         fc.property(LockfileGenerators.sourceType(), (type) => {

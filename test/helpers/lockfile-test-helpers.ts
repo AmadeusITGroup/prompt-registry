@@ -24,7 +24,7 @@ export const LOCKFILE_DEFAULTS = {
   SCHEMA_URL: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
   VERSION: '1.0.0',
   GENERATED_BY: 'prompt-registry@1.0.0',
-  SOURCE_TYPES: ['github', 'gitlab', 'http', 'local', 'awesome-copilot', 'apm', 'olaf'] as const,
+  SOURCE_TYPES: ['github', 'gitlab', 'http', 'local', 'awesome-copilot', 'apm'] as const,
   COMMIT_MODES: ['commit', 'local-only'] as const
 } as const;
 
@@ -413,9 +413,7 @@ export const LockfileGenerators = {
       'awesome-copilot',
       'local-awesome-copilot',
       'apm',
-      'local-apm',
-      'olaf',
-      'local-olaf'
+      'local-apm'
     );
   },
 

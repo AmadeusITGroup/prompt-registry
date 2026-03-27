@@ -401,37 +401,12 @@ export class BundleInstaller {
 
   /**
    * Get installation directory for bundle
-   * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
    * Repository scope bundles are installed in the workspace's bundle storage
    * @param bundleId
    * @param scope
-   * @param sourceType
-   * @param sourceName
    * @param _bundleName
    */
-  private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, _bundleName?: string): string {
-    // Check if this is an OLAF bundle
-    const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
-
-    if (isOlafBundle) {
-      // OLAF bundles must be installed in workspace .olaf/external-skills directory
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
-      }
-
-      const workspacePath = workspaceFolders[0].uri.fsPath;
-
-      // Use source name for directory organization, fallback to 'default' if not provided
-      const sourceDir = sourceName || 'default';
-
-      // For OLAF bundles with multiple skills, install directly to the source directory
-      // The ZIP contains skill folders that will be copied directly here
-      // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
-      this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
-      return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
-    }
-
+  private getInstallDirectory(bundleId: string, scope: InstallationScope, _bundleName?: string): string {
     // Repository scope: install in extension global storage (NOT in the workspace)
     // The bundle cache/storage should remain in extension storage.
     // Only the actual content files (prompts, agents, etc.) are synced to .github/ directories
@@ -482,32 +457,6 @@ export class BundleInstaller {
       } else {
         const content = await readFile(sourcePath);
         await writeFile(targetPath, content);
-      }
-    }
-  }
-
-  /**
-   * Copy OLAF skill folders from extracted bundle to installation directory
-   * Only copies directories (skill folders), skipping deployment-manifest.yml
-   * Each skill folder is copied directly to the target directory
-   * @param sourceDir
-   * @param targetDir
-   */
-  private async copyOlafSkillFolders(sourceDir: string, targetDir: string): Promise<void> {
-    const files = await readdir(sourceDir);
-
-    for (const file of files) {
-      const sourcePath = path.join(sourceDir, file);
-      const stats = await stat(sourcePath);
-
-      // Only copy directories (skill folders), skip files like deployment-manifest.yml
-      if (stats.isDirectory()) {
-        const targetPath = path.join(targetDir, file);
-        this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
-        await ensureDirectory(targetPath);
-        await this.copyBundleFiles(sourcePath, targetPath);
-      } else {
-        this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
       }
     }
   }
@@ -822,7 +771,7 @@ export class BundleInstaller {
       this.logger.debug('Bundle validation passed');
 
       // Get installation directory (pass undefined for sourceType since it's not available in install method)
-      const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
+      const installDir = this.getInstallDirectory(bundle.id, options.scope, bundle.name);
       await ensureDirectory(installDir);
       this.logger.debug(`Installation directory: ${installDir}`);
 
@@ -875,14 +824,12 @@ export class BundleInstaller {
    * @param bundleBuffer
    * @param options
    * @param sourceType
-   * @param sourceName
    */
   public async installFromBuffer(
     bundle: Bundle,
     bundleBuffer: Buffer,
     options: InstallOptions,
-    sourceType?: string,
-    sourceName?: string
+    sourceType?: string
   ): Promise<InstalledBundle> {
     this.logger.info(`Installing bundle from buffer: ${bundle.name} v${bundle.version}`);
 
@@ -950,21 +897,12 @@ export class BundleInstaller {
         }
       } else {
         // Step 5: Get installation directory (standard bundles)
-        installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
+        installDir = this.getInstallDirectory(bundle.id, options.scope, bundle.name);
         await ensureDirectory(installDir);
         this.logger.debug(`Installation directory: ${installDir}`);
 
         // Step 6: Copy files to installation directory
-        // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
-        const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
-        if (isOlafBundle) {
-          // Copy all directories (skill folders) from the extracted bundle
-          // Skip deployment-manifest.yml as it's only needed for validation
-          this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
-          await this.copyOlafSkillFolders(extractDir, installDir);
-        } else {
-          await this.copyBundleFiles(extractDir, installDir);
-        }
+        await this.copyBundleFiles(extractDir, installDir);
       }
       this.logger.debug('Files copied to installation directory');
 
@@ -1076,15 +1014,13 @@ export class BundleInstaller {
    * @param bundle
    * @param bundleBuffer
    * @param sourceType
-   * @param sourceName
    * @deprecated - RegistryManager should handle updates directly using downloadBundle() + installFromBuffer()
    */
   public async update(
     installed: InstalledBundle,
     bundle: Bundle,
     bundleBuffer: Buffer,
-    sourceType?: string,
-    sourceName?: string
+    sourceType?: string
   ): Promise<InstalledBundle> {
     this.logger.info(`Updating bundle: ${installed.bundleId} to v${bundle.version}`);
 
@@ -1103,8 +1039,7 @@ export class BundleInstaller {
           version: bundle.version,
           commitMode: installed.commitMode
         },
-        resolvedSourceType,
-        sourceName
+        resolvedSourceType
       );
 
       this.logger.info('Bundle updated successfully');

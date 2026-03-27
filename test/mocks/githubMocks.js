@@ -11,20 +11,20 @@ const mockRelease = {
   published_at: '2024-01-15T10:00:00Z',
   assets: [
     {
-      name: 'olaf-linux-x64.tar.gz',
-      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/olaf-linux-x64.tar.gz',
+      name: 'prompt-registry-linux-x64.tar.gz',
+      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/prompt-registry-linux-x64.tar.gz',
       size: 12_345_678,
       content_type: 'application/gzip'
     },
     {
-      name: 'olaf-win32-x64.zip',
-      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/olaf-win32-x64.zip',
+      name: 'prompt-registry-win32-x64.zip',
+      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/prompt-registry-win32-x64.zip',
       size: 13_456_789,
       content_type: 'application/zip'
     },
     {
-      name: 'olaf-darwin-x64.tar.gz',
-      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/olaf-darwin-x64.tar.gz',
+      name: 'prompt-registry-darwin-x64.tar.gz',
+      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.1.0/prompt-registry-darwin-x64.tar.gz',
       size: 12_789_456,
       content_type: 'application/gzip'
     }
@@ -41,8 +41,8 @@ const mockReleases = [
     published_at: '2024-01-10T14:30:00Z',
     assets: [
       {
-        name: 'olaf-linux-x64.tar.gz',
-        browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.0.1/olaf-linux-x64.tar.gz',
+        name: 'prompt-registry-linux-x64.tar.gz',
+        browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.0.1/prompt-registry-linux-x64.tar.gz',
         size: 12_000_000,
         content_type: 'application/gzip'
       }
@@ -58,8 +58,8 @@ const mockPrerelease = {
   published_at: '2024-01-20T16:45:00Z',
   assets: [
     {
-      name: 'olaf-linux-x64-beta.tar.gz',
-      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.2.0-beta.1/olaf-linux-x64-beta.tar.gz',
+      name: 'prompt-registry-linux-x64-beta.tar.gz',
+      browser_download_url: 'https://github.com/microsoft/prompt-registry/releases/download/v2.2.0-beta.1/prompt-registry-linux-x64-beta.tar.gz',
       size: 13_000_000,
       content_type: 'application/gzip'
     }

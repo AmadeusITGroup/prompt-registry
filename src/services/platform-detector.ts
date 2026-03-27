@@ -304,7 +304,7 @@ export class PlatformDetector {
         installationPaths: {
           user: this.getUserDataPath('Code'),
           workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.prompt-registry')
         },
         configFiles: ['settings.json', 'keybindings.json'],
         environmentVariables: ['VSCODE_PID', 'VSCODE_IPC_HOOK']
@@ -315,7 +315,7 @@ export class PlatformDetector {
         installationPaths: {
           user: this.getUserDataPath('Windsurf'),
           workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.windsurf'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.prompt-registry')
         },
         configFiles: ['settings.json', 'keybindings.json'],
         environmentVariables: ['WINDSURF_PID', 'WINDSURF_IPC_HOOK']
@@ -326,7 +326,7 @@ export class PlatformDetector {
         installationPaths: {
           user: this.getUserDataPath('Kiro'),
           workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.kiro'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.prompt-registry')
         },
         configFiles: ['settings.json', 'keybindings.json'],
         environmentVariables: ['KIRO_PID', 'KIRO_IPC_HOOK']
@@ -337,7 +337,7 @@ export class PlatformDetector {
         installationPaths: {
           user: this.getUserDataPath('Cursor'),
           workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.cursor'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.prompt-registry')
         },
         configFiles: ['settings.json', 'keybindings.json'],
         environmentVariables: ['CURSOR_PID', 'CURSOR_IPC_HOOK']
@@ -348,7 +348,7 @@ export class PlatformDetector {
         installationPaths: {
           user: this.getUserDataPath('Code'),
           workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.prompt-registry')
         },
         configFiles: ['settings.json'],
         environmentVariables: []
@@ -366,6 +366,6 @@ export class PlatformDetector {
   public getInstallationPath(platform: Platform, scope: InstallationScope): string {
     const config = this.getPlatformConfig(platform);
     const basePath = config.installationPaths[scope];
-    return path.join(basePath, 'olaf');
+    return basePath;
   }
 }

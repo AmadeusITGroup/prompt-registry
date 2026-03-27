@@ -181,7 +181,7 @@ prompts: []
       const bundleBuffer = zip.toBuffer();
 
       try {
-        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github');
         // If we get here, repository scope is supported
         assert.ok(true, 'Repository scope installation should be supported');
       } catch (error: any) {
@@ -237,7 +237,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
       } catch {
         // Expected to fail until implementation
       }
@@ -273,7 +273,7 @@ prompts:
       mockRepositoryScopeService.syncBundle.resetHistory();
       mockUserScopeService.syncBundle.resetHistory();
 
-      await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'skills', 'test-skills-source');
+      await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'skills');
 
       assert.ok(mockRepositoryScopeService.syncBundle.calledOnce, 'Repository scope should sync via RepositoryScopeService for skills');
       assert.ok(!mockUserScopeService.syncBundle.called, 'User scope sync should not be used for repository-scoped skills');
@@ -300,7 +300,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify lockfile was updated
         // assert.ok(mockLockfileManager.createOrUpdate.called, 'Should update lockfile for repository scope');
@@ -332,7 +332,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
       } catch {
         // May fail for other reasons
       }
@@ -362,7 +362,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify RepositoryScopeService.syncBundle was called
         // assert.ok(mockRepositoryScopeService.syncBundle.called, 'Should sync using RepositoryScopeService');
@@ -456,7 +456,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify commitMode was passed correctly
       } catch {
@@ -506,7 +506,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify source info was included
         // const createOrUpdateCall = mockLockfileManager.createOrUpdate.firstCall;
@@ -540,7 +540,7 @@ prompts:
     file: test.prompt.md
 `));
         zip.addFile('test.prompt.md', Buffer.from('# Test Prompt'));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify files with checksums were included
         // const createOrUpdateCall = mockLockfileManager.createOrUpdate.firstCall;
@@ -578,7 +578,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
         assert.fail('Should have thrown error for repository scope without workspace');
       } catch (error: any) {
         // Should throw an error about no workspace
@@ -612,7 +612,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, should either throw or handle gracefully
       } catch {
@@ -645,7 +645,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
       } catch {
         // May fail for other reasons
       }
@@ -677,7 +677,7 @@ description: Test
 author: test
 prompts: []
 `));
-        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github');
 
         // After implementation, verify factory was called with 'repository'
       } catch {

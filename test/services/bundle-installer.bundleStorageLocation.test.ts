@@ -155,7 +155,7 @@ prompts:
       const bundleBuffer = zip.toBuffer();
 
       try {
-        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github');
       } catch {
         // Installation might fail for other reasons, but we're checking the storage location
       }
@@ -199,7 +199,7 @@ prompts:
 
       let installedBundle;
       try {
-        installedBundle = await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github', 'test-source');
+        installedBundle = await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github');
       } catch {
         // If installation fails, we can't check the path
         // But we should still verify no .prompt-registry in workspace
@@ -254,7 +254,7 @@ prompts:
       const bundleBuffer = zip.toBuffer();
 
       try {
-        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github', 'test-source');
+        await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github');
       } catch {
         // Installation might fail, but check what was created
       }
@@ -297,7 +297,7 @@ prompts: []
 
       let installedBundle;
       try {
-        installedBundle = await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github', 'test-source');
+        installedBundle = await installer.installFromBuffer(testBundle, bundleBuffer, options, 'github');
       } catch {
         // May fail for other reasons
         return;
