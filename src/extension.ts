@@ -29,8 +29,6 @@ import {
 import {
   ScaffoldCommand,
 } from './commands/scaffold-command';
-
-// Legacy imports (to be migrated)
 import {
   selectVersionCommand,
 } from './commands/select-version-command';

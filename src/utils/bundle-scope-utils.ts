@@ -13,13 +13,8 @@ import {
   RegistryStorage,
 } from '../storage/registry-storage';
 import {
-  LockfileBundleEntry,
-} from '../types/lockfile';
-import {
-  DeploymentManifest,
   InstallationScope,
   InstalledBundle,
-  RepositoryCommitMode,
 } from '../types/registry';
 import {
   Logger,
@@ -73,88 +68,4 @@ export async function getInstalledBundleForScope(
 
   // User and workspace scopes use RegistryStorage
   return storage.getInstalledBundle(bundleId, scope);
-}
-
-/**
- * Options for creating an InstalledBundle from a lockfile entry
- */
-export interface CreateInstalledBundleOptions {
-  /** Install path (defaults to empty string if not provided) */
-  installPath?: string;
-  /** Deployment manifest (defaults to minimal manifest if not provided) */
-  manifest?: DeploymentManifest;
-  /** Whether files are missing from the filesystem */
-  filesMissing?: boolean;
-  /** Override the commit mode from the lockfile entry (used when commit mode is implicit based on file location) */
-  commitModeOverride?: RepositoryCommitMode;
-}
-
-/**
- * Create an InstalledBundle object from a lockfile bundle entry.
- *
- * This is the single source of truth for converting lockfile entries to InstalledBundle format.
- * Used by both LockfileManager and bundleScopeUtils for consistent conversion.
- * @param bundleId - The bundle ID
- * @param bundleEntry - The lockfile bundle entry
- * @param options - Optional configuration for the conversion
- * @returns InstalledBundle object
- */
-export function createInstalledBundleFromLockfile(
-    bundleId: string,
-    bundleEntry: LockfileBundleEntry,
-    options?: CreateInstalledBundleOptions
-): InstalledBundle {
-  const manifest = options?.manifest ?? createMinimalManifest(bundleId, bundleEntry.files);
-
-  // Use commitModeOverride if provided, otherwise fall back to entry's commitMode
-  // This supports the dual-lockfile pattern where commit mode is implicit based on file location
-  const commitMode = options?.commitModeOverride ?? bundleEntry.commitMode as RepositoryCommitMode;
-
-  return {
-    bundleId,
-    version: bundleEntry.version,
-    installedAt: bundleEntry.installedAt,
-    scope: 'repository',
-    installPath: options?.installPath ?? '',
-    manifest,
-    sourceId: bundleEntry.sourceId,
-    sourceType: bundleEntry.sourceType,
-    commitMode,
-    filesMissing: options?.filesMissing
-  };
-}
-
-/**
- * Create a minimal deployment manifest for repository-scoped bundles.
- *
- * The actual manifest content is not stored in the lockfile, so we create
- * a minimal manifest with the file paths from the lockfile entry.
- * @param bundleId - The bundle ID
- * @param files - Array of file entries from the lockfile
- * @returns Minimal DeploymentManifest object
- */
-function createMinimalManifest(
-    bundleId: string,
-    files: { path: string; checksum: string }[] = []
-): DeploymentManifest {
-  return {
-    common: {
-      directories: [],
-      files: files.map((f) => f.path),
-      include_patterns: [],
-      exclude_patterns: []
-    },
-    bundle_settings: {
-      include_common_in_environment_bundles: false,
-      create_common_bundle: false,
-      compression: 'none',
-      naming: {
-        environment_bundle: bundleId
-      }
-    },
-    metadata: {
-      manifest_version: '1.0.0',
-      description: `Repository bundle: ${bundleId}`
-    }
-  };
 }

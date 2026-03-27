@@ -14,8 +14,6 @@ import {
   suite,
   test,
 } from 'mocha';
-
-// Import the scope selection UI to verify it's being used
 import * as scopeSelectionUI from '../../src/utils/scope-selection-ui';
 
 suite('MarketplaceViewProvider - Scope Selection Bug', () => {

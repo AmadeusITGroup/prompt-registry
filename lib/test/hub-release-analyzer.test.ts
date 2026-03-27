@@ -5,13 +5,14 @@
  * Tests cover input detection, config loading, data extraction, aggregation,
  * and report generation.
  */
+/* eslint-disable import/order -- require() as import conflicts with import/newline-after-import */
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-// Import the hub-release-analyzer module
 const analyzer = require('../../bin/hub-release-analyzer.js');
+/* eslint-enable import/order */
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

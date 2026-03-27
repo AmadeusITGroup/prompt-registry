@@ -73,9 +73,6 @@ export const temporaryWarnRulesTs = {
 
 // TODO to be discussed and fixed in future PRs
 export const temporaryWarnRules = {
-  'import/order': 'warn',
   'no-underscore-dangle': 'warn',
-  'no-console': 'warn',
-  'import/no-cycle': 'warn',
-  'import-newlines/enforce': 'warn'
+  'no-console': 'warn'
 };
