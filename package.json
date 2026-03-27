@@ -879,6 +879,14 @@
     "archiver-utils": {
       "glob": "^11.1.0"
     },
+    "archiver": {
+      "readdir-glob": "^3.0.0"
+    },
+    "glob": {
+      "minimatch": {
+        "brace-expansion": "^5.0.5"
+      }
+    },
     "mocha": {
       "chokidar": "^5.0.0"
     }
