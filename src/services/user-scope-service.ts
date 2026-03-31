@@ -15,6 +15,9 @@
  * Requirements: 9.1-9.5
  */
 
+import {
+  execSync,
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -61,15 +64,78 @@ export interface CopilotFile {
   targetPath: string;
 }
 
+type PlatformFolder = 'Code' | 'Code - Insiders' | 'Windsurf' | 'Cursor' | 'Kiro';
+
 /**
  * Service to sync bundle prompts to GitHub Copilot's native directories at user level.
  * Implements IScopeService for consistent scope handling.
  */
 export class UserScopeService implements IScopeService {
   private readonly logger: Logger;
+  private readonly appNameMap: Map<string, PlatformFolder> = new Map([
+    ['vscode', 'Code'],
+    ['vscode-insiders', 'Code - Insiders'],
+    ['windsurf', 'Windsurf'],
+    ['cursor', 'Cursor'],
+    ['kiro', 'Kiro'],
+  ]);
+  private windowsHomeInWSL: string | undefined;
+  private cachedPromptsDir: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Function to detect if the extension is running in a WSL remote context
+   * We need this to determine if we should sync to Windows filesystem instead of WSL filesystem
+   * @returns True if running in WSL, false otherwise
+   */
+  private isRunningInWSL(): boolean {
+    return vscode.env.remoteName === 'wsl';
+  }
+
+  /**
+   * When running on wsl, get the Windows home directory
+   * @returns The Windows home directory path in WSL as mnt/c/Users/<User>
+   */
+  private getWindowsHomeDirectoryInWSL(): string | undefined {
+    if (this.windowsHomeInWSL) {
+      return this.windowsHomeInWSL;
+    }
+    try {
+      const wslWindowsHome = execSync(`wslpath -u "$(cmd.exe /c echo %USERPROFILE% 2>/dev/null)"`, { encoding: 'utf8' }).trim();
+      this.logger.info(`[UserScopeService] Detected Windows home directory in WSL: ${wslWindowsHome}`);
+      this.windowsHomeInWSL = wslWindowsHome;
+      return wslWindowsHome;
+    } catch (error) {
+      this.logger.error('Failed to get Windows home directory in WSL', error as Error);
+      return undefined;
+    }
+  }
+  
+  /**
+   * Get the Windows User directory when running in WSL.
+   * Since we construct the path ourselves, we return the User dir directly
+   * instead of globalStorage (avoiding redundant path parsing downstream).
+   * @returns The User directory path in WSL, or undefined if not in WSL or detection fails.
+   */
+  private getWslUserDir(): string | undefined {
+    if (!this.isRunningInWSL()) {
+      return undefined;
+    }
+    try {
+      const windowsHome = this.getWindowsHomeDirectoryInWSL();
+      if (windowsHome) {
+        const folderName = this.appNameMap.get(vscode.env.uriScheme) || 'Code';
+        const userDir = path.join(windowsHome, 'AppData', 'Roaming', folderName, 'User');
+        this.logger.debug(`[UserScopeService] Resolved WSL User directory: ${userDir}`);
+        return userDir;
+      }
+    } catch {
+      this.logger.warn('[UserScopeService] Failed to resolve Windows path, falling back to WSL path');
+    }
+    return undefined;
   }
 
   /**
@@ -87,17 +153,40 @@ export class UserScopeService implements IScopeService {
    * so we need to sync prompts to the Windows filesystem, not the WSL filesystem.
    */
   private getCopilotPromptsDirectory(): string {
-    const globalStoragePath = this.context.globalStorageUri.fsPath;
+    if (this.cachedPromptsDir) {
+      return this.cachedPromptsDir;
+    }
 
-    // Find the User directory by looking for '/User/' or '\User\' in the path
+    const resolved = this.resolveCopilotPromptsDirectory();
+
+    // Sanity check: the resolved path should end with 'prompts' and not be a filesystem root
+    const basename = path.basename(resolved);
+    if (basename !== 'prompts' || resolved === path.dirname(resolved)) {
+      this.logger.warn(`[UserScopeService] Resolved prompts directory looks suspicious: ${resolved}`);
+    }
+
+    this.cachedPromptsDir = resolved;
+    return resolved;
+  }
+
+  private resolveCopilotPromptsDirectory(): string {
+    this.logger.debug(`[UserScopeService] Original globalStorage path: ${this.context.globalStorageUri.fsPath}`);
+
+    // WSL: we construct the path ourselves, so we know the User dir directly
+    const wslUserDir = this.getWslUserDir();
+    if (wslUserDir) {
+      return this.resolvePromptsFromUserDir(wslUserDir);
+    }
+
+    // Non-WSL: parse the User dir from the globalStorage path
+    const globalStoragePath = this.context.globalStorageUri.fsPath;
     const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
-    const escapedSep = escapeRegex(path.sep);
 
     if (userIndex === -1) {
       // Fallback: Custom user-data-dir without 'User' directory
-      // Navigate up from globalStorage/publisher.extension
+      // Navigate up from globalStorage/publisher.extension to parent of globalStorage
       const baseDir = path.dirname(path.dirname(globalStoragePath));
-
+      const escapedSep = escapeRegex(path.sep);
       // Check if we're in a profiles structure
       const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
       if (profileId) {
@@ -109,21 +198,16 @@ export class UserScopeService implements IScopeService {
       return path.join(baseDir, 'prompts');
     }
 
-    // Extract path up to and including 'User'
     const userDir = globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
+    return this.resolvePromptsFromUserDir(userDir);
+  }
 
-    // Check if this is a profile-based path by looking for '/profiles/' after User
-    // Path structure: .../User/profiles/<profile-id>/globalStorage/...
-    const remainingPath = globalStoragePath.substring(userDir.length);
-    const profilesMatch = remainingPath.match(new RegExp(`^${escapedSep}profiles${escapedSep}([^${escapedSep}]+)`));
-
-    if (profilesMatch) {
-      // Profile-based path: include the profile directory
-      const profileId = profilesMatch[1];
-      const profileName = this.getActiveProfileName(userDir) || profileId;
-      this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
-      return path.join(userDir, 'profiles', profileId, 'prompts');
-    }
+  /**
+   * Given a known User directory, resolve the prompts directory
+   * (handles profile detection for both WSL and non-WSL paths).
+   */
+  private resolvePromptsFromUserDir(userDir: string): string {
+    this.logger.debug(`[UserScopeService] Resolved User directory: ${userDir}`);
 
     // Extension installed globally but user might be in a profile
     // Use combined detection method (storage.json + filesystem heuristic)
