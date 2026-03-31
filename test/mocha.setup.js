@@ -240,6 +240,7 @@ const vscode = {
     machineId: 'mock-machine-id',
     sessionId: 'mock-session-id',
     remoteName: undefined,
+    uriScheme: 'vscode',
     shell: '/bin/bash',
     isTelemetryEnabled: true,
     openExternal: (uri) => Promise.resolve(true),

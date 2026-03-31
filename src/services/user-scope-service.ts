@@ -15,6 +15,9 @@
  * Requirements: 9.1-9.5
  */
 
+import {
+  execSync,
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -60,15 +63,76 @@ export interface CopilotFile {
   targetPath: string;
 }
 
+type CodeFlavourFolder = 'Code' | 'Code - Insiders';
+
 /**
  * Service to sync bundle prompts to GitHub Copilot's native directories at user level.
  * Implements IScopeService for consistent scope handling.
  */
 export class UserScopeService implements IScopeService {
   private readonly logger: Logger;
+  private readonly appNameMap: Map<string, CodeFlavourFolder> = new Map([
+    ['vscode', 'Code'],
+    ['vscode-insiders', 'Code - Insiders']
+  ]);
+
+  private windowsHomeInWSL: string | undefined;
+  private cachedPromptsDir: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Function to detect if the extension is running in a WSL remote context
+   * We need this to determine if we should sync to Windows filesystem instead of WSL filesystem
+   * @returns True if running in WSL, false otherwise
+   */
+  private isRunningInWSL(): boolean {
+    return vscode.env.remoteName === 'wsl';
+  }
+
+  /**
+   * When running on wsl, get the Windows home directory
+   * @returns The Windows home directory path in WSL as mnt/c/Users/<User>
+   */
+  private getWindowsHomeDirectoryInWSL(): string | undefined {
+    if (this.windowsHomeInWSL) {
+      return this.windowsHomeInWSL;
+    }
+    try {
+      const wslWindowsHome = execSync(`wslpath -u "$(cmd.exe /c echo %USERPROFILE% 2>/dev/null)"`, { encoding: 'utf8', timeout: 5000 }).trim();
+      this.logger.info(`[UserScopeService] Detected Windows home directory in WSL: ${wslWindowsHome}`);
+      this.windowsHomeInWSL = wslWindowsHome;
+      return wslWindowsHome;
+    } catch (error) {
+      this.logger.error('Failed to get Windows home directory in WSL', error as Error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get the Windows User directory when running in WSL.
+   * Since we construct the path ourselves, we return the User dir directly
+   * instead of globalStorage (avoiding redundant path parsing downstream).
+   * @returns The User directory path in WSL, or undefined if not in WSL or detection fails.
+   */
+  private getWindowsWslUserDir(): string | undefined {
+    if (!this.isRunningInWSL()) {
+      return undefined;
+    }
+    try {
+      const windowsHome = this.getWindowsHomeDirectoryInWSL();
+      if (windowsHome) {
+        const folderName = this.appNameMap.get(vscode.env.uriScheme) || 'Code';
+        const userDir = path.join(windowsHome, 'AppData', 'Roaming', folderName, 'User');
+        this.logger.debug(`[UserScopeService] Resolved WSL User directory: ${userDir}`);
+        return userDir;
+      }
+    } catch {
+      this.logger.warn('[UserScopeService] Failed to resolve Windows path, falling back to WSL path');
+    }
+    return undefined;
   }
 
   /**
@@ -86,43 +150,65 @@ export class UserScopeService implements IScopeService {
    * so we need to sync prompts to the Windows filesystem, not the WSL filesystem.
    */
   private getCopilotPromptsDirectory(): string {
-    const globalStoragePath = this.context.globalStorageUri.fsPath;
-
-    // Find the User directory by looking for '/User/' or '\User\' in the path
-    const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
-    const escapedSep = escapeRegex(path.sep);
-
-    if (userIndex === -1) {
-      // Fallback: Custom user-data-dir without 'User' directory
-      // Navigate up from globalStorage/publisher.extension
-      const baseDir = path.dirname(path.dirname(globalStoragePath));
-
-      // Check if we're in a profiles structure
-      const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
-      if (profileId) {
-        const profileName = this.getActiveProfileName(baseDir) || profileId;
-        this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
-        return path.join(baseDir, 'prompts');
-      }
-
-      return path.join(baseDir, 'prompts');
+    if (this.cachedPromptsDir) {
+      return this.cachedPromptsDir;
     }
 
-    // Extract path up to and including 'User'
-    const userDir = globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
+    const resolved = this.resolveCopilotPromptsDirectory();
 
-    // Check if this is a profile-based path by looking for '/profiles/' after User
+    // Sanity check: the resolved path should end with 'prompts' and not be a filesystem root
+    const basename = path.basename(resolved);
+    if (basename !== 'prompts' || resolved === path.dirname(resolved)) {
+      this.logger.warn(`[UserScopeService] Resolved prompts directory looks suspicious: ${resolved}`);
+    }
+
+    this.cachedPromptsDir = resolved;
+    return resolved;
+  }
+
+  private resolveCopilotPromptsDirectory(): string {
+    const globalStoragePath = this.context.globalStorageUri.fsPath;
+    this.logger.debug(`[UserScopeService] Original globalStorage path: ${globalStoragePath}`);
+
+    // WSL: we construct the path ourselves, so we know the User dir directly
+    const wslUserDir = this.getWindowsWslUserDir();
+    if (wslUserDir) {
+      return this.resolvePromptsFromUserDir(wslUserDir);
+    }
+
+    if (this.isRunningInWSL()) {
+      this.logger.warn('[UserScopeService] Unable to resolve Windows path from WSL. Prompts may not be visible to Copilot.');
+      vscode.window.showWarningMessage('Prompt Registry: Unable to resolve Windows path from WSL. Prompts may not be visible to Copilot.');
+    }
+
+    // Non-WSL: parse the User dir from the globalStorage path
+    const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
+    const userDir = userIndex === -1
+      ? path.dirname(path.dirname(globalStoragePath))
+      : globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
+
+    // Check if the globalStorage path itself contains a profile segment
     // Path structure: .../User/profiles/<profile-id>/globalStorage/...
     const remainingPath = globalStoragePath.substring(userDir.length);
+    const escapedSep = escapeRegex(path.sep);
     const profilesMatch = remainingPath.match(new RegExp(`^${escapedSep}profiles${escapedSep}([^${escapedSep}]+)`));
-
     if (profilesMatch) {
-      // Profile-based path: include the profile directory
       const profileId = profilesMatch[1];
       const profileName = this.getActiveProfileName(userDir) || profileId;
       this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
       return path.join(userDir, 'profiles', profileId, 'prompts');
     }
+
+    return this.resolvePromptsFromUserDir(userDir);
+  }
+
+  /**
+   * Given a known User directory, resolve the prompts directory
+   * (handles profile detection for both WSL and non-WSL paths).
+   * @param userDir
+   */
+  private resolvePromptsFromUserDir(userDir: string): string {
+    this.logger.debug(`[UserScopeService] Resolved User directory: ${userDir}`);
 
     // Extension installed globally but user might be in a profile
     // Use combined detection method (storage.json + filesystem heuristic)
@@ -353,8 +439,12 @@ export class UserScopeService implements IScopeService {
           // Always remove existing symlink and recreate - simpler and more robust
           await unlink(file.targetPath);
           this.logger.debug(`Removed existing symlink: ${file.targetPath}`);
+        } else if (this.isRunningInWSL()) {
+          // WSL uses copies (not symlinks), so existing regular files are ours — overwrite
+          await unlink(file.targetPath);
+          this.logger.debug(`Removed existing copy for re-sync (WSL): ${file.targetPath}`);
         } else {
-          // It's a regular file - might be user's custom file, skip
+          // It's a regular file on non-WSL - might be user's custom file, skip
           this.logger.warn(`File already exists (not managed): ${file.targetPath}`);
           return;
         }
@@ -364,16 +454,23 @@ export class UserScopeService implements IScopeService {
       const targetDir = path.dirname(file.targetPath);
       await this.ensureDirectory(targetDir);
 
-      // Try to create symlink first (preferred)
-      try {
-        await symlink(file.sourcePath, file.targetPath, 'file');
-        this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
-      } catch {
-        // Symlink failed (maybe Windows or permissions), fall back to copy
-        this.logger.debug('Symlink failed, copying file instead');
+      // WSL: symlinks from Windows → WSL paths are broken from Windows' perspective,
+      // so always copy when running in WSL. On non-WSL, prefer symlinks.
+      if (this.isRunningInWSL()) {
         const content = await readFile(file.sourcePath, 'utf8');
         await writeFile(file.targetPath, content, 'utf8');
-        this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
+        this.logger.debug(`Copied file (WSL): ${path.basename(file.targetPath)}`);
+      } else {
+        try {
+          await symlink(file.sourcePath, file.targetPath, 'file');
+          this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
+        } catch {
+          // Symlink failed (maybe Windows or permissions), fall back to copy
+          this.logger.debug('Symlink failed, copying file instead');
+          const content = await readFile(file.sourcePath, 'utf8');
+          await writeFile(file.targetPath, content, 'utf8');
+          this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
+        }
       }
 
       this.logger.info(`✅ Synced ${file.type}: ${file.name} → ${path.basename(file.targetPath)}`);
@@ -578,6 +675,7 @@ export class UserScopeService implements IScopeService {
             // Check if file content matches source before deleting
             try {
               if (fs.existsSync(copilotFile.sourcePath)) {
+                this.logger.debug(`Target is a regular file, checking content before removal: ${path.basename(copilotFile.targetPath)}`);
                 const targetContent = await readFile(copilotFile.targetPath, 'utf8');
                 const sourceContent = await readFile(copilotFile.sourcePath, 'utf8');
 
