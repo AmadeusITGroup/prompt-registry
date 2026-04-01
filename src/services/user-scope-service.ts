@@ -77,8 +77,9 @@ export class UserScopeService implements IScopeService {
     ['vscode-insiders', 'Code - Insiders'],
     ['windsurf', 'Windsurf'],
     ['cursor', 'Cursor'],
-    ['kiro', 'Kiro'],
+    ['kiro', 'Kiro']
   ]);
+
   private windowsHomeInWSL: string | undefined;
   private cachedPromptsDir: string | undefined;
 
@@ -113,14 +114,14 @@ export class UserScopeService implements IScopeService {
       return undefined;
     }
   }
-  
+
   /**
    * Get the Windows User directory when running in WSL.
    * Since we construct the path ourselves, we return the User dir directly
    * instead of globalStorage (avoiding redundant path parsing downstream).
    * @returns The User directory path in WSL, or undefined if not in WSL or detection fails.
    */
-  private getWslUserDir(): string | undefined {
+  private getWindowsWslUserDir(): string | undefined {
     if (!this.isRunningInWSL()) {
       return undefined;
     }
@@ -136,6 +137,32 @@ export class UserScopeService implements IScopeService {
       this.logger.warn('[UserScopeService] Failed to resolve Windows path, falling back to WSL path');
     }
     return undefined;
+  }
+
+  /**
+   * Test helper to extract User directory from globalStorage path
+   * Used in tests to verify correct path parsing logic for both standard and profile paths
+   * @param globalStoragePath
+   */
+  private getUserDirFromGlobalStorage(globalStoragePath: string): string {
+    const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
+
+    if (userIndex === -1) {
+      // Fallback: Custom user-data-dir without 'User' directory
+      // Navigate up from globalStorage/publisher.extension to parent of globalStorage
+      const baseDir = path.dirname(path.dirname(globalStoragePath));
+      const escapedSep = escapeRegex(path.sep);
+      // Check if we're in a profiles structure
+      const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
+      if (profileId) {
+        const profileName = this.getActiveProfileName(baseDir) || profileId;
+        this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
+        return path.join(baseDir, 'prompts');
+      }
+
+      return path.join(baseDir, 'prompts');
+    }
+    return globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
   }
 
   /**
@@ -173,38 +200,20 @@ export class UserScopeService implements IScopeService {
     this.logger.debug(`[UserScopeService] Original globalStorage path: ${this.context.globalStorageUri.fsPath}`);
 
     // WSL: we construct the path ourselves, so we know the User dir directly
-    const wslUserDir = this.getWslUserDir();
+    const wslUserDir = this.getWindowsWslUserDir();
     if (wslUserDir) {
       return this.resolvePromptsFromUserDir(wslUserDir);
     }
 
     // Non-WSL: parse the User dir from the globalStorage path
-    const globalStoragePath = this.context.globalStorageUri.fsPath;
-    const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
-
-    if (userIndex === -1) {
-      // Fallback: Custom user-data-dir without 'User' directory
-      // Navigate up from globalStorage/publisher.extension to parent of globalStorage
-      const baseDir = path.dirname(path.dirname(globalStoragePath));
-      const escapedSep = escapeRegex(path.sep);
-      // Check if we're in a profiles structure
-      const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
-      if (profileId) {
-        const profileName = this.getActiveProfileName(baseDir) || profileId;
-        this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
-        return path.join(baseDir, 'prompts');
-      }
-
-      return path.join(baseDir, 'prompts');
-    }
-
-    const userDir = globalStoragePath.substring(0, userIndex + path.sep.length + 'User'.length);
+    const userDir = this.getUserDirFromGlobalStorage(this.context.globalStorageUri.fsPath);
     return this.resolvePromptsFromUserDir(userDir);
   }
 
   /**
    * Given a known User directory, resolve the prompts directory
    * (handles profile detection for both WSL and non-WSL paths).
+   * @param userDir
    */
   private resolvePromptsFromUserDir(userDir: string): string {
     this.logger.debug(`[UserScopeService] Resolved User directory: ${userDir}`);
@@ -438,8 +447,12 @@ export class UserScopeService implements IScopeService {
           // Always remove existing symlink and recreate - simpler and more robust
           await unlink(file.targetPath);
           this.logger.debug(`Removed existing symlink: ${file.targetPath}`);
+        } else if (this.isRunningInWSL()) {
+          // WSL uses copies (not symlinks), so existing regular files are ours — overwrite
+          await unlink(file.targetPath);
+          this.logger.debug(`Removed existing copy for re-sync (WSL): ${file.targetPath}`);
         } else {
-          // It's a regular file - might be user's custom file, skip
+          // It's a regular file on non-WSL - might be user's custom file, skip
           this.logger.warn(`File already exists (not managed): ${file.targetPath}`);
           return;
         }
@@ -449,16 +462,23 @@ export class UserScopeService implements IScopeService {
       const targetDir = path.dirname(file.targetPath);
       await this.ensureDirectory(targetDir);
 
-      // Try to create symlink first (preferred)
-      try {
-        await symlink(file.sourcePath, file.targetPath, 'file');
-        this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
-      } catch {
-        // Symlink failed (maybe Windows or permissions), fall back to copy
-        this.logger.debug('Symlink failed, copying file instead');
+      // WSL: symlinks from Windows → WSL paths are broken from Windows' perspective,
+      // so always copy when running in WSL. On non-WSL, prefer symlinks.
+      if (this.isRunningInWSL()) {
         const content = await readFile(file.sourcePath, 'utf8');
         await writeFile(file.targetPath, content, 'utf8');
-        this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
+        this.logger.debug(`Copied file (WSL): ${path.basename(file.targetPath)}`);
+      } else {
+        try {
+          await symlink(file.sourcePath, file.targetPath, 'file');
+          this.logger.debug(`Created symlink: ${path.basename(file.targetPath)}`);
+        } catch {
+          // Symlink failed (maybe Windows or permissions), fall back to copy
+          this.logger.debug('Symlink failed, copying file instead');
+          const content = await readFile(file.sourcePath, 'utf8');
+          await writeFile(file.targetPath, content, 'utf8');
+          this.logger.debug(`Copied file: ${path.basename(file.targetPath)}`);
+        }
       }
 
       this.logger.info(`✅ Synced ${file.type}: ${file.name} → ${path.basename(file.targetPath)}`);
@@ -699,6 +719,7 @@ export class UserScopeService implements IScopeService {
             // Check if file content matches source before deleting
             try {
               if (fs.existsSync(copilotFile.sourcePath)) {
+                this.logger.debug(`Target is a regular file, checking content before removal: ${path.basename(copilotFile.targetPath)}`);
                 const targetContent = await readFile(copilotFile.targetPath, 'utf8');
                 const sourceContent = await readFile(copilotFile.sourcePath, 'utf8');
 
@@ -782,6 +803,39 @@ export class UserScopeService implements IScopeService {
    */
   public async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
     const promptsDir = this.getCopilotPromptsDirectory();
+
+    // WSL: files are copies (not symlinks), so count all regular files
+    // this approach does not exclude user-managed files, but due to symlink limitations in WSL, we have no reliable way to distinguish them
+    // We could loop over the files in the bundle and check for matching content, but that would be expensive,
+    //  so we opt for a best-effort count of all files in the prompts directory when running in WSL
+    if (this.isRunningInWSL()) {
+      const dirExists = fs.existsSync(promptsDir);
+      const files: string[] = [];
+
+      if (dirExists) {
+        const entries = await readdir(promptsDir);
+        for (const entry of entries) {
+          const entryPath = path.join(promptsDir, entry);
+          try {
+            const entryStat = await lstat(entryPath);
+            if (entryStat.isFile()) {
+              files.push(entry);
+            }
+          } catch {
+            this.logger.debug(`Could not stat file: ${entry}`);
+          }
+        }
+      }
+
+      return {
+        baseDirectory: promptsDir,
+        copilotDir: promptsDir,
+        dirExists,
+        syncedFiles: files.length,
+        files
+      };
+    }
+
     const status = {
       baseDirectory: promptsDir,
       copilotDir: promptsDir, // Backward compatibility alias
