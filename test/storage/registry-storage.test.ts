@@ -55,7 +55,7 @@ suite('RegistryStorage', () => {
     test('should load sources from storage', () => {
       const mockSources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-        { id: 'source-2', name: 'Source 2', type: 'gitlab', url: 'url2', enabled: true, priority: 2 }
+        { id: 'source-2', name: 'Source 2', type: 'local', url: 'url2', enabled: true, priority: 2 }
       ];
 
       assert.strictEqual(mockSources.length, 2);

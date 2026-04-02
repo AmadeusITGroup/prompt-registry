@@ -5,7 +5,7 @@ VS Code extension providing a marketplace for GitHub Copilot prompt bundles from
 ## Key Features
 
 - Visual Marketplace with search/filter
-- Multi-source support (GitHub, GitLab, HTTP, Local, AwesomeCopilot, APM)
+- Multi-source support (GitHub, Local, AwesomeCopilot, APM)
 - Bundle management (install, update, uninstall)
 - Auto-sync with GitHub Copilot
 - Cross-platform (macOS, Linux, Windows)
@@ -39,7 +39,7 @@ graph TD
     end
     
     subgraph ADP["🔌 Adapter Layer"]
-        D[Source Adapters<br/>GitHub • GitLab • HTTP • Local • APM]
+        D[Source Adapters<br/>GitHub • Local • APM]
     end
     
     subgraph STG["💾 Storage Layer"]

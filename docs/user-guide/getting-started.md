@@ -46,7 +46,7 @@ Installed files location:
 ## Add Your Own Source
 
 1. Registry Explorer → Add Source
-2. Choose type: `github`, `gitlab`, `http`, `local`, `awesome-copilot`, `local-awesome-copilot`, `apm`, or `local-apm`
+2. Choose type: `github`, `local`, `awesome-copilot`, `local-awesome-copilot`, `apm`, or `local-apm`
 3. Enter URL/path
 
 ## See Also

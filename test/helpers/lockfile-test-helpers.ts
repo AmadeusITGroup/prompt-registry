@@ -24,7 +24,7 @@ export const LOCKFILE_DEFAULTS = {
   SCHEMA_URL: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
   VERSION: '1.0.0',
   GENERATED_BY: 'prompt-registry@1.0.0',
-  SOURCE_TYPES: ['github', 'gitlab', 'http', 'local', 'awesome-copilot', 'apm'] as const,
+  SOURCE_TYPES: ['github', 'local', 'awesome-copilot', 'apm'] as const,
   COMMIT_MODES: ['commit', 'local-only'] as const
 } as const;
 
@@ -407,8 +407,6 @@ export const LockfileGenerators = {
   sourceType: (): fc.Arbitrary<string> => {
     return fc.constantFrom(
       'github',
-      'gitlab',
-      'http',
       'local',
       'awesome-copilot',
       'local-awesome-copilot',
@@ -453,7 +451,7 @@ export const LockfileGenerators = {
    */
   url: (): fc.Arbitrary<string> => {
     return fc.tuple(
-      fc.constantFrom('https://github.com', 'https://gitlab.com', 'https://example.com'),
+      fc.constantFrom('https://github.com', 'file://local'),
       fc.string({ minLength: 1, maxLength: 20 }).map((s) => s.replace(/[^a-zA-Z0-9-]/g, 'a'))
     ).map(([base, path]) => `${base}/${path}`);
   },

@@ -1039,11 +1039,6 @@ export class HubManager {
         throw new Error(`Invalid GitHub source URL: ${source.url}`);
       }
 
-      case 'http': {
-        // Direct URL source: {base-url}/{bundleId}/{version}
-        return `${source.url}/${bundle.id}/${bundle.version}`;
-      }
-
       case 'local': {
         // Local source: file path
         return `file://${source.url}/${bundle.id}/${bundle.version}`;

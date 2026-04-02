@@ -73,7 +73,7 @@ export interface LockfileFileEntry {
  * Source configuration entry
  */
 export interface LockfileSourceEntry {
-  /** Source type (github, gitlab, http, local, etc.) */
+  /** Source type (github, local, awesome-copilot, apm, etc.) */
   type: string;
   /** URL of the source */
   url: string;

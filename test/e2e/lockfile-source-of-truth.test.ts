@@ -915,18 +915,14 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       // Same URL but different source types
       const githubSourceId = generateHubSourceId('github', url);
-      const gitlabSourceId = generateHubSourceId('gitlab', url);
-      const httpSourceId = generateHubSourceId('http', url);
+      const localSourceId = generateHubSourceId('local', url);
 
-      // All should be different because source type is part of the hash input
-      assert.notStrictEqual(githubSourceId, gitlabSourceId, 'Different types should produce different sourceIds');
-      assert.notStrictEqual(gitlabSourceId, httpSourceId, 'Different types should produce different sourceIds');
-      assert.notStrictEqual(githubSourceId, httpSourceId, 'Different types should produce different sourceIds');
+      // Should be different because source type is part of the hash input
+      assert.notStrictEqual(githubSourceId, localSourceId, 'Different types should produce different sourceIds');
 
       // Verify each has correct type prefix
       assert.ok(githubSourceId.startsWith('github-'), 'GitHub sourceId should start with github-');
-      assert.ok(gitlabSourceId.startsWith('gitlab-'), 'GitLab sourceId should start with gitlab-');
-      assert.ok(httpSourceId.startsWith('http-'), 'HTTP sourceId should start with http-');
+      assert.ok(localSourceId.startsWith('local-'), 'Local sourceId should start with local-');
     });
 
     test('Requirement 2: Lockfile with multiple bundles from different sources works correctly', async function () {
@@ -939,12 +935,12 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       // Generate sourceIds for different sources
       const githubSourceId = generateHubSourceId('github', 'https://github.com/owner1/repo1');
-      const gitlabSourceId = generateHubSourceId('gitlab', 'https://gitlab.com/group/project');
+      const localSourceId = generateHubSourceId('local', '/path/to/local/bundles');
 
       // Create a lockfile with bundles from multiple sources
       const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
       const bundle1Id = 'github-bundle-v1.0.0';
-      const bundle2Id = 'gitlab-bundle-v2.0.0';
+      const bundle2Id = 'local-bundle-v2.0.0';
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
@@ -962,11 +958,11 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
           },
           [bundle2Id]: {
             version: '2.0.0',
-            sourceId: gitlabSourceId,
-            sourceType: 'gitlab',
+            sourceId: localSourceId,
+            sourceType: 'local',
             installedAt: new Date().toISOString(),
             commitMode: 'commit',
-            files: [{ path: '.github/prompts/gitlab-bundle.prompt.md', checksum: 'gl456' }]
+            files: [{ path: '.github/prompts/local-bundle.prompt.md', checksum: 'gl456' }]
           }
         },
         sources: {
@@ -974,9 +970,9 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             type: 'github',
             url: 'https://github.com/owner1/repo1'
           },
-          [gitlabSourceId]: {
-            type: 'gitlab',
-            url: 'https://gitlab.com/group/project'
+          [localSourceId]: {
+            type: 'local',
+            url: '/path/to/local/bundles'
           }
         }
       };
@@ -985,7 +981,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       const promptsDir = path.join(workspaceRoot, GITHUB_PROMPTS_DIR);
       fs.mkdirSync(promptsDir, { recursive: true });
       fs.writeFileSync(path.join(promptsDir, 'github-bundle.prompt.md'), '# GitHub Bundle');
-      fs.writeFileSync(path.join(promptsDir, 'gitlab-bundle.prompt.md'), '# GitLab Bundle');
+      fs.writeFileSync(path.join(promptsDir, 'local-bundle.prompt.md'), '# Local Bundle');
 
       fs.writeFileSync(lockfilePath, JSON.stringify(mockLockfile, null, 2));
 
@@ -999,15 +995,15 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       assert.strictEqual(installedBundles.length, 2, 'Should return both bundles');
 
       const githubBundle = installedBundles.find((b) => b.bundleId === bundle1Id);
-      const gitlabBundle = installedBundles.find((b) => b.bundleId === bundle2Id);
+      const localBundle = installedBundles.find((b) => b.bundleId === bundle2Id);
 
       assert.ok(githubBundle, 'Should find GitHub bundle');
       assert.strictEqual(githubBundle.sourceId, githubSourceId, 'GitHub bundle sourceId should match');
       assert.strictEqual(githubBundle.sourceType, 'github', 'GitHub bundle sourceType should match');
 
-      assert.ok(gitlabBundle, 'Should find GitLab bundle');
-      assert.strictEqual(gitlabBundle.sourceId, gitlabSourceId, 'GitLab bundle sourceId should match');
-      assert.strictEqual(gitlabBundle.sourceType, 'gitlab', 'GitLab bundle sourceType should match');
+      assert.ok(localBundle, 'Should find local bundle');
+      assert.strictEqual(localBundle.sourceId, localSourceId, 'Local bundle sourceId should match');
+      assert.strictEqual(localBundle.sourceType, 'local', 'Local bundle sourceType should match');
     });
   });
 });

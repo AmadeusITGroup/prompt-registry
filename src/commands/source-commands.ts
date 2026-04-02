@@ -53,34 +53,6 @@ export class SourceCommands {
         });
       }
 
-      case 'gitlab': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter GitLab repository URL',
-          placeHolder: 'https://gitlab.com/owner/repo',
-          validateInput: (value) => {
-            if (!value || value.trim().length === 0) {
-              return 'URL is required';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
-      case 'http': {
-        return await vscode.window.showInputBox({
-          prompt: 'Enter HTTP registry URL',
-          placeHolder: 'https://registry.example.com',
-          validateInput: (value) => {
-            if (!value || !/^https?:\/\//.test(value)) {
-              return 'Please enter a valid HTTP/HTTPS URL';
-            }
-            return undefined;
-          },
-          ignoreFocusOut: true
-        });
-      }
-
       case 'local': {
         const uris = await vscode.window.showOpenDialog({
           canSelectFolders: true,
@@ -323,21 +295,11 @@ export class SourceCommands {
             description: 'Versioned releases with zip file in the assets for both public or private GitHub repository',
             value: 'github' as SourceType
           },
-          // {
-          //     label: '$(repo) GitLab Repository',
-          //     description: 'Public or private GitLab repository',
-          //     value: 'gitlab' as SourceType
-          // },
-          // {
-          //     label: '$(globe) HTTP Registry',
-          //     description: 'HTTP/HTTPS registry server',
-          //     value: 'http' as SourceType
-          // },
-          // {
-          //     label: '$(folder) Local Directory',
-          //     description: 'Local filesystem directory',
-          //     value: 'local' as SourceType
-          // },
+          {
+            label: '$(folder) Local Directory',
+            description: 'Local filesystem directory',
+            value: 'local' as SourceType
+          },
           {
             label: '$(package) Collection from GitHub repository',
             description: 'GitHub repository with .collection.yml files based on Awesome Copilot specification',

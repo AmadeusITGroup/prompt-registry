@@ -18,10 +18,6 @@ If you select a hub during first-run setup, all sources defined in that hub are 
 | `local` | File system directories | Active |
 | `apm` | APM package repositories | Active |
 | `local-apm` | Local APM packages | Active |
-| `gitlab` | GitLab repository releases | ⚠️ Deprecated |
-| `http` | HTTP/HTTPS bundle URLs | ⚠️ Deprecated |
-
-> **Deprecation Notice:** The `gitlab` and `http` source types are deprecated and will be removed in a future release. Migrate to `github` or `awesome-copilot` sources.
 
 ## Adding a Source
 

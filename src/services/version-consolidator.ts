@@ -163,10 +163,6 @@ export class VersionConsolidator {
   private inferSourceType(sourceId: string): SourceType {
     if (sourceId.includes('github')) {
       return 'github';
-    } else if (sourceId.includes('gitlab')) {
-      return 'gitlab';
-    } else if (sourceId.includes('http')) {
-      return 'http';
     } else if (sourceId.includes('awesome')) {
       return 'awesome-copilot';
     } else if (sourceId.includes('local')) {

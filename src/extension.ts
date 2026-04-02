@@ -409,12 +409,7 @@ export class PromptRegistryExtension {
         }
       }),
 
-      vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
-
-      // Marketplace View Command - Open/focus the marketplace view
-      vscode.commands.registerCommand('promptregistry.marketplace', async () => {
-        await vscode.commands.executeCommand('vscode.openView', 'promptregistry.marketplace');
-      })
+      vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute())
     ];
 
     // Add to disposables

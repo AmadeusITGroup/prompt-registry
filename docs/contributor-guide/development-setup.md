@@ -45,7 +45,7 @@ npm run package:production  # Optimized production package
 
 ```
 src/
-├── adapters/       # Source adapters (GitHub, GitLab, HTTP, Local, APM)
+├── adapters/       # Source adapters (GitHub, Local, APM)
 ├── commands/       # VS Code command handlers
 ├── config/         # Configuration defaults
 ├── integrations/   # External integrations (Copilot)

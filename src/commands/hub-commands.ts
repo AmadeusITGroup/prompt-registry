@@ -120,16 +120,6 @@ export class HubCommands {
         }
         return url;
       }
-      case 'gitlab': {
-        if (url.startsWith('https://gitlab.com/')) {
-          return url.replace(/\/-\/(tree|blob)\/[^/]+.*$/, '');
-        }
-        return url;
-      }
-      case 'http':
-      case 'url': {
-        return url;
-      }
       case 'local':
       case 'local-awesome-copilot':
       case 'local-apm': {

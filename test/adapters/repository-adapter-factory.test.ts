@@ -7,12 +7,6 @@ import {
   GitHubAdapter,
 } from '../../src/adapters/github-adapter';
 import {
-  GitLabAdapter,
-} from '../../src/adapters/gitlab-adapter';
-import {
-  HttpAdapter,
-} from '../../src/adapters/http-adapter';
-import {
   LocalAdapter,
 } from '../../src/adapters/local-adapter';
 import {
@@ -34,35 +28,6 @@ suite('RepositoryAdapterFactory', () => {
 
       const adapter = new GitHubAdapter(source);
       assert.strictEqual(adapter.type, 'github');
-    });
-
-    test('should create GitLab adapter for gitlab type', () => {
-      const source: RegistrySource = {
-        id: 'test-source',
-        name: 'Test Source',
-        type: 'gitlab',
-        url: 'https://gitlab.com/test/repo',
-        enabled: true,
-        priority: 1,
-        token: 'test-token'
-      };
-
-      const adapter = new GitLabAdapter(source);
-      assert.strictEqual(adapter.type, 'gitlab');
-    });
-
-    test('should create HTTP adapter for http type', () => {
-      const source: RegistrySource = {
-        id: 'test-source',
-        name: 'Test Source',
-        type: 'http',
-        url: 'https://example.com/bundles',
-        enabled: true,
-        priority: 1
-      };
-
-      const adapter = new HttpAdapter(source);
-      assert.strictEqual(adapter.type, 'http');
     });
 
     test('should create Local adapter for local type', () => {
@@ -129,8 +94,6 @@ suite('RepositoryAdapterFactory', () => {
     test('should verify all adapters implement required methods', () => {
       const adapters = [
         GitHubAdapter,
-        GitLabAdapter,
-        HttpAdapter,
         LocalAdapter
       ];
 
@@ -149,14 +112,14 @@ suite('RepositoryAdapterFactory', () => {
     test('should verify adapter type property', () => {
       const sources = [
         { type: 'github', url: 'https://github.com/test/repo', token: 'token' },
-        { type: 'gitlab', url: 'https://gitlab.com/test/repo', token: 'token' },
-        { type: 'http', url: 'https://example.com/bundles' },
-        { type: 'local', url: '/path/to/bundles' }
+        { type: 'local', url: '/path/to/bundles' },
+        { type: 'awesome-copilot', url: 'https://example.com/bundles' },
+        { type: 'apm', url: 'https://apm.example.com' }
       ];
 
       for (const source of sources) {
         assert.ok(source.type);
-        assert.ok(['github', 'gitlab', 'http', 'local'].includes(source.type));
+        assert.ok(['github', 'local', 'awesome-copilot', 'apm'].includes(source.type));
       }
     });
   });
@@ -190,14 +153,6 @@ suite('RepositoryAdapterFactory', () => {
           'https://github.com/owner/repo',
           'git@github.com:owner/repo.git'
         ],
-        gitlab: [
-          'https://gitlab.com/group/project',
-          'git@gitlab.com:group/project.git'
-        ],
-        http: [
-          'https://example.com/bundles',
-          'http://localhost:3000/bundles'
-        ],
         local: [
           '/absolute/path/to/bundles',
           './relative/path'
@@ -214,13 +169,12 @@ suite('RepositoryAdapterFactory', () => {
     test('should validate authentication requirements', () => {
       const sources = [
         { type: 'github', url: 'https://github.com/test/repo', token: 'required' },
-        { type: 'gitlab', url: 'https://gitlab.com/test/repo', token: 'required' },
-        { type: 'http', url: 'https://example.com/bundles', token: undefined },
-        { type: 'local', url: '/path/to/bundles', token: undefined }
+        { type: 'local', url: '/path/to/bundles', token: undefined },
+        { type: 'awesome-copilot', url: 'https://example.com/bundles', token: undefined }
       ];
 
       for (const source of sources) {
-        if (source.type === 'github' || source.type === 'gitlab') {
+        if (source.type === 'github') {
           assert.ok(source.token, `Token required for ${source.type}`);
         }
       }

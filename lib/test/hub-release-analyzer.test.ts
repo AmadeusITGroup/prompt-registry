@@ -134,7 +134,7 @@ describe('Hub Release Analyzer', () => {
     });
 
     it('should return null for non-GitHub URL', () => {
-      const result = extractRepoInfo({ url: 'https://gitlab.com/owner/repo' });
+      const result = extractRepoInfo({ url: 'https://example.com/owner/repo' });
       assert.strictEqual(result, null);
     });
 

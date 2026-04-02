@@ -119,8 +119,8 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       {
         id: 'source3',
         name: 'Disabled Source',
-        type: 'http',
-        url: 'https://example.com/bundles',
+        type: 'local',
+        url: '/path/to/bundles',
         enabled: false,
         priority: 3
       }
@@ -396,20 +396,20 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(matches2, false);
     });
 
-    test('should require exact match for GitLab bundles', () => {
+    test('should require exact match for local bundles', () => {
       const matches = matchesBundleIdentity(
-        'gitlab-bundle-1',
-        'gitlab-bundle-2',
-        'gitlab'
+        'local-bundle-1',
+        'local-bundle-2',
+        'local'
       );
       assert.strictEqual(matches, false);
     });
 
-    test('should require exact match for HTTP bundles', () => {
+    test('should require exact match for apm bundles', () => {
       const matches = matchesBundleIdentity(
-        'http-bundle-v1',
-        'http-bundle-v2',
-        'http'
+        'apm-bundle-v1',
+        'apm-bundle-v2',
+        'apm'
       );
       assert.strictEqual(matches, false);
     });

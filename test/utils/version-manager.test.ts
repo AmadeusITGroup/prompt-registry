@@ -232,14 +232,6 @@ suite('VersionManager Unit Tests', () => {
 
     test('should return as-is for non-GitHub sources', () => {
       assert.strictEqual(
-        VersionManager.extractBundleIdentity('bundle-id-v1.0.0', 'gitlab'),
-        'bundle-id-v1.0.0'
-      );
-      assert.strictEqual(
-        VersionManager.extractBundleIdentity('bundle-id-v1.0.0', 'http'),
-        'bundle-id-v1.0.0'
-      );
-      assert.strictEqual(
         VersionManager.extractBundleIdentity('bundle-id-v1.0.0', 'local'),
         'bundle-id-v1.0.0'
       );

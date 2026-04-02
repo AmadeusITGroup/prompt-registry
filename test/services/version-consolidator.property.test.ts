@@ -182,7 +182,7 @@ suite('VersionConsolidator Property Tests', () => {
               fc.integer({ min: 0, max: MAX_MINOR_VERSION }),
               fc.integer({ min: 0, max: MAX_PATCH_VERSION })
             ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`),
-            sourceType: fc.constantFrom('GITLAB', 'HTTP', 'LOCAL', 'AWESOME_COPILOT')
+            sourceType: fc.constantFrom('LOCAL', 'AWESOME_COPILOT')
           }),
           { minLength: MIN_BUNDLES, maxLength: MAX_BUNDLES }
         ),

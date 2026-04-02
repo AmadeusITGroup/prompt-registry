@@ -44,12 +44,12 @@ suite('Hub Bundle Resolution', () => {
       {
         id: 'url-source',
         name: 'URL Source',
-        type: 'http',
-        url: 'https://example.com/bundles',
+        type: 'local',
+        url: '/path/to/bundles',
         enabled: true,
         priority: 2,
         metadata: {
-          description: 'Direct URL source'
+          description: 'Local directory source'
         }
       }
     ],

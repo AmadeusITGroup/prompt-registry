@@ -159,8 +159,6 @@ Test fixtures are in `test/fixtures/`:
 | Directory | Contents |
 |-----------|----------|
 | `github/` | GitHub API mock responses |
-| `gitlab/` | GitLab API mock responses |
-| `http/` | HTTP registry mock data |
 | `hubs/` | Hub configuration files |
 | `local-library/` | Local bundle fixtures |
 | `collections-validator/` | Collection validation test cases |

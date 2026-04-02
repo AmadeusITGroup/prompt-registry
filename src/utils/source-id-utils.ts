@@ -23,7 +23,7 @@ export interface SourceIdConfig {
 /**
  * Normalize URL for consistent hashing.
  * Lowercases the entire URL (protocol, host, and path) for case-insensitive
- * comparison. This is appropriate because the primary sources (GitHub, GitLab)
+ * comparison. This is appropriate because the primary sources (GitHub)
  * treat repository paths as case-insensitive.
  * @param url - URL to normalize
  * @returns Normalized URL string with lowercase host and path, no protocol or trailing slashes
@@ -88,17 +88,17 @@ export function normalizeUrlLegacy(url: string): string {
  * - Portable: Not tied to any specific hub configuration
  * - Collision-resistant: 12-char hash (48 bits) — different branch/path combinations produce different IDs
  * - Readable: Type prefix makes it easy to identify source type
- * @param sourceType - The type of source (e.g., 'github', 'gitlab', 'http')
+ * @param sourceType - The type of source (e.g., 'github', 'local', 'awesome-copilot')
  * @param url - The source URL
  * @param config - Optional configuration (branch, collectionsPath)
  * @returns Stable sourceId in format `{sourceType}-{12-char-hash}`
  * @example
  * generateHubSourceId('github', 'https://github.com/owner/repo') // "github-a1b2c3d4e5f6"
  * generateHubSourceId('github', 'https://github.com/owner/repo', { branch: 'develop' }) // "github-e5f6a7b8c9d0"
- * generateHubSourceId('gitlab', 'https://gitlab.com/group/project', {
+ * generateHubSourceId('awesome-copilot', 'https://example.com/prompts', {
  *   branch: 'main',
- *   collectionsPath: 'prompts'
- * }) // "gitlab-1a2b3c4d5e6f"
+ *   collectionsPath: 'collections'
+ * }) // "awesome-copilot-1a2b3c4d5e6f"
  */
 export function generateHubSourceId(
     sourceType: string,
@@ -189,7 +189,7 @@ export function generateHubKey(url: string, branch?: string): string {
  * Generate a legacy sourceId using pre-v2 normalization (host-only lowercase).
  * `@migration-cleanup(sourceId-normalization-v2)`: Remove once all lockfiles are migrated
  * Returns undefined if the legacy ID is identical to the current ID (no migration needed).
- * @param sourceType - The type of source (e.g., 'github', 'gitlab')
+ * @param sourceType - The type of source (e.g., 'github', 'local', 'awesome-copilot')
  * @param url - The source URL
  * @param config - Optional configuration (branch, collectionsPath)
  * @returns Legacy sourceId, or undefined if identical to current format

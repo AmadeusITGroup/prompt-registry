@@ -68,14 +68,14 @@ suite('VersionConsolidator Unit Tests', () => {
       const bundles = [
         BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
         BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build(),
-        BundleBuilder.fromSource('gitlab-bundle', 'GITLAB').withVersion('1.0.0').build(),
-        BundleBuilder.fromSource('local-bundle', 'LOCAL').withVersion('1.0.0').build()
+        BundleBuilder.fromSource('local-bundle', 'LOCAL').withVersion('1.0.0').build(),
+        BundleBuilder.fromSource('awesome-bundle', 'AWESOME_COPILOT').withVersion('1.0.0').build()
       ];
 
       const consolidated = consolidator.consolidateBundles(bundles);
 
       // GitHub bundles should be consolidated (1 entry)
-      // GitLab and local should remain separate (2 entries)
+      // Local and APM should remain separate (2 entries)
       assert.strictEqual(consolidated.length, 3, 'Should have 3 entries total');
 
       const githubEntry = consolidated.find((b) => b.sourceId === TEST_SOURCE_IDS.GITHUB);

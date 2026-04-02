@@ -14,12 +14,6 @@ import {
   GitHubAdapter,
 } from '../adapters/github-adapter';
 import {
-  GitLabAdapter,
-} from '../adapters/gitlab-adapter';
-import {
-  HttpAdapter,
-} from '../adapters/http-adapter';
-import {
   LocalAdapter,
 } from '../adapters/local-adapter';
 import {
@@ -188,8 +182,6 @@ export class RegistryManager {
 
     // Register default adapters
     RepositoryAdapterFactory.register('github', GitHubAdapter);
-    RepositoryAdapterFactory.register('gitlab', GitLabAdapter);
-    RepositoryAdapterFactory.register('http', HttpAdapter);
     RepositoryAdapterFactory.register('local', LocalAdapter);
     RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
     RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);

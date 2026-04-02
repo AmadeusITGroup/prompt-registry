@@ -104,7 +104,7 @@ syncBundle(bundleId: string, installDir: string): Promise<void>
 ### Installation Methods
 
 **URL-Based Installation** - `install(bundle, downloadUrl, options)`:
-- Used by: `GitHubAdapter`, `GitLabAdapter`, `HttpAdapter`
+- Used by: `GitHubAdapter`
 - Downloads pre-packaged ZIP file from URL
 - Flow: Download → Extract → Validate → Install
 
@@ -149,7 +149,7 @@ All errors are logged to the Output panel under "Prompt Registry".
 
 ### Overview
 
-The adapter pattern allows the registry to support multiple source types (GitHub, GitLab, Local, HTTP, Awesome Copilot) through a unified interface.
+The adapter pattern allows the registry to support multiple source types (GitHub, Local, Awesome Copilot) through a unified interface.
 
 ### Architecture Diagram
 
@@ -161,8 +161,6 @@ flowchart TD
     BI --> FACTORY
     
     FACTORY --> GHA[GitHubAdapter]
-    FACTORY --> GLA[GitLabAdapter]
-    FACTORY --> HA[HttpAdapter]
     FACTORY --> LA[LocalAdapter]
     FACTORY --> ACA[AwesomeCopilotAdapter]
     FACTORY --> LACA[LocalAwesomeCopilotAdapter]
@@ -207,8 +205,6 @@ RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
 
 ```typescript
 RepositoryAdapterFactory.register('github', GitHubAdapter);
-RepositoryAdapterFactory.register('gitlab', GitLabAdapter);
-RepositoryAdapterFactory.register('http', HttpAdapter);
 RepositoryAdapterFactory.register('local', LocalAdapter);
 RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
 RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
@@ -275,12 +271,6 @@ async fetchBundles(): Promise<Bundle[]> {
 - file:// protocol support
 - Fast iteration
 
-#### GitLabAdapter & HttpAdapter
-**Files**: `src/adapters/GitLabAdapter.ts`, `src/adapters/HttpAdapter.ts`  
-**Purpose**: Support GitLab repositories and generic HTTP sources
-
-Similar patterns to GitHubAdapter but for different platforms.
-
 #### LocalAwesomeCopilotAdapter & LocalApmAdapter
 **Files**: `src/adapters/LocalAwesomeCopilotAdapter.ts`, `src/adapters/LocalApmAdapter.ts`  
 **Purpose**: Local filesystem variants of AwesomeCopilot and APM adapters
@@ -339,7 +329,7 @@ RepositoryAdapterFactory.register('mytype', MyAdapter);
 3. **Add Source Type**:
 ```typescript
 // src/types/registry.ts
-type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 
+type SourceType = 'github' | 'local' | 
     'awesome-copilot' | 'local-awesome-copilot' | 
     'apm' | 'local-apm' | 'mytype';
 ```

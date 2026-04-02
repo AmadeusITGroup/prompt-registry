@@ -59,34 +59,6 @@ suite('Source Management Commands', () => {
       assert.ok(source.url.includes('github.com'));
     });
 
-    test('should support GitLab sources', () => {
-      const source = {
-        id: 'test-source',
-        name: 'Test Source',
-        type: 'gitlab',
-        url: 'https://gitlab.com/test/repo',
-        enabled: true,
-        priority: 1
-      };
-
-      assert.strictEqual(source.type, 'gitlab');
-      assert.ok(source.url.includes('gitlab.com'));
-    });
-
-    test('should support HTTP sources', () => {
-      const source = {
-        id: 'test-source',
-        name: 'Test Source',
-        type: 'http',
-        url: 'https://example.com/bundles',
-        enabled: true,
-        priority: 1
-      };
-
-      assert.strictEqual(source.type, 'http');
-      assert.ok(source.url.startsWith('https://'));
-    });
-
     test('should support local sources', () => {
       const source = {
         id: 'test-source',
@@ -153,12 +125,12 @@ suite('Source Management Commands', () => {
 
       const updatedSource = {
         ...originalSource,
-        type: 'gitlab',
-        url: 'https://gitlab.com/test/repo'
+        type: 'local',
+        url: '/path/to/bundles'
       };
 
       assert.notStrictEqual(originalSource.type, updatedSource.type);
-      assert.strictEqual(updatedSource.type, 'gitlab');
+      assert.strictEqual(updatedSource.type, 'local');
     });
 
     test('should preserve source priority when editing', () => {

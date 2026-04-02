@@ -11,7 +11,7 @@ import {
 
 /**
  * Base interface for repository adapters
- * Each source type (GitHub, GitLab, HTTP, Local) implements this interface
+ * Each source type (GitHub, Local) implements this interface
  */
 export interface IRepositoryAdapter {
   /**

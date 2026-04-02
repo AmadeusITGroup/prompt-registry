@@ -4,7 +4,7 @@ This document describes how to create custom adapters for the Prompt Registry ex
 
 ## Overview
 
-Adapters provide a unified interface for fetching bundles from different sources. The Prompt Registry uses the adapter pattern to support multiple source types (GitHub, GitLab, HTTP, local files, and curated collections).
+Adapters provide a unified interface for fetching bundles from different sources. The Prompt Registry uses the adapter pattern to support multiple source types (GitHub, local files, and curated collections).
 
 ## IRepositoryAdapter Interface
 
@@ -50,7 +50,7 @@ Adapters can use one of two installation paths:
 
 For pre-packaged zip bundles on remote servers. The adapter returns a download URL, and `BundleInstaller.install()` handles the download.
 
-**Used by:** GitHub, GitLab, HTTP adapters
+**Used by:** GitHub, AwesomeCopilot adapters
 
 ```typescript
 // Adapter returns URL string
@@ -150,8 +150,6 @@ Add your adapter type to the `SourceType` union in `src/types/registry.ts`:
 ```typescript
 export type SourceType = 
     | 'github' 
-    | 'gitlab' 
-    | 'http' 
     | 'local' 
     | 'awesome-copilot'
     | 'local-awesome-copilot'
@@ -170,10 +168,6 @@ export type SourceType =
 | `LocalAwesomeCopilotAdapter` | `local-awesome-copilot` | Local YAML collections for development | Active |
 | `ApmAdapter` | `apm` | APM package repositories | Active |
 | `LocalApmAdapter` | `local-apm` | Local APM packages | Active |
-| `GitLabAdapter` | `gitlab` | Fetches releases and raw files from GitLab | ⚠️ Deprecated |
-| `HttpAdapter` | `http` | Downloads zip bundles from HTTP/HTTPS URLs | ⚠️ Deprecated |
-
-> **Deprecation Notice:** `GitLabAdapter` and `HttpAdapter` are deprecated and will be removed in a future release. Migrate to `github` or `awesome-copilot` sources.
 
 ## Authentication
 

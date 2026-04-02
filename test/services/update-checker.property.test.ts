@@ -557,7 +557,7 @@ suite('UpdateChecker Property Tests', () => {
               }).map((s) => `ngh-${s}`),
               name: fc.string({ minLength: 5, maxLength: 30 }),
               url: fc.string({ minLength: 10, maxLength: 50 }),
-              type: fc.constantFrom('awesome-copilot', 'local-awesome-copilot', 'local', 'gitlab', 'http')
+              type: fc.constantFrom('awesome-copilot', 'local-awesome-copilot', 'local')
             }),
             { minLength: 1, maxLength: 5 }
           )

@@ -51,7 +51,7 @@ suite('GitHubAdapter', () => {
       // isValidGitHubUrl is private, so we test it indirectly through constructor
       assert.doesNotThrow(() => new GitHubAdapter(mockSource));
       assert.doesNotThrow(() => new GitHubAdapter({ ...mockSource, url: 'git@github.com:owner/repo.git', token: undefined }));
-      assert.throws(() => new GitHubAdapter({ ...mockSource, url: 'https://gitlab.com/owner/repo', token: undefined }));
+      assert.throws(() => new GitHubAdapter({ ...mockSource, url: 'https://example.com/owner/repo', token: undefined }));
     });
   });
 

@@ -28,7 +28,7 @@ suite('sourceIdUtils Property Tests', () => {
     /**
      * Generate valid source types (common adapter types)
      */
-    sourceType: () => fc.constantFrom('github', 'gitlab', 'http', 'local', 'bitbucket', 'azure'),
+    sourceType: () => fc.constantFrom('github', 'local', 'bitbucket', 'azure'),
 
     /**
      * Generate arbitrary source type strings (for broader coverage)
@@ -45,7 +45,7 @@ suite('sourceIdUtils Property Tests', () => {
       fc.webUrl({ validSchemes: ['http', 'https'] }),
       // GitHub-style URLs
       fc.tuple(
-        fc.constantFrom('https://github.com/', 'https://gitlab.com/', 'https://bitbucket.org/'),
+        fc.constantFrom('https://github.com/', 'https://bitbucket.org/'),
         fc.string({ minLength: 1, maxLength: 30 }).map((s) => s.replace(/[^a-zA-Z0-9-]/g, 'a')),
         fc.string({ minLength: 1, maxLength: 30 }).map((s) => s.replace(/[^a-zA-Z0-9-]/g, 'a'))
       ).map(([base, owner, repo]) => `${base}${owner}/${repo}`)

@@ -658,7 +658,7 @@ suite('LockfileManager Property Tests', () => {
 
     test('source types should be valid known types', async () => {
       const validSourceTypes = [
-        'github', 'gitlab', 'http', 'local',
+        'github', 'local',
         'awesome-copilot', 'local-awesome-copilot',
         'apm', 'local-apm'
       ];

@@ -47,15 +47,15 @@ suite('lockfileTestHelpers', () => {
 
     test('should add bundle with custom options', () => {
       const lockfile = LockfileBuilder.create()
-        .withBundle('test-bundle', '2.0.0', 'gitlab-source', {
-          sourceType: 'gitlab',
+        .withBundle('test-bundle', '2.0.0', 'local-source', {
+          sourceType: 'local',
           commitMode: 'local-only',
           checksum: 'abc123'
         })
         .build();
 
       const bundle = lockfile.bundles['test-bundle'];
-      assert.strictEqual(bundle.sourceType, 'gitlab');
+      assert.strictEqual(bundle.sourceType, 'local');
       assert.strictEqual(bundle.commitMode, 'local-only');
       assert.strictEqual(bundle.checksum, 'abc123');
     });
@@ -183,10 +183,10 @@ suite('lockfileTestHelpers', () => {
     });
 
     test('should use specified source type', () => {
-      const lockfile = createMockLockfile(1, { sourceType: 'gitlab' });
+      const lockfile = createMockLockfile(1, { sourceType: 'local' });
 
-      assert.strictEqual(lockfile.bundles['bundle-0'].sourceType, 'gitlab');
-      assert.strictEqual(lockfile.sources['mock-source'].type, 'gitlab');
+      assert.strictEqual(lockfile.bundles['bundle-0'].sourceType, 'local');
+      assert.strictEqual(lockfile.sources['mock-source'].type, 'local');
     });
   });
 
@@ -297,7 +297,7 @@ suite('lockfileTestHelpers', () => {
 
     test('sourceType generator should produce valid types', () => {
       const validTypes = [
-        'github', 'gitlab', 'http', 'local', 'awesome-copilot',
+        'github', 'local', 'awesome-copilot',
         'local-awesome-copilot', 'apm', 'local-apm'
       ];
       fc.assert(

@@ -122,7 +122,7 @@ suite('HubCommands Source Sync', () => {
         {
           id: 'source-2',
           name: 'Source 2',
-          type: 'http',
+          type: 'awesome-copilot',
           url: 'https://example.com/source2',
           enabled: true,
           priority: 2
@@ -175,7 +175,7 @@ suite('HubCommands Source Sync', () => {
 
     // Compute expected sourceIds using the new format
     const expectedSource1Id = generateHubSourceId('github', 'https://github.com/owner/repo1');
-    const expectedSource2Id = generateHubSourceId('http', 'https://example.com/source2');
+    const expectedSource2Id = generateHubSourceId('awesome-copilot', 'https://example.com/source2');
 
     // Sources now have new format IDs: {type}-{12-char-hash}
     const source1 = mockRegistryManager.sources.find((s: any) => s.id === expectedSource1Id);
@@ -190,7 +190,7 @@ suite('HubCommands Source Sync', () => {
   test('should skip existing sources when importing a hub', async () => {
     // Compute expected sourceIds using the new format
     const expectedSource1Id = generateHubSourceId('github', 'https://github.com/owner/repo1');
-    const expectedSource2Id = generateHubSourceId('http', 'https://example.com/source2');
+    const expectedSource2Id = generateHubSourceId('awesome-copilot', 'https://example.com/source2');
 
     // Pre-populate registry with one source (with new format ID as HubManager would create)
     mockRegistryManager.sources.push({

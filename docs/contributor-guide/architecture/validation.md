@@ -150,8 +150,7 @@ See [Author Guide: Collection Schema](../../author-guide/collection-schema.md) f
 - `metadata.checksum` — Integrity checksum (sha256/sha512 format)
 
 **Source types supported:**
-- `github`, `gitlab` — Git repository sources
-- `http`, `url` — HTTP-based sources  
+- `github` — Git repository sources
 - `local` — Local filesystem sources
 - `awesome-copilot`, `local-awesome-copilot` — Awesome Copilot collections
 - `apm`, `local-apm` — APM package sources

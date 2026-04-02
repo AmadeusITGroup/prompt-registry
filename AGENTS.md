@@ -159,7 +159,7 @@ This is a VS Code extension (Prompt Registry) that provides a marketplace and re
 
 ```
 src/
-├── adapters/     → Source-specific implementations (GitHub, GitLab, Local, etc.)
+├── adapters/     → Source-specific implementations (GitHub, Local, etc.)
 ├── commands/     → VS Code command handlers
 ├── services/     → Core business logic (RegistryManager, BundleInstaller, etc.)
 ├── storage/      → Persistent state management
@@ -186,7 +186,7 @@ src/
 | `src/services/LockfileManager.ts` | Lockfile CRUD for repository-scoped bundles |
 | `src/services/UserScopeService.ts` | User/workspace scope file placement |
 | `src/services/RepositoryScopeService.ts` | Repository scope file placement |
-| `src/adapters/*` | Source implementations (github, gitlab, http, local, awesome-copilot) |
+| `src/adapters/*` | Source implementations (github, local, awesome-copilot, apm) |
 | `src/storage/RegistryStorage.ts` | Persistent paths and JSON layout |
 | `src/services/MigrationRegistry.ts` | globalState-based migration tracker |
 | `src/migrations/` | Migration scripts (one file per migration) |
@@ -320,7 +320,7 @@ Open extension global storage path (see `RegistryStorage.getPaths().installed`) 
 | Working on... | Read first |
 |---------------|------------|
 | Installation/update flows | `docs/contributor-guide/architecture/installation-flow.md`, `docs/contributor-guide/architecture/update-system.md` |
-| Adapters (GitHub, GitLab, etc.) | `docs/contributor-guide/architecture/adapters.md`, `docs/reference/adapter-api.md` |
+| Adapters (GitHub, Local, etc.) | `docs/contributor-guide/architecture/adapters.md`, `docs/reference/adapter-api.md` |
 | Authentication | `docs/contributor-guide/architecture/authentication.md` |
 | UI (Marketplace, TreeView) | `docs/contributor-guide/architecture/ui-components.md` |
 | Validation logic | `docs/contributor-guide/architecture/validation.md` |

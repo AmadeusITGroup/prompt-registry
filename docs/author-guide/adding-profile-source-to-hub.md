@@ -116,7 +116,7 @@ Ctrl+Shift+P → "Prompt Registry: Import Hub" → [Your hub URL]
 ### 2. Test Source Connectivity
 
 Ensure new sources are accessible:
-- GitHub/GitLab repos are public or you have access
+- GitHub repos are public or you have access
 - HTTP URLs return valid bundle data
 - Local paths exist and contain valid bundles
 

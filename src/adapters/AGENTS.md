@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Adapters provide a unified interface for different prompt bundle sources (GitHub, GitLab, HTTP, Local, Awesome Copilot).
+Adapters provide a unified interface for different prompt bundle sources (GitHub, Local, Awesome Copilot).
 
 ## Adding a New Adapter
 
-1. Copy an existing adapter (e.g., `HttpAdapter.ts`)
+1. Copy an existing adapter (e.g., `GitHubAdapter.ts`)
 2. Implement `IRepositoryAdapter` interface
 3. Register in `RepositoryAdapterFactory`
 
@@ -24,7 +24,7 @@ interface IRepositoryAdapter {
 
 | Pattern | Return Type | Used By | When |
 |---------|-------------|---------|------|
-| URL-based | `string` | GitHub, GitLab, HTTP | Pre-packaged bundles |
+| URL-based | `string` | GitHub | Pre-packaged bundles |
 | Buffer-based | `Buffer` | Awesome Copilot, Local | Dynamically created bundles |
 
 ## Authentication Chain (GitHub)

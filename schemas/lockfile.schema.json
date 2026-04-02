@@ -25,7 +25,7 @@
       "description": "Lockfile schema version",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "examples": [
-        "1.0.0"
+        "2.0.0"
       ]
     },
     "generatedAt": {
@@ -103,8 +103,6 @@
           "description": "Type of the source",
           "enum": [
             "github",
-            "gitlab",
-            "http",
             "local",
             "awesome-copilot",
             "local-awesome-copilot",
@@ -177,8 +175,6 @@
           "description": "Source type",
           "enum": [
             "github",
-            "gitlab",
-            "http",
             "local",
             "awesome-copilot",
             "local-awesome-copilot",

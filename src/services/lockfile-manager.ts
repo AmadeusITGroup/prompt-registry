@@ -42,7 +42,7 @@ import {
 
 const LOCKFILE_NAME = 'prompt-registry.lock.json';
 const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
-const LOCKFILE_SCHEMA_VERSION = '1.0.0';
+const LOCKFILE_SCHEMA_VERSION = '2.0.0';
 const LOCKFILE_SCHEMA_URL = 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json';
 const EXTENSION_ID = 'AmadeusITGroup.prompt-registry';
 

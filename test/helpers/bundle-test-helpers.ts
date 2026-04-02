@@ -22,8 +22,6 @@ import {
  */
 export const TEST_SOURCE_IDS = {
   GITHUB: 'github-source',
-  GITLAB: 'gitlab-source',
-  HTTP: 'http-source',
   LOCAL: 'local-source',
   AWESOME_COPILOT: 'awesome-copilot-source'
 } as const;

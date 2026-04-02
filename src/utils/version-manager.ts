@@ -174,7 +174,7 @@ export class VersionManager {
    * extractBundleIdentity('microsoft-vscode-v1.0.0', 'github') // 'microsoft-vscode'
    * extractBundleIdentity('my-org-my-repo-2.1.3', 'github')    // 'my-org-my-repo'
    * extractBundleIdentity('owner-123-v1.0.0', 'github')        // 'owner-123'
-   * extractBundleIdentity('bundle-id', 'gitlab')               // 'bundle-id' (unchanged)
+   * extractBundleIdentity('bundle-id', 'local')                // 'bundle-id' (unchanged)
    * @param bundleId - Bundle ID potentially containing version suffix
    * @param sourceType - Source type of the bundle
    * @returns Bundle identity without version suffix (GitHub only)

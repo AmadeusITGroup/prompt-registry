@@ -647,7 +647,7 @@ suite('LockfileManager', () => {
 
       const options2 = createTestOptions('bundle-2');
       options2.sourceId = 'source-2';
-      options2.source = createMockSourceEntry('gitlab', 'https://gitlab.com/owner/repo');
+      options2.source = createMockSourceEntry('local', '/path/to/local/bundles');
       await manager.createOrUpdate(options2);
 
       // Remove bundle-1
@@ -1775,13 +1775,13 @@ suite('LockfileManager', () => {
     test('should read lockfile with multiple legacy sourceIds correctly', async () => {
       // Requirements: 3.1 - Multiple legacy sourceIds should all resolve
       const legacySourceId1 = 'hub-test-hub-source1';
-      const legacySourceId2 = 'hub-another-hub-gitlab-source';
+      const legacySourceId2 = 'hub-another-hub-local-source';
 
       const lockfile = LockfileBuilder.create()
         .withSource(legacySourceId1, 'github', 'https://github.com/owner/repo1')
-        .withSource(legacySourceId2, 'gitlab', 'https://gitlab.com/group/project')
+        .withSource(legacySourceId2, 'local', '/path/to/project')
         .withBundle('bundle-1', '1.0.0', legacySourceId1, { sourceType: 'github' })
-        .withBundle('bundle-2', '2.0.0', legacySourceId2, { sourceType: 'gitlab' })
+        .withBundle('bundle-2', '2.0.0', legacySourceId2, { sourceType: 'local' })
         .build();
       writeLockfile(lockfile);
 

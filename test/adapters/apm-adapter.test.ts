@@ -142,7 +142,7 @@ suite('ApmAdapter', () => {
     });
 
     test('should throw error for non-GitHub URL', () => {
-      const source = { ...mockSource, url: 'https://gitlab.com/owner/repo' };
+      const source = { ...mockSource, url: 'https://example.com/owner/repo' };
       assert.throws(() => new ApmAdapter(source), /GitHub/i);
     });
   });

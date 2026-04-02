@@ -8,7 +8,7 @@ import {
 /**
  * Registry source types
  */
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'skills' | 'local-skills';
+export type SourceType = 'github' | 'local' | 'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'skills' | 'local-skills';
 
 /**
  * Installation scope

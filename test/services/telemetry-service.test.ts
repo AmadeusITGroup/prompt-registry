@@ -213,7 +213,7 @@ suite('TelemetryService', () => {
       test('should track bundle.updated with bundle details', () => {
         const bundle = createMockInstalledBundle('my-bundle', '2.0.0', {
           scope: 'workspace',
-          sourceType: 'gitlab'
+          sourceType: 'local'
         });
         emitters.bundleUpdated.fire(bundle);
 
@@ -223,7 +223,7 @@ suite('TelemetryService', () => {
         assert.strictEqual(data.bundleId, 'my-bundle');
         assert.strictEqual(data.version, '2.0.0');
         assert.strictEqual(data.scope, 'workspace');
-        assert.strictEqual(data.sourceType, 'gitlab');
+        assert.strictEqual(data.sourceType, 'local');
       });
 
       test('should track bundles.installed with count and bundleIds', () => {

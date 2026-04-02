@@ -29,14 +29,10 @@ interface IRepositoryAdapter {
 | **LocalAwesomeCopilotAdapter** | `local-awesome-copilot` | Buffer-based | Active |
 | **ApmAdapter** | `apm` | URL-based | Active |
 | **LocalApmAdapter** | `local-apm` | Buffer-based | Active |
-| **GitLabAdapter** | `gitlab` | URL-based | ⚠️ Deprecated |
-| **HttpAdapter** | `http` | URL-based | ⚠️ Deprecated |
-
-> **Deprecation Notice:** `GitLabAdapter` and `HttpAdapter` are deprecated and will be removed in a future release.
 
 Source types are defined in `src/types/registry.ts`:
 ```typescript
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 
+export type SourceType = 'github' | 'local' | 
     'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm';
 ```
 
@@ -45,7 +41,7 @@ export type SourceType = 'github' | 'gitlab' | 'http' | 'local' |
 **URL-Based** (`install()`):
 - Pre-packaged zip bundles on remote servers
 - Direct download from URL
-- Used by: GitHub, GitLab, HTTP
+- Used by: GitHub, AwesomeCopilot
 
 **Buffer-Based** (`installFromBuffer()`):
 - Dynamically created bundles
@@ -71,7 +67,7 @@ export class MyAdapter extends RepositoryAdapter {
 RepositoryAdapterFactory.register('my-type', MyAdapter);
 
 // 3. Add to SourceType union in src/types/registry.ts
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 
+export type SourceType = 'github' | 'local' | 
     'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'my-type';
 ```
 

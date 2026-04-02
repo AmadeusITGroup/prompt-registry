@@ -137,7 +137,7 @@ Instructions for ${skill.name}
     test('should throw error for invalid URL', () => {
       const invalidSource: RegistrySource = {
         ...mockSource,
-        url: 'https://gitlab.com/owner/repo'
+        url: 'https://example.com/owner/repo'
       };
 
       assert.throws(() => {

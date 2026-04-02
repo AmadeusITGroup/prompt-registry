@@ -86,12 +86,12 @@ suite('sourceIdUtils', () => {
       const url = 'https://example.com/repo';
 
       const githubId = generateHubSourceId('github', url);
-      const gitlabId = generateHubSourceId('gitlab', url);
-      const httpId = generateHubSourceId('http', url);
+      const localId = generateHubSourceId('local', url);
+      const awesomeId = generateHubSourceId('awesome-copilot', url);
 
-      assert.notStrictEqual(githubId, gitlabId);
-      assert.notStrictEqual(gitlabId, httpId);
-      assert.notStrictEqual(githubId, httpId);
+      assert.notStrictEqual(githubId, localId);
+      assert.notStrictEqual(localId, awesomeId);
+      assert.notStrictEqual(githubId, awesomeId);
     });
 
     test('should produce different IDs for different URLs', () => {
@@ -107,9 +107,9 @@ suite('sourceIdUtils', () => {
       const url = 'https://example.com/repo';
 
       assert.match(generateHubSourceId('github', url), /^github-[a-f0-9]{12}$/);
-      assert.match(generateHubSourceId('gitlab', url), /^gitlab-[a-f0-9]{12}$/);
-      assert.match(generateHubSourceId('http', url), /^http-[a-f0-9]{12}$/);
       assert.match(generateHubSourceId('local', url), /^local-[a-f0-9]{12}$/);
+      assert.match(generateHubSourceId('awesome-copilot', url), /^awesome-copilot-[a-f0-9]{12}$/);
+      assert.match(generateHubSourceId('apm', url), /^apm-[a-f0-9]{12}$/);
     });
 
     test('should produce different IDs for same URL but different branch', () => {
@@ -169,8 +169,8 @@ suite('sourceIdUtils', () => {
 
     test('should return false for new format', () => {
       assert.strictEqual(isLegacyHubSourceId('github-a1b2c3d4e5f6'), false);
-      assert.strictEqual(isLegacyHubSourceId('gitlab-123456789abc'), false);
-      assert.strictEqual(isLegacyHubSourceId('http-abcdef123456'), false);
+      assert.strictEqual(isLegacyHubSourceId('local-123456789abc'), false);
+      assert.strictEqual(isLegacyHubSourceId('apm-abcdef123456'), false);
     });
 
     test('should return false for hub- prefix with only 2 segments', () => {

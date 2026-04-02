@@ -218,7 +218,7 @@ suite('HubSchemaValidator - TDD', () => {
     });
 
     test('should accept valid source types', async () => {
-      const types = ['github', 'local', 'url'];
+      const types = ['github', 'local', 'awesome-copilot'];
 
       for (const type of types) {
         const config = structuredClone(validHubConfig) as any;

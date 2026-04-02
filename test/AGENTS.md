@@ -540,7 +540,7 @@ LOG_LEVEL=DEBUG npm run test:one -- test/path/to/test.ts 2>&1 | tee debug.log | 
 test/fixtures/
 ├── local-library/      # Local bundles
 ├── github/             # GitHub API mocks
-└── gitlab/             # GitLab API mocks
+└── apm/                # APM registry mocks
 ```
 
 ```typescript
