@@ -285,6 +285,51 @@
         }
       }
     },
+    "scaffoldDefaults": {
+      "type": "object",
+      "description": "Default values for project scaffolding prompts. When present, organization-level fields are applied automatically without prompting the user.",
+      "additionalProperties": false,
+      "properties": {
+        "githubOrg": {
+          "type": "string",
+          "description": "GitHub organization name (pre-fills the githubOrg prompt)",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "githubRunner": {
+          "type": "string",
+          "description": "GitHub Actions runner label or pattern. Supports {githubOrg} placeholder (e.g., 'gmsshr-core-{githubOrg}')",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "organizationName": {
+          "type": "string",
+          "description": "Organization name for LICENSE and documentation",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "internalContact": {
+          "type": "string",
+          "description": "Internal contact email for security/support inquiries",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "legalContact": {
+          "type": "string",
+          "description": "Legal contact email for licensing questions",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "organizationPolicyLink": {
+          "type": "string",
+          "description": "URL to organization policy page",
+          "minLength": 1,
+          "maxLength": 500,
+          "format": "uri"
+        }
+      }
+    },
     "engagement": {
       "type": "object",
       "description": "Engagement features configuration (telemetry, ratings, feedback)",

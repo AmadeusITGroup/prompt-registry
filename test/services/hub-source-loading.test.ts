@@ -28,7 +28,7 @@ import {
 
 // Mock SchemaValidator for unit tests
 class MockSchemaValidator {
-  public async validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
+  async validate(data: any, schemaPath: string): Promise<ValidationResult> {
     return {
       valid: true,
       errors: [],
@@ -43,16 +43,16 @@ class MockRegistryManager {
   public addSourceCalls: RegistrySource[] = [];
   public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
-  public async listSources(): Promise<RegistrySource[]> {
+  async listSources(): Promise<RegistrySource[]> {
     return [...this.sources];
   }
 
-  public async addSource(source: RegistrySource): Promise<void> {
+  async addSource(source: RegistrySource): Promise<void> {
     this.sources.push(source);
     this.addSourceCalls.push(source);
   }
 
-  public async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+  async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
     const index = this.sources.findIndex((s) => s.id === id);
     if (index !== -1) {
       this.sources[index] = { ...this.sources[index], ...updates };
@@ -60,17 +60,17 @@ class MockRegistryManager {
     }
   }
 
-  public reset(): void {
+  reset(): void {
     this.sources = [];
     this.addSourceCalls = [];
     this.updateSourceCalls = [];
   }
 
-  public getSourceCount(): number {
+  getSourceCount(): number {
     return this.sources.length;
   }
 
-  public hasSource(id: string): boolean {
+  hasSource(id: string): boolean {
     return this.sources.some((s) => s.id === id);
   }
 }
@@ -117,7 +117,7 @@ suite('Hub Source Loading', () => {
         location: fixturePath
       };
 
-      await hubManager.importHub(ref, 'test-hub');
+      const hubId = await hubManager.importHub(ref, 'test-hub');
 
       // Verify sources were loaded
       const sources = await mockRegistry.listSources();
@@ -175,6 +175,7 @@ suite('Hub Source Loading', () => {
       assert.strictEqual(sourcesAfterFirst.length, 2, 'Should have 2 sources after first import');
 
       // Reset the mock to track only the second import
+      const addCallsBefore = mockRegistry.addSourceCalls.length;
       mockRegistry.addSourceCalls = [];
       mockRegistry.updateSourceCalls = [];
 
@@ -420,6 +421,10 @@ suite('Hub Source Loading', () => {
       // The first source should still have been added successfully
       const sources = await failingRegistry.listSources();
       assert.strictEqual(sources.length, 1, 'Should have 1 source (the one that succeeded)');
+
+      // Verify which source survived — Source 1 should succeed, Source 2 should fail
+      const expectedSource1Id = generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot');
+      assert.ok(failingRegistry.hasSource(expectedSource1Id), 'Source 1 (first added) should have survived');
     });
 
     test('should not fail hub import when all sources fail validation', async () => {
@@ -454,6 +459,79 @@ suite('Hub Source Loading', () => {
       // No sources should have been added
       const sources = await alwaysFailRegistry.listSources();
       assert.strictEqual(sources.length, 0, 'No sources should be added when all fail');
+    });
+
+    test('should continue loading other sources when updateSource throws', async () => {
+      // When re-importing, updateSource is called for existing sources.
+      // If updateSource throws, it should be skipped gracefully like addSource failures.
+
+      const failingUpdateRegistry = new MockRegistryManager();
+      const originalUpdateSource = failingUpdateRegistry.updateSource.bind(failingUpdateRegistry);
+      failingUpdateRegistry.updateSource = async (id: string, updates: Partial<RegistrySource>): Promise<void> => {
+        // Fail the first update, succeed on the second
+        if (id === generateHubSourceId('awesome-copilot', 'https://github.com/github/awesome-copilot')) {
+          throw new Error('Update failed: network error');
+        }
+        return originalUpdateSource(id, updates);
+      };
+
+      const failingHubManager = new HubManager(
+        storage,
+        mockValidator as any,
+        process.cwd(),
+        undefined,
+        failingUpdateRegistry as any
+      );
+
+      // First import — both sources should be added successfully
+      const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+      const ref: HubReference = { type: 'local', location: fixturePath };
+      await failingHubManager.importHub(ref, 'test-hub-update-fail');
+
+      const sourcesAfterImport = await failingUpdateRegistry.listSources();
+      assert.strictEqual(sourcesAfterImport.length, 2, 'Should have 2 sources after first import');
+
+      // Reload — update for source-1 will fail, source-2 should still update
+      const summary = await failingHubManager.loadHubSources('test-hub-update-fail');
+      assert.strictEqual(summary.failedCount, 1, 'Should report 1 failed update');
+      assert.strictEqual(summary.updatedCount, 1, 'Should report 1 successful update');
+
+      // Both sources should still exist (the failing update doesn't remove it)
+      const sourcesAfterReload = await failingUpdateRegistry.listSources();
+      assert.strictEqual(sourcesAfterReload.length, 2, 'Should still have 2 sources');
+    });
+
+    test('should return summary with correct counts on partial failure', async () => {
+      const failingRegistry = new MockRegistryManager();
+      const originalAddSource = failingRegistry.addSource.bind(failingRegistry);
+      let callCount = 0;
+      failingRegistry.addSource = async (source: RegistrySource): Promise<void> => {
+        callCount++;
+        if (callCount === 2) {
+          throw new Error('Source validation failed');
+        }
+        return originalAddSource(source);
+      };
+
+      const failingHubManager = new HubManager(
+        storage,
+        mockValidator as any,
+        process.cwd(),
+        undefined,
+        failingRegistry as any
+      );
+
+      const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+      const ref: HubReference = { type: 'local', location: fixturePath };
+      await failingHubManager.importHub(ref, 'test-hub-summary');
+
+      const summary = failingHubManager.lastSourceLoadSummary;
+      assert.ok(summary, 'Should have a source load summary');
+      assert.strictEqual(summary!.addedCount, 1, 'Should report 1 added');
+      assert.strictEqual(summary!.failedCount, 1, 'Should report 1 failed');
+      assert.strictEqual(summary!.updatedCount, 0, 'Should report 0 updated');
+      assert.strictEqual(summary!.disabledCount, 0, 'Should report 0 disabled');
+      assert.strictEqual(summary!.duplicateCount, 0, 'Should report 0 duplicates');
     });
   });
 
