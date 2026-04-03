@@ -146,8 +146,6 @@ suite('ScopeServiceFactory', () => {
       // Assert - verify interface methods exist
       assert.ok(typeof service.syncBundle === 'function', 'Should have syncBundle method');
       assert.ok(typeof service.unsyncBundle === 'function', 'Should have unsyncBundle method');
-      assert.ok(typeof service.getTargetPath === 'function', 'Should have getTargetPath method');
-      assert.ok(typeof service.getStatus === 'function', 'Should have getStatus method');
     });
 
     test('RepositoryScopeService should implement IScopeService', () => {
@@ -160,8 +158,6 @@ suite('ScopeServiceFactory', () => {
       // Assert - verify interface methods exist
       assert.ok(typeof service.syncBundle === 'function', 'Should have syncBundle method');
       assert.ok(typeof service.unsyncBundle === 'function', 'Should have unsyncBundle method');
-      assert.ok(typeof service.getTargetPath === 'function', 'Should have getTargetPath method');
-      assert.ok(typeof service.getStatus === 'function', 'Should have getStatus method');
     });
   });
 

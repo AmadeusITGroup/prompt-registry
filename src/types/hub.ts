@@ -409,16 +409,6 @@ export interface ProfileWithUpdates {
 }
 
 /**
- * Quick pick item for displaying changes
- */
-export interface ChangeQuickPickItem {
-  label: string;
-  description?: string;
-  detail?: string;
-  picked?: boolean;
-}
-
-/**
  * Dialog option for conflict resolution
  */
 export interface DialogOption {

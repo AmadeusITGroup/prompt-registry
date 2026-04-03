@@ -54,15 +54,6 @@ export class MigrationRegistry {
   }
 
   /**
-   * Check if a migration has completed
-   * @param name
-   */
-  public async isMigrationComplete(name: string): Promise<boolean> {
-    const state = await this.getMigrationState();
-    return state[name]?.status === 'completed';
-  }
-
-  /**
    * Mark a migration as completed
    * @param name
    * @param details
@@ -76,22 +67,6 @@ export class MigrationRegistry {
     };
     await this.context.globalState.update(this.STATE_KEY, state);
     this.logger.info(`Migration '${name}' marked as completed`);
-  }
-
-  /**
-   * Mark a migration as skipped
-   * @param name
-   * @param reason
-   */
-  public async markMigrationSkipped(name: string, reason?: string): Promise<void> {
-    const state = await this.getMigrationState();
-    state[name] = {
-      status: 'skipped',
-      completedAt: new Date().toISOString(),
-      details: reason
-    };
-    await this.context.globalState.update(this.STATE_KEY, state);
-    this.logger.info(`Migration '${name}' skipped: ${reason || 'no reason'}`);
   }
 
   /**

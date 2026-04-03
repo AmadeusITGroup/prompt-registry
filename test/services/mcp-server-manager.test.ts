@@ -88,17 +88,6 @@ suite('McpServerManager Test Suite', () => {
     }
   });
 
-  test('listInstalledServers returns array even with errors', async () => {
-    const servers = await manager.listInstalledServers('user');
-    // Even if there's an error, it should return an array
-    assert.ok(Array.isArray(servers));
-  });
-
-  test('getServersForBundle returns array even with errors', async () => {
-    const servers = await manager.getServersForBundle('non-existent-' + Date.now(), 'user');
-    assert.ok(Array.isArray(servers));
-  });
-
   test('Manager instance can be created', () => {
     const testManager = new McpServerManager();
     assert.ok(testManager);

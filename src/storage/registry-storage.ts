@@ -339,26 +339,7 @@ export class RegistryStorage {
     return config.profiles;
   }
 
-  /**
-   * Get active profile
-   */
-  public async getActiveProfile(): Promise<Profile | undefined> {
-    const config = await this.loadConfig();
-    return config.profiles.find((p) => p.active);
-  }
-
   // ===== Bundle Cache Management =====
-
-  /**
-   * Cache bundle metadata
-   * @param bundle
-   */
-  public async cacheBundleMetadata(bundle: Bundle): Promise<void> {
-    const sanitizedId = this.sanitizeFilename(bundle.id);
-    const filepath = path.join(this.paths.bundlesCache, `${sanitizedId}.json`);
-    const data = JSON.stringify(bundle, null, 2);
-    await writeFile(filepath, data, 'utf8');
-  }
 
   /**
    * Get cached bundle metadata
@@ -531,24 +512,6 @@ export class RegistryStorage {
   }
 
   // ===== Settings Management =====
-
-  /**
-   * Update settings
-   * @param updates
-   */
-  public async updateSettings(updates: Partial<RegistrySettings>): Promise<void> {
-    const config = await this.loadConfig();
-    config.settings = { ...config.settings, ...updates };
-    await this.saveConfig(config);
-  }
-
-  /**
-   * Get settings
-   */
-  public async getSettings(): Promise<RegistrySettings> {
-    const config = await this.loadConfig();
-    return config.settings;
-  }
 
   /**
    * Clear all data (sources, profiles, caches) - used for replace import strategy

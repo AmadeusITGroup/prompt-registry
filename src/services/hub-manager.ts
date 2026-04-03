@@ -20,7 +20,6 @@ import {
   LoadHubResult,
 } from '../storage/hub-storage';
 import {
-  ChangeQuickPickItem,
   ConflictResolutionDialog,
   HubConfig,
   HubProfile,
@@ -1018,44 +1017,6 @@ export class HubManager {
   }
 
   /**
-   * Resolve bundle URL from hub source
-   * @param hubId
-   * @param bundle
-   */
-  public async resolveBundleUrl(hubId: string, bundle: HubProfileBundle): Promise<string> {
-    const source = await this.resolveSource(hubId, bundle.source);
-    const githubMatch = source.url.match(/github:(.+)/);
-
-    // Build URL based on source type
-    switch (source.type) {
-      case 'github': {
-        // GitHub source format: github:owner/repo
-        // Bundle URL: https://github.com/owner/repo/releases/download/v{version}/{bundleId}.zip
-        if (githubMatch) {
-          const repo = githubMatch[1];
-          const version = bundle.version === 'latest' ? 'latest' : `v${bundle.version}`;
-          return `https://github.com/${repo}/releases/download/${version}/${bundle.id}.zip`;
-        }
-        throw new Error(`Invalid GitHub source URL: ${source.url}`);
-      }
-
-      case 'http': {
-        // Direct URL source: {base-url}/{bundleId}/{version}
-        return `${source.url}/${bundle.id}/${bundle.version}`;
-      }
-
-      case 'local': {
-        // Local source: file path
-        return `file://${source.url}/${bundle.id}/${bundle.version}`;
-      }
-
-      default: {
-        throw new Error(`Unsupported source type: ${source.type}`);
-      }
-    }
-  }
-
-  /**
    * Resolve all bundles in a profile
    * @param hubId
    * @param profileId
@@ -1403,28 +1364,6 @@ export class HubManager {
   }
 
   /**
-   * Get time since last sync in milliseconds
-   * @param hubId
-   * @param profileId
-   */
-  public async getTimeSinceLastSync(hubId: string, profileId: string): Promise<number | null> {
-    const state = await this.storage.getProfileActivationState(hubId, profileId);
-    if (!state) {
-      return null;
-    }
-    return Date.now() - new Date(state.activatedAt).getTime();
-  }
-
-  /**
-   * Check if hub has updates (any profile has changes)
-   * @param hubId
-   */
-  public async hasHubUpdates(hubId: string): Promise<boolean> {
-    const profilesWithUpdates = await this.getProfilesWithUpdates(hubId);
-    return profilesWithUpdates.length > 0;
-  }
-
-  /**
    * Get list of profiles with pending updates
    * @param hubId
    */
@@ -1574,65 +1513,6 @@ export class HubManager {
   }
 
   /**
-   * Create QuickPick items for displaying changes
-   * @param changes
-   */
-  public createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
-    const items: ChangeQuickPickItem[] = [];
-
-    if (changes.bundlesAdded) {
-      for (const bundle of changes.bundlesAdded) {
-        items.push({
-          label: `${bundle.required ? '* ' : ''}${bundle.id}`,
-          description: `Added v${bundle.version}${bundle.required ? ' (required)' : ''}`,
-          detail: `Source: ${bundle.source}`
-        });
-      }
-    }
-
-    if (changes.bundlesRemoved) {
-      for (const bundleId of changes.bundlesRemoved) {
-        items.push({
-          label: bundleId,
-          description: 'Removed',
-          detail: 'This bundle will be uninstalled'
-        });
-      }
-    }
-
-    if (changes.bundlesUpdated) {
-      for (const update of changes.bundlesUpdated) {
-        items.push({
-          label: update.id,
-          description: `Updated ${update.oldVersion} → ${update.newVersion}`,
-          detail: 'Bundle version changed'
-        });
-      }
-    }
-
-    if (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0) {
-      const changedFields: string[] = [];
-      if (changes.metadataChanged.name) {
-        changedFields.push('name');
-      }
-      if (changes.metadataChanged.description) {
-        changedFields.push('description');
-      }
-      if (changes.metadataChanged.icon) {
-        changedFields.push('icon');
-      }
-
-      items.push({
-        label: 'Profile Metadata',
-        description: 'Changed',
-        detail: `Modified: ${changedFields.join(', ')}`
-      });
-    }
-
-    return items;
-  }
-
-  /**
    * Create conflict resolution dialog
    * @param changes
    */
@@ -1664,32 +1544,5 @@ export class HubManager {
         }
       ]
     };
-  }
-
-  /**
-   * Format detailed bundle addition info
-   * @param bundle
-   */
-  public formatBundleAdditionDetail(bundle: HubProfileBundle): string {
-    return `Bundle: ${bundle.id}\nVersion: ${bundle.version}\nSource: ${bundle.source}\n${bundle.required ? 'required' : 'optional'}`;
-  }
-
-  /**
-   * Format detailed bundle removal info
-   * @param bundleId
-   */
-  public formatBundleRemovalDetail(bundleId: string): string {
-    return `Bundle: ${bundleId}\nStatus: Will be removed`;
-  }
-
-  /**
-   * Format detailed bundle update info
-   * @param update
-   * @param update.id
-   * @param update.oldVersion
-   * @param update.newVersion
-   */
-  public formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
-    return `Bundle: ${update.id}\nOld Version: ${update.oldVersion}\nNew Version: ${update.newVersion}`;
   }
 }

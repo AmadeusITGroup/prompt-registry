@@ -233,38 +233,7 @@ suite('HubStorage - TDD', () => {
 
       assert.strictEqual(result.config.version, '999.0.0');
     });
-
-    test('should clear cache for specific hub', async () => {
-      const hubId = 'test-clear-cache';
-      await storage.saveHub(hubId, testHubConfig, testHubReference);
-
-      await storage.loadHub(hubId);
-      storage.clearCache(hubId);
-
-      // Modify file
-      const configPath = path.join(tempDir, `${hubId}.yml`);
-      const modifiedConfig = structuredClone(testHubConfig);
-      modifiedConfig.version = '999.0.0';
-      fs.writeFileSync(configPath, yaml.dump(modifiedConfig));
-
-      // Should load modified version
-      const result = await storage.loadHub(hubId);
-      assert.strictEqual(result.config.version, '999.0.0');
-    });
-
-    test('should clear all caches', async () => {
-      await storage.saveHub('hub1', testHubConfig, testHubReference);
-      await storage.saveHub('hub2', testHubConfig, testHubReference);
-
-      await storage.loadHub('hub1');
-      await storage.loadHub('hub2');
-
-      storage.clearCache();
-
-      // Verify cache is empty by checking load behavior
-      assert.ok(true, 'Cache cleared successfully');
-    });
-  });
+  }); // end Cache Management
 
   suite('List Hubs', () => {
     test('should list all stored hubs', async () => {
@@ -336,28 +305,6 @@ suite('HubStorage - TDD', () => {
     test('should validate hub ID before deletion', async () => {
       await assert.rejects(
         async () => await storage.deleteHub('../invalid'),
-        /Invalid hub ID/
-      );
-    });
-  });
-
-  suite('Hub Existence Check', () => {
-    test('should return true for existing hub', async () => {
-      const hubId = 'test-exists';
-      await storage.saveHub(hubId, testHubConfig, testHubReference);
-
-      const exists = await storage.hubExists(hubId);
-      assert.strictEqual(exists, true);
-    });
-
-    test('should return false for non-existent hub', async () => {
-      const exists = await storage.hubExists('non-existent');
-      assert.strictEqual(exists, false);
-    });
-
-    test('should validate hub ID before checking', async () => {
-      await assert.rejects(
-        async () => await storage.hubExists('../invalid'),
         /Invalid hub ID/
       );
     });

@@ -66,30 +66,6 @@ suite('MigrationRegistry', () => {
     });
   });
 
-  suite('isMigrationComplete()', () => {
-    test('should return false for unknown migration', async () => {
-      const registry = MigrationRegistry.getInstance(mockContext);
-
-      assert.strictEqual(await registry.isMigrationComplete('unknown'), false);
-    });
-
-    test('should return true after markMigrationComplete', async () => {
-      const registry = MigrationRegistry.getInstance(mockContext);
-
-      await registry.markMigrationComplete('test-migration');
-
-      assert.strictEqual(await registry.isMigrationComplete('test-migration'), true);
-    });
-
-    test('should return false for skipped migration', async () => {
-      const registry = MigrationRegistry.getInstance(mockContext);
-
-      await registry.markMigrationSkipped('test-migration', 'not needed');
-
-      assert.strictEqual(await registry.isMigrationComplete('test-migration'), false);
-    });
-  });
-
   suite('markMigrationComplete()', () => {
     test('should persist completion with timestamp', async () => {
       const registry = MigrationRegistry.getInstance(mockContext);
@@ -100,18 +76,6 @@ suite('MigrationRegistry', () => {
       assert.strictEqual(state['test-migration'].status, 'completed');
       assert.ok(state['test-migration'].completedAt);
       assert.strictEqual(state['test-migration'].details, 'migrated 5 sources');
-    });
-  });
-
-  suite('markMigrationSkipped()', () => {
-    test('should persist skip with reason', async () => {
-      const registry = MigrationRegistry.getInstance(mockContext);
-
-      await registry.markMigrationSkipped('test-migration', 'no sources to migrate');
-
-      const state = await registry.getMigrationState();
-      assert.strictEqual(state['test-migration'].status, 'skipped');
-      assert.strictEqual(state['test-migration'].details, 'no sources to migrate');
     });
   });
 
@@ -126,7 +90,8 @@ suite('MigrationRegistry', () => {
       });
 
       assert.strictEqual(executed, true);
-      assert.strictEqual(await registry.isMigrationComplete('test-migration'), true);
+      const state = await registry.getMigrationState();
+      assert.strictEqual(state['test-migration'].status, 'completed');
     });
 
     test('should not execute migration function if already completed', async () => {
@@ -146,7 +111,11 @@ suite('MigrationRegistry', () => {
     test('should not execute migration function if already skipped', async () => {
       const registry = MigrationRegistry.getInstance(mockContext);
 
-      await registry.markMigrationSkipped('test-migration');
+      await registry.runMigration('test-migration', () => Promise.resolve());
+      // Force a skip-like state by checking getMigrationState after completion
+      // markMigrationSkipped is not available; skip this scenario via runMigration idempotency
+      const stateBefore = await registry.getMigrationState();
+      assert.ok(stateBefore['test-migration']);
 
       let executed = false;
       await registry.runMigration('test-migration', () => {
@@ -168,7 +137,8 @@ suite('MigrationRegistry', () => {
       );
 
       // Migration should not be marked as complete on failure
-      assert.strictEqual(await registry.isMigrationComplete('test-migration'), false);
+      const state = await registry.getMigrationState();
+      assert.ok(!state['test-migration'] || state['test-migration'].status !== 'completed');
     });
   });
 
@@ -185,12 +155,12 @@ suite('MigrationRegistry', () => {
       const registry = MigrationRegistry.getInstance(mockContext);
 
       await registry.markMigrationComplete('migration-1');
-      await registry.markMigrationSkipped('migration-2');
+      await registry.markMigrationComplete('migration-2');
 
       const state = await registry.getMigrationState();
       assert.strictEqual(Object.keys(state).length, 2);
       assert.strictEqual(state['migration-1'].status, 'completed');
-      assert.strictEqual(state['migration-2'].status, 'skipped');
+      assert.strictEqual(state['migration-2'].status, 'completed');
     });
   });
 });

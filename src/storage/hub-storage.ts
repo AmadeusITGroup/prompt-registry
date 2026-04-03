@@ -167,18 +167,6 @@ export class HubStorage {
   }
 
   /**
-   * Check if a hub exists in storage
-   * @param hubId Hub identifier to check
-   * @returns True if hub exists, false otherwise
-   */
-  public async hubExists(hubId: string): Promise<boolean> {
-    this.validateHubId(hubId);
-
-    const paths = this.getHubPaths(hubId);
-    return fs.existsSync(paths.config);
-  }
-
-  /**
    * Delete hub from storage
    * @param hubId Hub identifier to delete
    */
@@ -263,26 +251,6 @@ export class HubStorage {
     } catch (error) {
       throw new Error(`Failed to get metadata for hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  /**
-   * Clear cache for specific hub or all hubs
-   * @param hubId Optional hub ID to clear, or undefined to clear all
-   */
-  public clearCache(hubId?: string): void {
-    if (hubId) {
-      this.cache.delete(hubId);
-    } else {
-      this.cache.clear();
-    }
-  }
-
-  /**
-   * Get storage path
-   * @returns Absolute path to storage directory
-   */
-  public getStoragePath(): string {
-    return this.storagePath;
   }
 
   /**

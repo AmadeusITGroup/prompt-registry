@@ -534,14 +534,6 @@ export class ApmRuntimeManager {
   }
 
   /**
-   * Check if APM is available
-   */
-  public async isAvailable(): Promise<boolean> {
-    const status = await this.getStatus();
-    return status.installed;
-  }
-
-  /**
    * Clear cached status
    */
   public clearCache(): void {

@@ -18,7 +18,7 @@ export class Logger {
   private static instance: Logger;
   private readonly outputChannel: any;
   private readonly isTestEnvironment: boolean;
-  private logLevel: LogLevel;
+  private readonly logLevel: LogLevel;
 
   private constructor() {
     // Detect test environment
@@ -54,21 +54,6 @@ export class Logger {
 
   public static resetInstance(): void {
     Logger.instance = undefined as any;
-  }
-
-  /**
-   * Set the minimum log level
-   * @param level
-   */
-  public setLogLevel(level: LogLevel): void {
-    this.logLevel = level;
-  }
-
-  /**
-   * Get the current log level
-   */
-  public getLogLevel(): LogLevel {
-    return this.logLevel;
   }
 
   public info(message: string, ...args: any[]): void {
@@ -132,23 +117,9 @@ export class Logger {
     }
   }
 
-  public clear(): void {
-    // In test environment, this is a no-op since we use console
-    // In VS Code environment, we can't clear the output channel, but we can note it
-    if (!this.isTestEnvironment) {
-      this.outputChannel.appendLine('--- Log cleared ---');
-    }
-  }
-
   public show(): void {
     if (!this.isTestEnvironment) {
       this.outputChannel.show();
-    }
-  }
-
-  public hide(): void {
-    if (!this.isTestEnvironment) {
-      this.outputChannel.hide();
     }
   }
 

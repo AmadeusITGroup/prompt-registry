@@ -120,9 +120,4 @@ export class McpConfigLocator {
       await fs.promises.mkdir(configDir, { recursive: true });
     }
   }
-
-  public static mcpConfigExists(scope: 'user' | 'workspace'): boolean {
-    const location = this.getMcpConfigLocation(scope);
-    return location ? location.exists : false;
-  }
 }

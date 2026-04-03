@@ -153,7 +153,7 @@ export class TemplateEngine {
   /**
    * Load template manifest
    */
-  public async loadManifest(): Promise<TemplateManifest> {
+  private async loadManifest(): Promise<TemplateManifest> {
     if (this.manifestCache) {
       return this.manifestCache;
     }
@@ -174,6 +174,31 @@ export class TemplateEngine {
 
     this.logger.debug(`Loaded template manifest v${this.manifestCache!.version}`);
     return this.manifestCache!;
+  }
+
+  /**
+   * Copy a template to target location with variable substitution
+   * @param name
+   * @param targetPath
+   * @param context
+   */
+  private async copyTemplate(name: string, targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
+    const content = await this.renderTemplate(name, context);
+
+    // Resolve target URI
+    const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
+
+    // Ensure target directory exists
+    const targetDir = vscode.Uri.joinPath(targetUri, '..');
+    try {
+      await vscode.workspace.fs.createDirectory(targetDir);
+    } catch {
+      // Ignore error if directory already exists
+    }
+
+    // Write file using workspace filesystem (supports remote)
+    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content, 'utf8'));
+    this.logger.debug(`Copied template '${name}' to: ${targetUri.fsPath}`);
   }
 
   /**
@@ -212,31 +237,6 @@ export class TemplateEngine {
   }
 
   /**
-   * Copy a template to target location with variable substitution
-   * @param name
-   * @param targetPath
-   * @param context
-   */
-  public async copyTemplate(name: string, targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
-    const content = await this.renderTemplate(name, context);
-
-    // Resolve target URI
-    const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
-
-    // Ensure target directory exists
-    const targetDir = vscode.Uri.joinPath(targetUri, '..');
-    try {
-      await vscode.workspace.fs.createDirectory(targetDir);
-    } catch {
-      // Ignore error if directory already exists
-    }
-
-    // Write file using workspace filesystem (supports remote)
-    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content, 'utf8'));
-    this.logger.debug(`Copied template '${name}' to: ${targetUri.fsPath}`);
-  }
-
-  /**
    * Scaffold a complete project
    * @param targetPath
    * @param context
@@ -271,13 +271,5 @@ export class TemplateEngine {
     }
 
     this.logger.info('Scaffold completed successfully');
-  }
-
-  /**
-   * Get templates metadata
-   */
-  public async getTemplates(): Promise<{ [key: string]: TemplateInfo }> {
-    const manifest = await this.loadManifest();
-    return manifest.templates;
   }
 }

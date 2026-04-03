@@ -741,84 +741,6 @@ export class BundleInstaller {
   }
 
   /**
-   * Install a bundle from a local file:// URL
-   * Note: Remote bundles should use installFromBuffer() via the unified adapter architecture
-   * @param bundle
-   * @param downloadUrl
-   * @param options
-   * @deprecated for remote bundles - use installFromBuffer() instead
-   */
-  public async install(
-    bundle: Bundle,
-    downloadUrl: string,
-    options: InstallOptions
-  ): Promise<InstalledBundle> {
-    this.logger.info(`Installing bundle: ${bundle.name} v${bundle.version}`);
-
-    try {
-      // This method is now only used for local file:// URLs
-      // Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
-      if (!downloadUrl.startsWith('file://')) {
-        throw new Error('install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.');
-      }
-
-      // Local bundle: use the directory directly
-      const extractDir = downloadUrl.replace('file://', '');
-      this.logger.debug(`Using local bundle directory: ${extractDir}`);
-
-      // Validate bundle structure
-      const manifest = await this.validateBundle(extractDir, bundle);
-      this.logger.debug('Bundle validation passed');
-
-      // Get installation directory (pass undefined for sourceType since it's not available in install method)
-      const installDir = this.getInstallDirectory(bundle.id, options.scope, bundle.name);
-      await ensureDirectory(installDir);
-      this.logger.debug(`Installation directory: ${installDir}`);
-
-      // Copy files to installation directory
-      await this.copyBundleFiles(extractDir, installDir);
-      this.logger.debug('Files copied to installation directory');
-
-      // Create installation record
-      const installed: InstalledBundle = {
-        bundleId: bundle.id,
-        version: bundle.version,
-        installedAt: new Date().toISOString(),
-        scope: options.scope,
-        profileId: options.profileId,
-        installPath: installDir,
-        manifest: manifest,
-        sourceId: bundle.sourceId,
-        sourceType: undefined, // Will be set by RegistryManager
-        commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined
-      };
-
-      // Install MCP servers if defined
-      await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
-      this.logger.debug('MCP servers installation completed');
-
-      // Sync to appropriate scope directory
-      const scopeService = this.getScopeService(options.scope);
-      // Pass commitMode explicitly to syncBundle to avoid timing issues:
-      // The installation record hasn't been saved to RegistryStorage yet at this point,
-      // so RepositoryScopeService can't look up commitMode from storage.
-      await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
-      this.logger.debug(`Synced to ${options.scope} scope`);
-
-      // Update lockfile for repository scope
-      if (options.scope === 'repository') {
-        await this.updateLockfileOnInstall(bundle, installed, options);
-      }
-
-      this.logger.info(`Bundle installed successfully: ${bundle.name}`);
-      return installed;
-    } catch (error) {
-      this.logger.error('Bundle installation failed', error as Error);
-      throw error;
-    }
-  }
-
-  /**
    * Install a bundle from a Buffer (for adapters that create bundles on-the-fly)
    * @param bundle
    * @param bundleBuffer
@@ -1048,17 +970,6 @@ export class BundleInstaller {
       this.logger.error('Bundle update failed', error as Error);
       throw error;
     }
-  }
-
-  /**
-   * Get the installation path for a bundle (public accessor)
-   * Used by RegistryManager to construct InstalledBundle objects from lockfile data
-   * @param bundleId - The bundle ID
-   * @param scope - The installation scope
-   * @returns The path where the bundle is/would be installed
-   */
-  public getInstallPath(bundleId: string, scope: InstallationScope): string {
-    return this.getInstallDirectory(bundleId, scope);
   }
 
   /**

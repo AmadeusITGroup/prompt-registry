@@ -233,17 +233,6 @@ export class UpdateChecker {
   }
 
   /**
-   * Check a specific bundle for updates
-   * @param bundleId
-   */
-  public async checkBundleUpdate(bundleId: string): Promise<UpdateCheckResult | null> {
-    this.logger.debug(`Checking update for bundle: ${bundleId}`);
-
-    const updates = await this.checkForUpdates();
-    return updates.find((u) => u.bundleId === bundleId) || null;
-  }
-
-  /**
    * Get cached update results without triggering a new check
    */
   public async getCachedResults(): Promise<UpdateCheckResult[] | null> {
@@ -256,19 +245,5 @@ export class UpdateChecker {
   public async clearCache(): Promise<void> {
     this.logger.debug('Clearing update cache');
     await this.cache.clear();
-  }
-
-  /**
-   * Check if cache is valid
-   */
-  public isCacheValid(): boolean {
-    return this.cache.isValid();
-  }
-
-  /**
-   * Get cache age in milliseconds
-   */
-  public getCacheAge(): number {
-    return this.cache.getCacheAge();
   }
 }

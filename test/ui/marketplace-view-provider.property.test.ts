@@ -71,49 +71,6 @@ suite('MarketplaceViewProvider - Property Tests', () => {
       );
     });
 
-    test('should handle version prefixes correctly', () => {
-      // Test with 'v' prefix variations
-      const versionWithPrefixArbitrary = fc.tuple(
-        fc.integer({ min: 0, max: 10 }),
-        fc.integer({ min: 0, max: 20 }),
-        fc.integer({ min: 0, max: 50 }),
-        fc.boolean()
-      ).map(([major, minor, patch, hasPrefix]) =>
-        hasPrefix ? `v${major}.${minor}.${patch}` : `${major}.${minor}.${patch}`
-      );
-
-      fc.assert(
-        fc.property(
-          fc.record({
-            installedVersion: versionWithPrefixArbitrary,
-            latestVersion: versionWithPrefixArbitrary
-          }),
-          ({ installedVersion, latestVersion }) => {
-            const buttonState = determineButtonState(installedVersion, latestVersion);
-
-            // Parse versions to compare
-            const cleanInstalled = VersionManager.parseVersion(installedVersion);
-            const cleanLatest = VersionManager.parseVersion(latestVersion);
-
-            if (!cleanInstalled || !cleanLatest) {
-              return true; // Skip invalid versions
-            }
-
-            const cmp = VersionManager.compareVersions(cleanInstalled, cleanLatest);
-
-            if (cmp < 0) {
-              return buttonState === 'update';
-            } else if (cmp === 0) {
-              return buttonState === 'uninstall';
-            } else {
-              return buttonState === 'uninstall';
-            }
-          }
-        ),
-        { numRuns: 100, verbose: false }
-      );
-    });
-
     test('should always return "install" when no version is installed', () => {
       const semverArbitrary = fc.tuple(
         fc.integer({ min: 0, max: 10 }),

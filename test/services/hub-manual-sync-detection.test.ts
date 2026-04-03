@@ -229,52 +229,9 @@ suite('Hub Manual Sync Detection', () => {
 
       assert.ok(secondSync > firstSync);
     });
-
-    test('should get time since last sync', async () => {
-      const hub = createTestHub();
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-      await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const timeSince = await hubManager.getTimeSinceLastSync('test-hub', 'profile-1');
-      assert.ok(timeSince);
-      assert.ok(timeSince >= 100);
-    });
-
-    test('should return null for time since last sync when not activated', async () => {
-      const hub = createTestHub();
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-
-      const timeSince = await hubManager.getTimeSinceLastSync('test-hub', 'profile-1');
-      assert.strictEqual(timeSince, null);
-    });
-  });
+  }); // end Last Sync Tracking
 
   suite('Hub Update Detection', () => {
-    test('should detect when hub config has been updated', async () => {
-      const hub = createTestHub();
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-      await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-
-      // Update profile metadata
-      const updated = await storage.loadHub('test-hub');
-      updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();
-      await storage.saveHub('test-hub', updated.config, updated.reference);
-
-      const hasUpdates = await hubManager.hasHubUpdates('test-hub');
-      assert.strictEqual(hasUpdates, true);
-    });
-
-    test('should return false when hub has not been updated', async () => {
-      const hub = createTestHub();
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-      await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-
-      const hasUpdates = await hubManager.hasHubUpdates('test-hub');
-      assert.strictEqual(hasUpdates, false);
-    });
-
     test('should list profiles with pending updates', async () => {
       const hub = createTestHub();
       hub.profiles.push({

@@ -256,11 +256,4 @@ export class SchemaValidator {
     const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
     return this.validate(data, schemaPath, options);
   }
-
-  /**
-   * Clear the schema cache (useful for testing)
-   */
-  public clearCache(): void {
-    this.schemaCache.clear();
-  }
 }

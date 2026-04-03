@@ -1,13 +1,11 @@
 import * as assert from 'node:assert';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import {
   NpmCliWrapper,
 } from '../../src/utils/npm-cli-wrapper';
 import {
   createErrorProcess,
   createFailureProcess,
-  createMockProcess,
   createSuccessProcess,
 } from '../helpers/process-test-helpers';
 
@@ -70,65 +68,6 @@ suite('NpmCliWrapper', () => {
     });
   });
 
-  suite('getVersion()', () => {
-    test('should return version string when npm is available', async () => {
-      const { process, emitEvents } = createSuccessProcess('10.2.3\n');
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
-
-      const resultPromise = npmWrapper.getVersion();
-      emitEvents();
-
-      const result = await resultPromise;
-      assert.strictEqual(result, '10.2.3');
-    });
-
-    test('should return undefined when npm fails', async () => {
-      const { process, emitEvents } = createFailureProcess(1);
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
-
-      const resultPromise = npmWrapper.getVersion();
-      emitEvents();
-
-      const result = await resultPromise;
-      assert.strictEqual(result, undefined);
-    });
-
-    test('should return undefined when spawn errors', async () => {
-      const { process, emitEvents } = createErrorProcess(new Error('ENOENT'));
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
-
-      const resultPromise = npmWrapper.getVersion();
-      emitEvents();
-
-      const result = await resultPromise;
-      assert.strictEqual(result, undefined);
-    });
-  });
-
-  suite('promptAndInstall()', () => {
-    test('should show prompt and handle user decline', async () => {
-      const showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-      showInformationMessageStub.onFirstCall().resolves(undefined); // User declines
-      showInformationMessageStub.onSecondCall().resolves(undefined); // User dismisses manual instruction
-
-      const result = await npmWrapper.promptAndInstall('/test/path');
-
-      assert.strictEqual(result.success, true);
-      assert.ok(showInformationMessageStub.calledTwice);
-      assert.ok(showInformationMessageStub.secondCall.args[0].includes('npm install'));
-    });
-
-    test('should return success when user chooses "No, I\'ll do it later"', async () => {
-      const showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-      showInformationMessageStub.onFirstCall().resolves('No, I\'ll do it later' as any);
-      showInformationMessageStub.onSecondCall().resolves(undefined);
-
-      const result = await npmWrapper.promptAndInstall('/test/path');
-
-      assert.strictEqual(result.success, true);
-    });
-  });
-
   suite('spawn shell option', () => {
     test('should pass shell option to spawn', async () => {
       const spawnStub = sandbox.stub(childProcess, 'spawn');
@@ -143,36 +82,6 @@ suite('NpmCliWrapper', () => {
       const spawnOptions = spawnStub.firstCall.args[2];
       // Verify shell option is set (value depends on platform)
       assert.ok('shell' in spawnOptions);
-    });
-  });
-
-  suite('event sequencing', () => {
-    test('should handle stdout data before close', async () => {
-      const { process, emitEvents } = createMockProcess({
-        exitCode: 0,
-        stdoutData: '9.8.1\n'
-      });
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
-
-      const resultPromise = npmWrapper.getVersion();
-      emitEvents();
-
-      const result = await resultPromise;
-      assert.strictEqual(result, '9.8.1');
-    });
-
-    test('should handle stderr data on failure', async () => {
-      const { process, emitEvents } = createMockProcess({
-        exitCode: 1,
-        stderrData: 'npm ERR! code ENOENT'
-      });
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
-
-      const resultPromise = npmWrapper.getVersion();
-      emitEvents();
-
-      const result = await resultPromise;
-      assert.strictEqual(result, undefined);
     });
   });
 });

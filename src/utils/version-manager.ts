@@ -112,43 +112,6 @@ export class VersionManager {
   }
 
   /**
-   * Validate if a string is a valid semantic version
-   * @param version - Version string to validate
-   * @returns True if valid semver
-   */
-  public static isValidSemver(version: string): boolean {
-    return semver.valid(version) !== null || semver.coerce(version) !== null;
-  }
-
-  /**
-   * Sort versions in descending order (latest first) using semver.rcompare()
-   *
-   * Invalid versions are filtered out. Valid versions are sorted with
-   * the highest semantic version first.
-   * @param versions - Array of version strings
-   * @returns Sorted array with latest version first (invalid versions excluded)
-   */
-  public static sortVersionsDescending(versions: string[]): string[] {
-    // Pre-filter and map in single pass for better performance
-    const validVersions: { original: string; clean: string }[] = [];
-
-    for (const v of versions) {
-      const clean = semver.clean(v) || semver.coerce(v)?.version;
-      if (clean) {
-        validVersions.push({ original: v, clean });
-      } else {
-        this.logger.debug(`Filtering out invalid version during sort: "${v}"`);
-      }
-    }
-
-    // Sort in place
-    validVersions.sort((a, b) => semver.rcompare(a.clean, b.clean));
-
-    // Extract originals
-    return validVersions.map((v) => v.original);
-  }
-
-  /**
    * Check if two bundle IDs represent the same bundle identity
    * Handles versioned IDs and different source types
    * @param id1 - First bundle ID
@@ -206,40 +169,5 @@ export class VersionManager {
 
     // No version suffix found, return as-is
     return bundleId;
-  }
-
-  /**
-   * Parse and clean version from version string
-   *
-   * Attempts to normalize version strings to valid semver format.
-   * Returns null if the version cannot be parsed.
-   * @example
-   * parseVersion('v1.0.0')      // '1.0.0'
-   * parseVersion('1.0')         // '1.0.0'
-   * parseVersion('invalid')     // null
-   * @param version - Version string to parse
-   * @returns Cleaned version string, or null if invalid
-   */
-  public static parseVersion(version: string): string | null {
-    if (!version) {
-      return null;
-    }
-
-    // Try to clean the version
-    const cleaned = semver.clean(version);
-    if (cleaned) {
-      return cleaned;
-    }
-
-    // Try to coerce
-    const coerced = semver.coerce(version);
-    if (coerced) {
-      this.logger.debug(`Coerced version: "${version}" -> "${coerced.version}"`);
-      return coerced.version;
-    }
-
-    // Return null to signal parsing failure
-    this.logger.warn(`Failed to parse version: "${version}"`);
-    return null;
   }
 }

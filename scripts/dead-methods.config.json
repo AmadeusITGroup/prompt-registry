@@ -1,0 +1,46 @@
+{
+  "frameworkMethods": [
+    "dispose",
+    "activate",
+    "deactivate",
+    "resolveWebviewView",
+    "getTreeItem",
+    "getChildren",
+    "getParent",
+    "provideTextDocumentContent",
+    "constructor"
+  ],
+  "suppressions": [
+    {
+      "pattern": "*.fetchMetadata",
+      "reason": "Interface contract — called polymorphically via IRepositoryAdapter",
+      "category": "adapter-interface"
+    },
+    {
+      "pattern": "*.getDownloadUrl",
+      "reason": "Interface contract — called polymorphically via IRepositoryAdapter",
+      "category": "adapter-interface"
+    },
+    {
+      "pattern": "*.getManifestUrl",
+      "reason": "Interface contract — called polymorphically via IRepositoryAdapter",
+      "category": "adapter-interface"
+    },
+    {
+      "pattern": "*.isValidUrl",
+      "reason": "Interface contract — called polymorphically via IRepositoryAdapter",
+      "category": "adapter-interface"
+    },
+    {
+      "pattern": "*.requiresAuthentication",
+      "reason": "Interface contract — called polymorphically via IRepositoryAdapter",
+      "category": "adapter-interface"
+    },
+    {
+      "pattern": "*.resetInstance",
+      "reason": "Test infrastructure — singleton reset between tests",
+      "category": "test-infrastructure"
+    }
+  ],
+  "ignorePatterns": []
+}

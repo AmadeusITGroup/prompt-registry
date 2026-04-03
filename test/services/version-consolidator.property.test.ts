@@ -32,9 +32,7 @@ suite('VersionConsolidator Property Tests', () => {
     consolidator = new VersionConsolidator();
   });
 
-  teardown(() => {
-    consolidator.clearCache();
-  });
+  teardown(() => {});
 
   /**
    * Property 1: Bundle identity consistency

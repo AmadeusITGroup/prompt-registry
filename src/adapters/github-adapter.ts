@@ -697,6 +697,22 @@ export class GitHubAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Invalidate the cached authentication token
+   * This forces the adapter to re-authenticate on the next request
+   * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
+   */
+  private invalidateAuthCache(reason?: string): void {
+    const previousMethod = this.authMethod;
+    this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
+    if (previousMethod !== 'none') {
+      this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
+      this.attemptedMethods.add(previousMethod);
+    }
+    this.authToken = undefined;
+    this.authMethod = 'none';
+  }
+
+  /**
    * Fetch bundles from GitHub releases
    * Scans all releases in the repository and creates Bundle objects for those
    * that contain both a deployment manifest and a bundle archive.
@@ -855,28 +871,5 @@ export class GitHubAdapter extends RepositoryAdapter {
     const { owner, repo } = this.parseGitHubUrl();
     const tag = version ? `v${version}` : 'latest';
     return `https://github.com/${owner}/${repo}/releases/download/${tag}/bundle.zip`;
-  }
-
-  /**
-   * Get the authentication method currently in use
-   */
-  public getAuthenticationMethod(): string {
-    return this.authMethod;
-  }
-
-  /**
-   * Invalidate the cached authentication token
-   * This forces the adapter to re-authenticate on the next request
-   * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
-   */
-  public invalidateAuthCache(reason?: string): void {
-    const previousMethod = this.authMethod;
-    this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
-    if (previousMethod !== 'none') {
-      this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
-      this.attemptedMethods.add(previousMethod);
-    }
-    this.authToken = undefined;
-    this.authMethod = 'none';
   }
 }

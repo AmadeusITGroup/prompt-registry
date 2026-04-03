@@ -93,9 +93,7 @@ suite('BundleInstaller - Bundle Storage Location', () => {
     // Create mock scope service that tracks syncBundle calls
     const mockScopeService: IScopeService = {
       syncBundle: sandbox.stub().resolves(),
-      unsyncBundle: sandbox.stub().resolves(),
-      getTargetPath: sandbox.stub().returns('.github/prompts/test.prompt.md'),
-      getStatus: sandbox.stub().resolves({ baseDirectory: '.github', dirExists: true, syncedFiles: 0, files: [] })
+      unsyncBundle: sandbox.stub().resolves()
     };
 
     // Stub ScopeServiceFactory

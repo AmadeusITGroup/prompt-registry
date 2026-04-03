@@ -482,42 +482,6 @@ export class McpServerManager {
     return result;
   }
 
-  public async listInstalledServers(scope: 'user' | 'workspace'): Promise<{
-    serverName: string;
-    bundleId: string;
-    bundleVersion: string;
-    originalName: string;
-    installedAt: string;
-  }[]> {
-    try {
-      const tracking = await this.configService.readTrackingMetadata(scope);
-
-      return Object.entries(tracking.managedServers).map(([serverName, metadata]) => ({
-        serverName,
-        bundleId: metadata.bundleId,
-        bundleVersion: metadata.bundleVersion,
-        originalName: metadata.originalName,
-        installedAt: metadata.installedAt
-      }));
-    } catch (error) {
-      this.logger.error(`Failed to list installed MCP servers`, error as Error);
-      return [];
-    }
-  }
-
-  public async getServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
-    try {
-      const tracking = await this.configService.readTrackingMetadata(scope);
-
-      return Object.entries(tracking.managedServers)
-        .filter(([_, metadata]) => metadata.bundleId === bundleId)
-        .map(([serverName, _]) => serverName);
-    } catch (error) {
-      this.logger.error(`Failed to get servers for bundle ${bundleId}`, error as Error);
-      return [];
-    }
-  }
-
   /**
    * Install MCP servers to a workspace (repository scope)
    * @param bundleId - Bundle identifier
@@ -688,23 +652,5 @@ export class McpServerManager {
     }
 
     return result;
-  }
-
-  /**
-   * Get servers for a bundle in a workspace
-   * @param bundleId - Bundle identifier
-   * @param workspaceRoot - Path to workspace root
-   */
-  public async getServersForBundleInWorkspace(bundleId: string, workspaceRoot: string): Promise<string[]> {
-    try {
-      const tracking = await this.readWorkspaceTrackingMetadata(workspaceRoot);
-
-      return Object.entries(tracking.managedServers)
-        .filter(([_, metadata]) => metadata.bundleId === bundleId)
-        .map(([serverName, _]) => serverName);
-    } catch (error) {
-      this.logger.error(`Failed to get servers for bundle ${bundleId} in workspace`, error as Error);
-      return [];
-    }
   }
 }

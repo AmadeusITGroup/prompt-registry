@@ -53,7 +53,7 @@ export class VersionConsolidator {
   private static readonly DEFAULT_MAX_CACHE_SIZE = 1000;
 
   private readonly versionCache: Map<string, CacheEntry> = new Map();
-  private accessOrder: string[] = []; // Track access order for efficient LRU
+  private readonly accessOrder: string[] = []; // Track access order for efficient LRU
   private readonly logger = Logger.getInstance();
   private sourceTypeResolver?: (sourceId: string) => SourceType;
   private readonly maxCacheSize: number;
@@ -332,14 +332,5 @@ export class VersionConsolidator {
       return entry.versions.find((v) => v.version === version);
     }
     return undefined;
-  }
-
-  /**
-   * Clear version cache
-   */
-  public clearCache(): void {
-    this.versionCache.clear();
-    this.accessOrder = [];
-    this.logger.debug('Version cache cleared');
   }
 }

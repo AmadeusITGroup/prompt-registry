@@ -545,37 +545,4 @@ suite('McpServerManager Repository Scope Test Suite', () => {
       assert.strictEqual(result.serversRemoved, 0);
     });
   });
-
-  suite('getServersForBundleInWorkspace()', () => {
-    test('should return servers for a specific bundle', async () => {
-      // Arrange
-      const manifest: McpServersManifest = {
-        'server-a': { command: 'node', args: ['a.js'] },
-        'server-b': { command: 'node', args: ['b.js'] }
-      };
-
-      await manager.installServersToWorkspace(
-        'test-bundle',
-        '1.0.0',
-        testWorkspaceRoot,
-        manifest,
-        { commitMode: 'commit' }
-      );
-
-      // Act
-      const servers = await manager.getServersForBundleInWorkspace('test-bundle', testWorkspaceRoot);
-
-      // Assert
-      assert.strictEqual(servers.length, 2);
-    });
-
-    test('should return empty array for bundle with no servers', async () => {
-      // Act
-      const servers = await manager.getServersForBundleInWorkspace('non-existent', testWorkspaceRoot);
-
-      // Assert
-      assert.ok(Array.isArray(servers));
-      assert.strictEqual(servers.length, 0);
-    });
-  });
 });

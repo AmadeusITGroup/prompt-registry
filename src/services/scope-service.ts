@@ -8,34 +8,6 @@
  * Requirements: 1.2, 9.1-9.5
  */
 
-import {
-  CopilotFileType,
-} from '../utils/copilot-file-type-utils';
-
-/**
- * Status information for a scope service.
- *
- * Provides diagnostic information about the current state of a scope service,
- * including the target directory and synced files.
- */
-export interface ScopeStatus {
-  /**
-   * Base directory where files are synced.
-   * For UserScopeService: the Copilot prompts directory (e.g., ~/.vscode/User/prompts)
-   * For RepositoryScopeService: the repository .github directory
-   */
-  baseDirectory: string;
-
-  /** Whether the base directory exists on the filesystem */
-  dirExists: boolean;
-
-  /** Count of files currently synced by this service */
-  syncedFiles: number;
-
-  /** List of synced file names (relative to baseDirectory) */
-  files: string[];
-}
-
 /**
  * Options for syncing a bundle to a scope.
  */
@@ -72,18 +44,4 @@ export interface IScopeService {
    * @returns Promise that resolves when unsync is complete
    */
   unsyncBundle(bundleId: string): Promise<void>;
-
-  /**
-   * Get the target path for a file of a given type.
-   * @param fileType - The Copilot file type
-   * @param fileName - The name of the file
-   * @returns The full target path where the file should be placed
-   */
-  getTargetPath(fileType: CopilotFileType, fileName: string): string;
-
-  /**
-   * Get the current status of the scope service.
-   * @returns Promise resolving to the scope status information
-   */
-  getStatus(): Promise<ScopeStatus>;
 }

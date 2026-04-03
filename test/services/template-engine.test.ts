@@ -15,28 +15,6 @@ suite('TemplateEngine', () => {
     templateEngine = new TemplateEngine(templateRoot);
   });
 
-  suite('loadManifest', () => {
-    test('should load manifest from templates directory', async () => {
-      const manifest = await templateEngine.loadManifest();
-      assert.ok(manifest, 'Manifest should be loaded');
-      assert.ok(manifest.version, 'Version should exist');
-      assert.ok(manifest.templates, 'Should have templates object');
-    });
-
-    test('should throw error if manifest not found', async () => {
-      await assert.rejects(
-        () => new TemplateEngine('/nonexistent/path').loadManifest(),
-        /Template manifest not found/
-      );
-    });
-
-    test('should load template metadata', async () => {
-      const manifest = await templateEngine.loadManifest();
-      assert.ok(manifest.templates['example-prompt'], 'Should have example-prompt template');
-      assert.ok(manifest.templates.readme, 'Should have readme template');
-    });
-  });
-
   suite('renderTemplate', () => {
     test('should render template without variables', async () => {
       const context: TemplateContext = {
@@ -82,61 +60,6 @@ suite('TemplateEngine', () => {
         () => templateEngine.renderTemplate('nonexistent', context),
         /Template.*not found/
       );
-    });
-  });
-
-  suite('copyTemplate', () => {
-    test('should copy template to target location', async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'template-test-'));
-      const targetPath = path.join(tempDir, 'test.prompt.md');
-      const context: TemplateContext = {
-        projectName: 'Test',
-        collectionId: 'test'
-      };
-
-      await templateEngine.copyTemplate('example-prompt', targetPath, context);
-
-      assert.ok(fs.existsSync(targetPath), 'File should be created');
-      const content = fs.readFileSync(targetPath, 'utf8');
-      assert.ok(content.includes('---') && content.includes('name:'), 'Should have correct content');
-
-      // Cleanup
-      fs.rmSync(tempDir, { recursive: true });
-    });
-
-    test('should create target directory if not exists', async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'template-test-'));
-      const targetPath = path.join(tempDir, 'nested', 'dir', 'file.md');
-      const context: TemplateContext = {
-        projectName: 'Test',
-        collectionId: 'test'
-      };
-
-      await templateEngine.copyTemplate('example-prompt', targetPath, context);
-
-      assert.ok(fs.existsSync(targetPath), 'File should be created');
-      assert.ok(fs.existsSync(path.dirname(targetPath)), 'Directory should be created');
-
-      // Cleanup
-      fs.rmSync(tempDir, { recursive: true });
-    });
-
-    test('should substitute variables when copying', async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'template-test-'));
-      const targetPath = path.join(tempDir, 'collection.yml');
-      const context: TemplateContext = {
-        projectName: 'My Project',
-        collectionId: 'my-collection'
-      };
-
-      await templateEngine.copyTemplate('example-collection', targetPath, context);
-
-      const content = fs.readFileSync(targetPath, 'utf8');
-      assert.ok(content.includes('my-collection'), 'Should have collection ID');
-      assert.ok(content.includes('My Project'), 'Should have project name');
-
-      // Cleanup
-      fs.rmSync(tempDir, { recursive: true });
     });
   });
 
@@ -247,25 +170,6 @@ suite('TemplateEngine', () => {
 
       // Cleanup
       fs.rmSync(tempDir, { recursive: true });
-    });
-  });
-
-  suite('getTemplates', () => {
-    test('should return all available templates', async () => {
-      const templates = await templateEngine.getTemplates();
-      assert.ok(templates, 'Should return templates object');
-      assert.ok(Object.keys(templates).length > 0, 'Should have templates');
-    });
-
-    test('should include template metadata', async () => {
-      const templates = await templateEngine.getTemplates();
-      const examplePrompt = templates['example-prompt'];
-
-      assert.ok(examplePrompt, 'Should have example-prompt');
-      assert.ok(examplePrompt.path, 'Should have path');
-      assert.ok(examplePrompt.description, 'Should have description');
-      assert.strictEqual(typeof examplePrompt.required, 'boolean', 'Should have required flag');
-      assert.ok(Array.isArray(examplePrompt.variables), 'Should have variables array');
     });
   });
 });

@@ -65,26 +65,6 @@ suite('BundleInstaller', () => {
     }
   });
 
-  suite('install (deprecated for remote bundles)', () => {
-    test('should throw error for non-file:// URLs', async () => {
-      const options: InstallOptions = {
-        scope: 'user',
-        force: false
-      };
-
-      // install() should only work with file:// URLs now
-      await assert.rejects(
-        () => installer.install(mockBundle, 'https://example.com/bundle.zip', options),
-        /install\(\) method is only for local file:\/\/ URLs/
-      );
-    });
-
-    test('should accept file:// URLs for local bundles', () => {
-      // This would require actual file setup, so we just verify the method exists
-      assert.ok(typeof installer.install === 'function');
-    });
-  });
-
   suite('installFromBuffer (unified architecture)', () => {
     test('should be the primary installation method', () => {
       // Verify installFromBuffer exists and is the main method
@@ -249,17 +229,9 @@ suite('BundleInstaller', () => {
   });
 
   suite('Error Handling', () => {
-    test('should reject remote URLs in install() method', async () => {
-      const options: InstallOptions = {
-        scope: 'user',
-        force: false
-      };
-
-      // install() should reject remote URLs
-      await assert.rejects(
-        () => installer.install(mockBundle, 'https://invalid.example.com/bundle.zip', options),
-        /install\(\) method is only for local file:\/\/ URLs/
-      );
+    test('should have installFromBuffer as the primary method', () => {
+      // install() was removed - installFromBuffer is the primary method
+      assert.ok(typeof installer.installFromBuffer === 'function');
     });
 
     test('should handle extraction failures in installFromBuffer', () => {
@@ -282,11 +254,6 @@ suite('BundleInstaller', () => {
     test('downloadFile method should not exist', () => {
       // downloadFile was removed - downloads are handled by adapters
       assert.strictEqual((installer as any).downloadFile, undefined);
-    });
-
-    test('install() is deprecated for remote bundles', () => {
-      // install() should only be used for local file:// URLs
-      assert.ok(typeof installer.install === 'function');
     });
 
     test('installFromBuffer() is the primary method', () => {

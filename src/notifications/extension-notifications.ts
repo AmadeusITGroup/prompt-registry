@@ -50,28 +50,6 @@ export class ExtensionNotifications {
   }
 
   /**
-   * Show generic information notification
-   * Provided for backward compatibility with existing extension code
-   * New code should use NotificationManager directly for better separation of concerns
-   * @param message
-   * @param {...string} actions
-   */
-  public async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
-    return await this.notificationManager.showInfo(message, ...actions);
-  }
-
-  /**
-   * Show generic warning notification
-   * Provided for backward compatibility with existing extension code
-   * New code should use NotificationManager directly for better separation of concerns
-   * @param message
-   * @param {...string} actions
-   */
-  public async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
-    return await this.notificationManager.showWarning(message, ...actions);
-  }
-
-  /**
    * Show generic error notification
    * Provided for backward compatibility with existing extension code
    * New code should use NotificationManager directly for better separation of concerns

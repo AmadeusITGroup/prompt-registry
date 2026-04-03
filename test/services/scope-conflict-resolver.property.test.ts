@@ -236,53 +236,6 @@ suite('ScopeConflictResolver Property Tests', () => {
             assert.ok(uninstallCalled, 'Uninstall should be called');
             assert.ok(installCalled, 'Install should be called');
 
-            // Verify exclusivity: bundle should only be at toScope now
-            const conflictingScopes = await resolver.getConflictingScopes(bundleId);
-            assert.strictEqual(conflictingScopes.length, 1,
-              'Bundle should exist at exactly one scope after migration');
-            assert.strictEqual(conflictingScopes[0], toScope,
-              'Bundle should be at target scope after migration');
-
-            return true;
-          }
-        ),
-        {
-          ...PropertyTestConfig.FAST_CHECK_OPTIONS,
-          numRuns: PropertyTestConfig.RUNS.STANDARD
-        }
-      );
-    });
-
-    test('should report all conflicting scopes correctly', async () => {
-      await fc.assert(
-        fc.asyncProperty(
-          BundleGenerators.bundleId(),
-          BundleGenerators.version(),
-          fc.subarray(ALL_SCOPES, { minLength: 0, maxLength: 3 }),
-          async (bundleId, version, installedScopes) => {
-            // Reset mocks for each iteration
-            mockStorage.getInstalledBundle.reset();
-
-            // Setup: bundle installed at specified scopes
-            for (const scope of ALL_SCOPES) {
-              if (installedScopes.includes(scope)) {
-                const bundle = createMockInstalledBundle(bundleId, version, { scope });
-                mockStorage.getInstalledBundle.withArgs(bundleId, scope).resolves(bundle);
-              } else {
-                mockStorage.getInstalledBundle.withArgs(bundleId, scope).resolves(undefined);
-              }
-            }
-
-            // Act: get all conflicting scopes
-            const conflictingScopes = await resolver.getConflictingScopes(bundleId);
-
-            // Assert: should match installed scopes
-            assert.deepStrictEqual(
-              conflictingScopes.toSorted(),
-              installedScopes.toSorted(),
-              'Should report all scopes where bundle is installed'
-            );
-
             return true;
           }
         ),

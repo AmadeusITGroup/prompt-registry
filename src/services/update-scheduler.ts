@@ -377,20 +377,6 @@ export class UpdateScheduler {
   }
 
   /**
-   * Get last check time
-   */
-  public getLastCheckTime(): Date | undefined {
-    return this.lastCheckTime;
-  }
-
-  /**
-   * Check if scheduler is initialized
-   */
-  public isSchedulerInitialized(): boolean {
-    return this.isInitialized;
-  }
-
-  /**
    * Cleanup timers
    */
   public dispose(): void {

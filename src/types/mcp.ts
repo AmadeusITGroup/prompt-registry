@@ -139,13 +139,6 @@ export interface McpInstallOptions {
   createBackup?: boolean;
 }
 
-export interface McpConfigLocation {
-  configPath: string;
-  trackingPath: string;
-  exists: boolean;
-  scope: 'user' | 'workspace';
-}
-
 /**
  * Options for installing MCP servers to a workspace (repository scope)
  */

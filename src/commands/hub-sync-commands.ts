@@ -40,33 +40,13 @@ export interface ReviewSyncResult {
 }
 
 /**
- * Hub update summary
- */
-export interface HubUpdateSummary {
-  hubId: string;
-  profileId: string;
-  hasUpdates: boolean;
-  changeCount?: number;
-}
-
-/**
  * Commands for manual profile synchronization
  */
 export class HubSyncCommands {
-  private readonly registeredCommands: string[] = [];
-
   constructor(
     private readonly hubManager: HubManager,
     private readonly syncHistory?: HubSyncHistory
-  ) {
-    this.registeredCommands = [
-      'promptRegistry.hub.checkForUpdates',
-      'promptRegistry.hub.viewChanges',
-      'promptRegistry.hub.syncProfile',
-      'promptRegistry.hub.reviewAndSync',
-      'promptRegistry.hub.checkAllForUpdates'
-    ];
-  }
+  ) {}
 
   /**
    * Check if a profile has updates available
@@ -214,45 +194,5 @@ export class HubSyncCommands {
       dialog,
       changes
     };
-  }
-
-  /**
-   * Check all hubs for updates
-   */
-  public async checkAllHubsForUpdates(): Promise<HubUpdateSummary[]> {
-    const activeProfiles = await this.hubManager.listAllActiveProfiles();
-    const results: HubUpdateSummary[] = [];
-
-    for (const profile of activeProfiles) {
-      const hasUpdates = await this.hubManager.hasProfileChanges(profile.hubId, profile.profileId);
-
-      let changeCount: number | undefined;
-      if (hasUpdates) {
-        const changes = await this.hubManager.getProfileChanges(profile.hubId, profile.profileId);
-        if (changes) {
-          changeCount =
-            (changes.bundlesAdded?.length || 0)
-            + (changes.bundlesRemoved?.length || 0)
-            + (changes.bundlesUpdated?.length || 0)
-            + (changes.metadataChanged ? 1 : 0);
-        }
-      }
-
-      results.push({
-        hubId: profile.hubId,
-        profileId: profile.profileId,
-        hasUpdates,
-        changeCount
-      });
-    }
-
-    return results;
-  }
-
-  /**
-   * Get list of registered command IDs
-   */
-  public getRegisteredCommands(): string[] {
-    return [...this.registeredCommands];
   }
 }

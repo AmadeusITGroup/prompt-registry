@@ -158,15 +158,13 @@ suite('GitHubAdapter Property-Based Tests', () => {
 
           // Get authentication token
           const token = await (adapter as any).getAuthenticationToken();
-          const method = adapter.getAuthenticationMethod();
 
           // Verify priority order (only log on failure)
           if (config.hasExplicitToken && config.explicitToken.trim().length > 0) {
             // Explicit token should be used first
-            if (token !== config.explicitToken.trim() || method !== 'explicit') {
-              console.log(`Priority test failed: Expected explicit token, got method=${method}`);
+            if (token !== config.explicitToken.trim()) {
+              console.log(`Priority test failed: Expected explicit token`);
               assert.strictEqual(token, config.explicitToken.trim());
-              assert.strictEqual(method, 'explicit');
             }
 
             // VSCode and gh CLI should NOT be called when explicit token is present
@@ -176,10 +174,9 @@ suite('GitHubAdapter Property-Based Tests', () => {
             }
           } else if (config.hasVSCodeAuth) {
             // VSCode should be used second
-            if (token !== config.vscodeToken || method !== 'vscode') {
-              console.log(`Priority test failed: Expected VSCode token, got method=${method}`);
+            if (token !== config.vscodeToken) {
+              console.log(`Priority test failed: Expected VSCode token`);
               assert.strictEqual(token, config.vscodeToken);
-              assert.strictEqual(method, 'vscode');
             }
 
             // gh CLI should NOT be called when VSCode succeeds
@@ -189,19 +186,16 @@ suite('GitHubAdapter Property-Based Tests', () => {
             }
           } else if (config.hasGhCli && config.ghCliToken.trim().length > 0) {
             // gh CLI should be used third
-            if (token !== config.ghCliToken.trim() || method !== 'gh-cli') {
-              console.log(`Priority test failed: Expected gh CLI token, got method=${method}`);
+            if (token !== config.ghCliToken.trim()) {
+              console.log(`Priority test failed: Expected gh CLI token`);
               assert.strictEqual(token, config.ghCliToken.trim());
-              assert.strictEqual(method, 'gh-cli');
             }
           } else {
             // No authentication available
-            if (token === undefined && method !== 'none') {
-              console.log(`Priority test failed: Expected method=none, got method=${method}`);
-              assert.strictEqual(method, 'none');
-            } else if (token !== undefined && !['vscode', 'gh-cli'].includes(method)) {
-              console.log(`Priority test failed: Unexpected method=${method} with token present`);
-              assert.fail('Auth method should be vscode or gh-cli when token exists');
+            // No authentication available - token should be undefined
+            if (token !== undefined) {
+              console.log(`Priority test failed: Expected no token when no auth configured`);
+              assert.strictEqual(token, undefined);
             }
           }
         } finally {
@@ -209,239 +203,6 @@ suite('GitHubAdapter Property-Based Tests', () => {
           iterationSandbox.restore();
         }
       }),
-      { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
-    );
-  });
-
-  /**
-   * Simple unit test for explicit token priority
-   * This test verifies that when an explicit token is provided, it is used
-   * without attempting other authentication methods.
-   */
-  test('Explicit token is used first when provided', async () => {
-    const explicitToken = 'ghp_test_explicit_token_12345678';
-    const source: RegistrySource = {
-      id: 'test-source',
-      name: 'Test Source',
-      url: 'https://github.com/test-owner/test-repo',
-      type: 'github',
-      enabled: true,
-      priority: 1,
-      token: explicitToken
-    };
-
-    const adapter = new GitHubAdapter(source);
-    const token = await (adapter as any).getAuthenticationToken();
-    const method = adapter.getAuthenticationMethod();
-
-    assert.strictEqual(token, explicitToken, 'Should use explicit token');
-    assert.strictEqual(method, 'explicit', 'Auth method should be explicit');
-  });
-
-  /**
-   * Test that whitespace-only tokens are treated as no token
-   */
-  test('Whitespace-only explicit token is ignored', () => {
-    const source: RegistrySource = {
-      id: 'test-source',
-      name: 'Test Source',
-      url: 'https://github.com/test-owner/test-repo',
-      type: 'github',
-      enabled: true,
-      priority: 1,
-      token: '          ' // Only whitespace
-    };
-
-    const adapter = new GitHubAdapter(source);
-    const method = adapter.getAuthenticationMethod();
-
-    // Should not use the whitespace token
-    assert.notStrictEqual(method, 'explicit', 'Should not use whitespace-only token as explicit');
-
-    // Will fall back to VSCode or gh CLI or none depending on environment
-    assert.ok(['vscode', 'gh-cli', 'none'].includes(method),
-      'Should fall back to other auth methods when explicit token is whitespace');
-  });
-
-  /**
-   * Test that explicit token is trimmed
-   */
-  test('Explicit token is trimmed before use', async () => {
-    const explicitToken = '  ghp_test_token_with_spaces  ';
-    const source: RegistrySource = {
-      id: 'test-source',
-      name: 'Test Source',
-      url: 'https://github.com/test-owner/test-repo',
-      type: 'github',
-      enabled: true,
-      priority: 1,
-      token: explicitToken
-    };
-
-    const adapter = new GitHubAdapter(source);
-    const token = await (adapter as any).getAuthenticationToken();
-
-    assert.strictEqual(token, explicitToken.trim(), 'Token should be trimmed');
-    assert.strictEqual(adapter.getAuthenticationMethod(), 'explicit');
-  });
-
-  /**
-   * Property 4: Auth Error Cache Invalidation
-   * Feature: fix-github-authentication-priority, Property 4: Auth Error Cache Invalidation
-   * Validates: Requirements 2.1, 2.2, 2.3
-   *
-   * For any cached authentication token, when the GitHub API returns a 401 or 403 response,
-   * the GitHub Adapter should invalidate the cached token and attempt the next authentication method.
-   */
-  test('Property 4: Auth Error Cache Invalidation', async function () {
-    this.timeout(TEST_CONFIG.TIMEOUT);
-
-    await fc.assert(
-      fc.asyncProperty(
-        fc.record({
-          firstToken: fc.string({ minLength: 10, maxLength: 30 }).filter((s) => s.trim().length > 0)
-        }),
-        async (config) => {
-          // Create source with explicit token
-          const source: RegistrySource = {
-            id: 'test-source',
-            name: 'Test Source',
-            url: 'https://github.com/test-owner/test-repo',
-            type: 'github',
-            enabled: true,
-            priority: 1,
-            token: config.firstToken
-          };
-
-          const adapter = new GitHubAdapter(source);
-
-          // First authentication should use explicit token
-          const firstToken = await (adapter as any).getAuthenticationToken();
-          assert.strictEqual(firstToken, config.firstToken.trim());
-          assert.strictEqual(adapter.getAuthenticationMethod(), 'explicit');
-
-          // Simulate auth error by invalidating cache
-          adapter.invalidateAuthCache();
-
-          // After invalidation, cache should be cleared
-          assert.strictEqual(adapter.getAuthenticationMethod(), 'none');
-        }
-      ),
-      { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
-    );
-  });
-
-  /**
-   * Property 5: Exhaustion Summary
-   * Feature: fix-github-authentication-priority, Property 5: Exhaustion Summary
-   * Validates: Requirements 2.4
-   *
-   * For any request where all authentication methods have been attempted and failed,
-   * the GitHub Adapter should provide an error message that lists all attempted methods.
-   */
-  test('Property 5: Exhaustion Summary', async function () {
-    this.timeout(TEST_CONFIG.TIMEOUT);
-
-    await fc.assert(
-      fc.asyncProperty(
-        fc.record({
-          explicitToken: fc.string({ minLength: 10, maxLength: 30 }).filter((s) => s.trim().length > 0)
-        }),
-        async (config) => {
-          // Create source with explicit token
-          const source: RegistrySource = {
-            id: 'test-source',
-            name: 'Test Source',
-            url: 'https://github.com/test-owner/test-repo',
-            type: 'github',
-            enabled: true,
-            priority: 1,
-            token: config.explicitToken
-          };
-
-          const adapter = new GitHubAdapter(source);
-
-          // Get token and invalidate to simulate failure
-          const token = await (adapter as any).getAuthenticationToken();
-          assert.ok(token, 'Should get explicit token');
-
-          const method = adapter.getAuthenticationMethod();
-          adapter.invalidateAuthCache('Simulated auth failure');
-
-          // Verify the method was tracked
-          const attemptedMethods = (adapter as any).attemptedMethods as Set<string>;
-          assert.ok(attemptedMethods.has(method), 'Method should be tracked after invalidation');
-        }
-      ),
-      { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
-    );
-  });
-
-  /**
-   * Property 6: Invalidation Logging
-   * Feature: fix-github-authentication-priority, Property 6: Invalidation Logging
-   * Validates: Requirements 2.5
-   *
-   * For any token invalidation event, the GitHub Adapter should log the reason
-   * for invalidation (status code and error message).
-   */
-  test('Property 6: Invalidation Logging', async function () {
-    this.timeout(TEST_CONFIG.TIMEOUT);
-
-    await fc.assert(
-      fc.asyncProperty(
-        fc.record({
-          token: fc.string({ minLength: 10, maxLength: 50 }).filter((s) => s.trim().length > 0),
-          statusCode: fc.constantFrom(401, 403),
-          errorMessage: fc.string({ minLength: 5, maxLength: 100 })
-        }),
-        async (config) => {
-          const iterationSandbox = sinon.createSandbox();
-
-          try {
-            // Create source with explicit token
-            const source: RegistrySource = {
-              id: 'test-source',
-              name: 'Test Source',
-              url: 'https://github.com/test-owner/test-repo',
-              type: 'github',
-              enabled: true,
-              priority: 1,
-              token: config.token
-            };
-
-            const adapter = new GitHubAdapter(source);
-
-            // Get initial token
-            await (adapter as any).getAuthenticationToken();
-            assert.strictEqual(adapter.getAuthenticationMethod(), 'explicit');
-
-            // Reset logger stub to capture invalidation logs
-            loggerHelpers.resetHistory();
-
-            // Invalidate cache
-            adapter.invalidateAuthCache();
-
-            // Verify logging occurred (only log on failure)
-            const loggerCalled = loggerStub.debug.called
-              || loggerStub.info.called
-              || loggerStub.warn.called;
-
-            if (!loggerCalled) {
-              console.log('Invalidation logging test failed: No logger calls detected');
-              assert.fail('Should log invalidation event');
-            }
-
-            // Check that some log call mentions invalidation
-            if (!loggerHelpers.hasLogContaining('invalidat')) {
-              console.log('Invalidation logging test failed: No log message contains "invalidat"');
-              assert.fail('Should log message containing "invalidat"');
-            }
-          } finally {
-            iterationSandbox.restore();
-          }
-        }
-      ),
       { numRuns: TEST_CONFIG.RUNS.QUICK, ...TEST_CONFIG.FAST_CHECK_OPTIONS }
     );
   });

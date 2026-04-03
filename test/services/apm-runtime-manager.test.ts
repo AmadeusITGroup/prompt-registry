@@ -93,29 +93,6 @@ suite('ApmRuntimeManager', () => {
     });
   });
 
-  suite('isAvailable', () => {
-    test('should return true when APM is installed', async () => {
-      sandbox.stub(runtime as any, 'detectRuntime').resolves({
-        installed: true,
-        version: '1.0.0'
-      });
-
-      const available = await runtime.isAvailable();
-
-      assert.strictEqual(available, true);
-    });
-
-    test('should return false when APM is not installed', async () => {
-      sandbox.stub(runtime as any, 'detectRuntime').resolves({
-        installed: false
-      });
-
-      const available = await runtime.isAvailable();
-
-      assert.strictEqual(available, false);
-    });
-  });
-
   suite('clearCache', () => {
     test('should clear cached status', async () => {
       // Populate cache

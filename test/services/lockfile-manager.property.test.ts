@@ -55,7 +55,6 @@ suite('LockfileManager Property Tests', () => {
 
   teardown(() => {
     cleanupTempDir(tempDir);
-    schemaValidator.clearCache();
   });
 
   /**

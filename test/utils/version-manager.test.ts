@@ -107,66 +107,6 @@ suite('VersionManager Unit Tests', () => {
     });
   });
 
-  suite('isValidSemver', () => {
-    test('should validate standard semver versions', () => {
-      assert.strictEqual(VersionManager.isValidSemver('1.0.0'), true);
-      assert.strictEqual(VersionManager.isValidSemver('2.1.3'), true);
-      assert.strictEqual(VersionManager.isValidSemver('0.0.1'), true);
-    });
-
-    test('should validate versions with v prefix', () => {
-      assert.strictEqual(VersionManager.isValidSemver('v1.0.0'), true);
-      assert.strictEqual(VersionManager.isValidSemver('v2.1.3'), true);
-    });
-
-    test('should validate pre-release versions', () => {
-      assert.strictEqual(VersionManager.isValidSemver('1.0.0-alpha'), true);
-      assert.strictEqual(VersionManager.isValidSemver('1.0.0-beta.1'), true);
-    });
-
-    test('should validate coercible versions', () => {
-      assert.strictEqual(VersionManager.isValidSemver('1'), true);
-      assert.strictEqual(VersionManager.isValidSemver('1.0'), true);
-    });
-
-    test('should reject invalid versions', () => {
-      assert.strictEqual(VersionManager.isValidSemver(''), false);
-      assert.strictEqual(VersionManager.isValidSemver('not-a-version'), false);
-    });
-  });
-
-  suite('sortVersionsDescending', () => {
-    test('should sort versions in descending order', () => {
-      const versions = ['1.0.0', '2.0.0', '1.5.0', '3.0.0'];
-      const sorted = VersionManager.sortVersionsDescending(versions);
-      assert.deepStrictEqual(sorted, ['3.0.0', '2.0.0', '1.5.0', '1.0.0']);
-    });
-
-    test('should handle versions with v prefix', () => {
-      const versions = ['v1.0.0', 'v2.0.0', 'v1.5.0'];
-      const sorted = VersionManager.sortVersionsDescending(versions);
-      assert.deepStrictEqual(sorted, ['v2.0.0', 'v1.5.0', 'v1.0.0']);
-    });
-
-    test('should handle mixed format versions', () => {
-      const versions = ['v1.0.0', '2.0.0', 'v1.5.0'];
-      const sorted = VersionManager.sortVersionsDescending(versions);
-      assert.deepStrictEqual(sorted, ['2.0.0', 'v1.5.0', 'v1.0.0']);
-    });
-
-    test('should handle pre-release versions', () => {
-      const versions = ['1.0.0', '1.0.0-alpha', '1.0.0-beta'];
-      const sorted = VersionManager.sortVersionsDescending(versions);
-      assert.deepStrictEqual(sorted, ['1.0.0', '1.0.0-beta', '1.0.0-alpha']);
-    });
-
-    test('should filter out invalid versions', () => {
-      const versions = ['1.0.0', 'invalid', '2.0.0'];
-      const sorted = VersionManager.sortVersionsDescending(versions);
-      assert.deepStrictEqual(sorted, ['2.0.0', '1.0.0']);
-    });
-  });
-
   suite('extractBundleIdentity', () => {
     test('should extract identity from GitHub bundle IDs with version', () => {
       assert.strictEqual(
@@ -243,39 +183,6 @@ suite('VersionManager Unit Tests', () => {
         VersionManager.extractBundleIdentity('bundle-id-v1.0.0', 'local'),
         'bundle-id-v1.0.0'
       );
-    });
-  });
-
-  suite('parseVersion', () => {
-    test('should clean standard semver versions', () => {
-      assert.strictEqual(VersionManager.parseVersion('1.0.0'), '1.0.0');
-      assert.strictEqual(VersionManager.parseVersion('2.1.3'), '2.1.3');
-    });
-
-    test('should clean versions with v prefix', () => {
-      assert.strictEqual(VersionManager.parseVersion('v1.0.0'), '1.0.0');
-      assert.strictEqual(VersionManager.parseVersion('v2.1.3'), '2.1.3');
-    });
-
-    test('should coerce partial versions', () => {
-      assert.strictEqual(VersionManager.parseVersion('1'), '1.0.0');
-      assert.strictEqual(VersionManager.parseVersion('1.0'), '1.0.0');
-    });
-
-    test('should handle pre-release versions', () => {
-      assert.strictEqual(VersionManager.parseVersion('1.0.0-alpha'), '1.0.0-alpha');
-      assert.strictEqual(VersionManager.parseVersion('v1.0.0-beta'), '1.0.0-beta');
-    });
-
-    test('should return null for invalid versions', () => {
-      assert.strictEqual(VersionManager.parseVersion('not-a-version'), null);
-      assert.strictEqual(VersionManager.parseVersion(''), null);
-    });
-
-    test('should handle build metadata', () => {
-      // Note: semver.clean() strips build metadata per semver spec
-      // Build metadata should be ignored for version comparison
-      assert.strictEqual(VersionManager.parseVersion('1.0.0+build.123'), '1.0.0');
     });
   });
 });

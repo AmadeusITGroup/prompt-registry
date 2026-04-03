@@ -1,17 +1,13 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
 
 const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const access = promisify(fs.access);
 const stat = promisify(fs.stat);
 const readdir = promisify(fs.readdir);
-const unlink = promisify(fs.unlink);
-const rmdir = promisify(fs.rmdir);
 
 /**
  * File utility functions for Prompt Registry extension
@@ -49,35 +45,6 @@ export class FileUtils {
   }
 
   /**
-   * Write a string to a file
-   * @param filePath
-   * @param content
-   */
-  public static async writeFile(filePath: string, content: string): Promise<void> {
-    await this.ensureDirectory(path.dirname(filePath));
-    await writeFile(filePath, content, 'utf8');
-  }
-
-  /**
-   * Read a file as JSON
-   * @param filePath
-   */
-  public static async readJson<T = any>(filePath: string): Promise<T> {
-    const content = await this.readFile(filePath);
-    return JSON.parse(content);
-  }
-
-  /**
-   * Write an object to a file as JSON
-   * @param filePath
-   * @param obj
-   */
-  public static async writeJson(filePath: string, obj: any): Promise<void> {
-    const content = JSON.stringify(obj, null, 2);
-    await this.writeFile(filePath, content);
-  }
-
-  /**
    * Get file statistics
    * @param filePath
    */
@@ -99,125 +66,10 @@ export class FileUtils {
   }
 
   /**
-   * Check if a path is a file
-   * @param filePath
-   */
-  public static async isFile(filePath: string): Promise<boolean> {
-    try {
-      const stats = await this.getStats(filePath);
-      return stats.isFile();
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * List directory contents
    * @param dirPath
    */
   public static async listDirectory(dirPath: string): Promise<string[]> {
     return await readdir(dirPath);
-  }
-
-  /**
-   * Delete a file
-   * @param filePath
-   */
-  public static async deleteFile(filePath: string): Promise<void> {
-    await unlink(filePath);
-  }
-
-  /**
-   * Delete a directory recursively
-   * @param dirPath
-   */
-  public static async deleteDirectory(dirPath: string): Promise<void> {
-    await rmdir(dirPath, { recursive: true });
-  }
-
-  /**
-   * Copy a file from source to destination
-   * @param source
-   * @param destination
-   */
-  public static async copyFile(source: string, destination: string): Promise<void> {
-    await this.ensureDirectory(path.dirname(destination));
-    const content = await readFile(source);
-    await writeFile(destination, content);
-  }
-
-  /**
-   * Get file size in bytes
-   * @param filePath
-   */
-  public static async getFileSize(filePath: string): Promise<number> {
-    const stats = await this.getStats(filePath);
-    return stats.size;
-  }
-
-  /**
-   * Get formatted file size string
-   * @param bytes
-   */
-  public static formatFileSize(bytes: number): string {
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    if (bytes === 0) {
-      return '0 Bytes';
-    }
-
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    const size = bytes / Math.pow(1024, i);
-
-    return `${Math.round(size * 100) / 100} ${sizes[i]}`;
-  }
-
-  /**
-   * Sanitize a filename by removing invalid characters
-   * @param filename
-   */
-  public static sanitizeFilename(filename: string): string {
-    return filename.replace(/[<>:"/\\|?*]/g, '_');
-  }
-
-  /**
-   * Join paths safely
-   * @param {...string} paths
-   */
-  public static joinPaths(...paths: string[]): string {
-    return path.join(...paths);
-  }
-
-  /**
-   * Get the basename of a path
-   * @param filePath
-   */
-  public static getBasename(filePath: string): string {
-    return path.basename(filePath);
-  }
-
-  /**
-   * Get the directory name of a path
-   * @param filePath
-   */
-  public static getDirname(filePath: string): string {
-    return path.dirname(filePath);
-  }
-
-  /**
-   * Get the file extension
-   * @param filePath
-   */
-  public static getExtension(filePath: string): string {
-    return path.extname(filePath);
-  }
-
-  /**
-   * Change file extension
-   * @param filePath
-   * @param newExt
-   */
-  public static changeExtension(filePath: string, newExt: string): string {
-    const parsed = path.parse(filePath);
-    return path.join(parsed.dir, parsed.name + newExt);
   }
 }

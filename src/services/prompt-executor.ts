@@ -7,9 +7,6 @@ import * as vscode from 'vscode';
 import {
   Logger,
 } from '../utils/logger';
-import {
-  replaceVariables,
-} from '../utils/regex-utils';
 
 export interface PromptExecutionOptions {
   promptContent: string;
@@ -144,66 +141,6 @@ export class PromptExecutor {
       this.logger.error('Failed to execute prompt', error as Error);
       stream.markdown('\n\n❌ **Error executing prompt**\n\n');
       stream.markdown(`${(error as Error).message}\n`);
-    }
-  }
-
-  /**
-   * Execute prompt with template variable substitution
-   * @param promptTemplate
-   * @param variables
-   * @param options
-   */
-  public async executeWithTemplates(
-    promptTemplate: string,
-    variables: Record<string, string>,
-    options: PromptExecutionOptions
-  ): Promise<void> {
-    // Substitute template variables using safe regex utility
-    const processedPrompt = replaceVariables(promptTemplate, variables, {
-      prefix: '{',
-      suffix: '}'
-    });
-
-    // Execute with processed prompt
-    await this.execute({
-      ...options,
-      promptContent: processedPrompt
-    });
-  }
-
-  /**
-   * Test if Language Model API is available
-   */
-  public async isAvailable(): Promise<boolean> {
-    try {
-      if (!vscode.lm) {
-        return false;
-      }
-
-      const models = await vscode.lm.selectChatModels();
-      return models.length > 0;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get available language models
-   */
-  public async getAvailableModels(): Promise<{ vendor: string; family: string; name: string }[]> {
-    try {
-      if (!vscode.lm) {
-        return [];
-      }
-
-      const models = await vscode.lm.selectChatModels();
-      return models.map((m) => ({
-        vendor: m.vendor,
-        family: m.family,
-        name: m.name
-      }));
-    } catch {
-      return [];
     }
   }
 }

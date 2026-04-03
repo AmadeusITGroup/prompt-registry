@@ -9,14 +9,6 @@ import {
 } from '../utils/logger';
 
 /**
- * Common notification action types
- */
-export interface NotificationAction {
-  label: string;
-  action?: () => Promise<void> | void;
-}
-
-/**
  * Base class for notification services
  * Provides consistent notification patterns across the extension
  */

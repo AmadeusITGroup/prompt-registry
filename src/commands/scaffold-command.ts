@@ -11,9 +11,6 @@ import {
   generateSanitizedId,
 } from '../utils/bundle-name-utils';
 import {
-  FileUtils,
-} from '../utils/file-utils';
-import {
   Logger,
 } from '../utils/logger';
 import {
@@ -27,30 +24,6 @@ export enum ScaffoldType {
   GitHub = 'github',
   // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Apm = 'apm'
-}
-
-/**
- * Migration scenario detected in existing project
- */
-export enum MigrationScenario {
-  /** No migration needed */
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
-  None = 'none',
-  /** Has collections but no publish workflow */
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
-  MissingWorkflow = 'missing-workflow',
-  /** Has chatmode references that need updating */
-  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
-  ChatmodeReferences = 'chatmode-references'
-}
-
-/**
- * Migration recommendation interface
- */
-export interface MigrationRecommendation {
-  scenario: MigrationScenario;
-  message: string;
-  documentationUrl: string;
 }
 
 export interface ScaffoldOptions {
@@ -133,113 +106,6 @@ export class ScaffoldCommand {
       this.logger.error('Scaffold failed', error as Error);
       throw error;
     }
-  }
-
-  /**
-   * Detect migration scenario for an existing project
-   * Checks for collections folder and determines what migration is needed
-   * @param targetPath - Directory path to check
-   * @returns Migration scenario detected
-   */
-  public static async detectMigrationScenario(targetPath: string): Promise<MigrationScenario> {
-    try {
-      const collectionsDir = path.join(targetPath, 'collections');
-
-      // Check if collections directory exists
-      if (!await FileUtils.exists(collectionsDir) || !await FileUtils.isDirectory(collectionsDir)) {
-        return MigrationScenario.None;
-      }
-
-      // Check for collection files
-      const entries = await FileUtils.listDirectory(collectionsDir);
-      const collectionFiles = entries.filter((f) =>
-        f.endsWith('.collection.yml') || f.endsWith('.collection.yaml')
-      );
-
-      if (collectionFiles.length === 0) {
-        return MigrationScenario.None;
-      }
-
-      // Check for chatmode references in collection files
-      for (const file of collectionFiles) {
-        try {
-          const content = await FileUtils.readFile(path.join(collectionsDir, file));
-          if (/kind:\s*chatmode/i.test(content)) {
-            return MigrationScenario.ChatmodeReferences;
-          }
-        } catch {
-          // Ignore read errors
-        }
-      }
-
-      // Check if publish workflow exists
-      const workflowPath = path.join(targetPath, '.github', 'workflows', 'publish.yml');
-      if (!await FileUtils.exists(workflowPath)) {
-        return MigrationScenario.MissingWorkflow;
-      }
-
-      return MigrationScenario.None;
-    } catch {
-      return MigrationScenario.None;
-    }
-  }
-
-  /**
-   * Get migration recommendation for a scenario
-   * @param scenario
-   */
-  public static getMigrationRecommendation(scenario: MigrationScenario): MigrationRecommendation | undefined {
-    switch (scenario) {
-      case MigrationScenario.MissingWorkflow: {
-        return {
-          scenario,
-          message: 'This project has collections but no GitHub publish workflow.',
-          documentationUrl: 'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md'
-        };
-      }
-      case MigrationScenario.ChatmodeReferences: {
-        return {
-          scenario,
-          message: 'This project uses deprecated chatmode references. Please migrate to agent format.',
-          documentationUrl: 'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md#chatmode-to-agent'
-        };
-      }
-      default: {
-        return undefined;
-      }
-    }
-  }
-
-  /**
-   * Show migration recommendation warning message
-   * @param recommendation - Migration recommendation to display
-   */
-  public static async showMigrationRecommendation(recommendation: MigrationRecommendation): Promise<void> {
-    const action = await vscode.window.showWarningMessage(
-      recommendation.message,
-      'View Migration Guide',
-      'Dismiss'
-    );
-
-    if (action === 'View Migration Guide') {
-      await vscode.env.openExternal(vscode.Uri.parse(recommendation.documentationUrl));
-    }
-  }
-
-  /**
-   * Check for migration scenarios and show recommendation if needed
-   * @param targetPath - Directory path to check
-   * @returns The detected scenario
-   */
-  public static async checkAndShowMigrationRecommendation(targetPath: string): Promise<MigrationScenario> {
-    const scenario = await ScaffoldCommand.detectMigrationScenario(targetPath);
-    const recommendation = ScaffoldCommand.getMigrationRecommendation(scenario);
-
-    if (recommendation) {
-      await ScaffoldCommand.showMigrationRecommendation(recommendation);
-    }
-
-    return scenario;
   }
 
   /**

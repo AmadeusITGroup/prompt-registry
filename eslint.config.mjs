@@ -20,6 +20,7 @@ export default defineConfig([
       '**/*.d.ts',
       'node_modules/',
       'test/**/*.js',
+      'test/scripts/fixtures/',
       'lib/'
     ],
     'prompt-registry/ignores'

@@ -402,11 +402,4 @@ export class AutoUpdateService {
   public isUpdateInProgress(bundleId: string): boolean {
     return this.activeUpdates.has(bundleId);
   }
-
-  /**
-   * Get list of bundles currently being updated
-   */
-  public getActiveUpdates(): string[] {
-    return Array.from(this.activeUpdates);
-  }
 }

@@ -53,28 +53,3 @@ export type ExportFormat = 'json' | 'yaml';
  * Import strategy for handling existing data
  */
 export type ImportStrategy = 'merge' | 'replace';
-
-/**
- * Export options
- */
-export interface ExportOptions {
-/** Export format */
-  format: ExportFormat;
-
-  /** Include configuration settings */
-  includeConfiguration?: boolean;
-}
-
-/**
- * Import options
- */
-export interface ImportOptions {
-/** Import format (auto-detected if not specified) */
-  format?: ExportFormat;
-
-  /** Import strategy */
-  strategy: ImportStrategy;
-
-  /** Validate schema before importing */
-  validate?: boolean;
-}

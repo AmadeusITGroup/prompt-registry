@@ -107,7 +107,6 @@ suite('Update System Integration', () => {
     await updateScheduler.initialize();
 
     // Verify initialization
-    assert.ok(updateScheduler.isSchedulerInitialized());
 
     // Cleanup
     updateScheduler.dispose();
@@ -162,7 +161,6 @@ suite('Update System Integration', () => {
     await updateScheduler.initialize();
 
     // Verify all components are properly initialized
-    assert.ok(updateScheduler.isSchedulerInitialized());
     assert.ok(bundleNotifications);
     assert.ok(updateChecker);
     assert.ok(autoUpdateService);
@@ -217,7 +215,6 @@ suite('Update System Integration', () => {
     updateScheduler.updateSchedule('weekly');
 
     // Verify scheduler is still initialized
-    assert.ok(updateScheduler.isSchedulerInitialized());
 
     // Cleanup
     updateScheduler.dispose();

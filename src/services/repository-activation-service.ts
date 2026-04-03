@@ -22,9 +22,6 @@ import {
   Lockfile,
 } from '../types/lockfile';
 import {
-  InstallOptions,
-} from '../types/registry';
-import {
   Logger,
 } from '../utils/logger';
 import {
@@ -47,21 +44,6 @@ export interface MissingSourcesResult {
   missingSources: string[];
   missingHubs: string[];
   offeredToAdd: boolean;
-}
-
-/**
- * Result of missing bundle installation
- * Requirements: 13.6
- */
-export interface MissingBundleInstallResult {
-  /** Bundle IDs that were successfully installed */
-  succeeded: string[];
-  /** Bundle IDs that failed to install with error messages */
-  failed: { bundleId: string; error: string }[];
-  /** Bundle IDs that were skipped (not found in lockfile) */
-  skipped: string[];
-  /** Whether the operation was cancelled by the user */
-  cancelled?: boolean;
 }
 
 /**
@@ -111,17 +93,6 @@ export class RepositoryActivationService {
       );
     }
     return RepositoryActivationService.instances.get(normalizedPath)!;
-  }
-
-  /**
-   * Get an existing instance for a workspace without creating a new one.
-   * Returns undefined if no instance exists for the workspace.
-   * @param workspaceRoot - Path to the workspace root
-   * @returns RepositoryActivationService instance or undefined
-   */
-  public static getExistingInstance(workspaceRoot: string): RepositoryActivationService | undefined {
-    const normalizedPath = path.normalize(workspaceRoot);
-    return RepositoryActivationService.instances.get(normalizedPath);
   }
 
   /**
@@ -204,13 +175,6 @@ export class RepositoryActivationService {
   }
 
   /**
-   * Get the workspace root path for this instance
-   */
-  public getWorkspaceRoot(): string {
-    return this.workspaceRoot;
-  }
-
-  /**
    * Check for lockfile and detect missing sources/hubs.
    * Called on workspace open.
    *
@@ -252,96 +216,6 @@ export class RepositoryActivationService {
     } catch (error) {
       this.logger.error('Failed to check and detect sources:', error instanceof Error ? error : undefined);
     }
-  }
-
-  /**
-   * Install missing bundles from the lockfile
-   * @param lockfile - The lockfile containing bundle information
-   * @param missingBundleIds - Array of bundle IDs to install
-   * @returns Result with succeeded, failed, and skipped bundles
-   *
-   * Requirements: 13.6 - "IF bundles are missing from the repository, THE Extension SHALL offer to download and install them"
-   */
-  public async installMissingBundles(lockfile: Lockfile, missingBundleIds: string[]): Promise<MissingBundleInstallResult> {
-    const result: MissingBundleInstallResult = {
-      succeeded: [],
-      failed: [],
-      skipped: []
-    };
-
-    // Return early if no bundles to install
-    if (missingBundleIds.length === 0) {
-      return result;
-    }
-
-    // Check if IBundleInstaller is available
-    if (!this.bundleInstaller) {
-      this.logger.warn('Bundle installer not available, cannot install missing bundles');
-      // Mark all as skipped since we can't install
-      result.skipped = [...missingBundleIds];
-      return result;
-    }
-
-    // Show progress notification during installation
-    return await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Installing missing bundles',
-        cancellable: true
-      },
-      async (progress, token) => {
-        const total = missingBundleIds.length;
-        let completed = 0;
-
-        for (const bundleId of missingBundleIds) {
-          // Check for cancellation
-          if (token.isCancellationRequested) {
-            this.logger.info('Bundle installation cancelled by user');
-            result.cancelled = true;
-            break;
-          }
-
-          // Get bundle info from lockfile
-          const bundleEntry = lockfile.bundles[bundleId];
-          if (!bundleEntry) {
-            this.logger.warn(`Bundle ${bundleId} not found in lockfile, skipping`);
-            result.skipped.push(bundleId);
-            continue;
-          }
-
-          // Update progress
-          progress.report({
-            message: `Installing ${bundleId} (${completed + 1}/${total})`,
-            increment: (1 / total) * 100
-          });
-
-          try {
-            // Build install options from lockfile entry
-            const installOptions: InstallOptions = {
-              scope: 'repository',
-              version: bundleEntry.version,
-              commitMode: bundleEntry.commitMode
-            };
-
-            this.logger.debug(`Installing bundle ${bundleId} with options:`, installOptions);
-
-            // Install the bundle (bundleInstaller is guaranteed to exist here due to earlier check)
-            await this.bundleInstaller!.installBundle(bundleId, installOptions, true);
-
-            result.succeeded.push(bundleId);
-            this.logger.info(`Successfully installed bundle ${bundleId}`);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            result.failed.push({ bundleId, error: errorMessage });
-            this.logger.error(`Failed to install bundle ${bundleId}:`, error instanceof Error ? error : undefined);
-          }
-
-          completed++;
-        }
-
-        return result;
-      }
-    );
   }
 
   /**

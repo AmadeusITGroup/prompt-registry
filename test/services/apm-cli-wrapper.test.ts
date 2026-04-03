@@ -24,7 +24,6 @@ suite('ApmCliWrapper', () => {
     ApmRuntimeManager.resetInstance();
     mockRuntime = sandbox.createStubInstance(ApmRuntimeManager);
     mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
-    mockRuntime.isAvailable.resolves(true);
 
     // Replace getInstance to return mock
     sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
@@ -66,27 +65,6 @@ suite('ApmCliWrapper', () => {
       const available = await wrapper.isRuntimeAvailable();
 
       assert.strictEqual(available, false);
-    });
-  });
-
-  suite('getVersion', () => {
-    test('should return version when APM is installed', async () => {
-      mockRuntime.getStatus.resolves({
-        installed: true,
-        version: '2.0.0'
-      });
-
-      const version = await wrapper.getVersion();
-
-      assert.strictEqual(version, '2.0.0');
-    });
-
-    test('should return undefined when APM is not installed', async () => {
-      mockRuntime.getStatus.resolves({ installed: false });
-
-      const version = await wrapper.getVersion();
-
-      assert.strictEqual(version, undefined);
     });
   });
 

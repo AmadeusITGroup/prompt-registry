@@ -131,35 +131,6 @@ export class ScopeConflictResolver {
   }
 
   /**
-   * Check if a conflict exists (convenience method).
-   * @param bundleId - The bundle ID to check
-   * @param targetScope - The scope where installation is intended
-   * @returns true if conflict exists, false otherwise
-   */
-  public async hasConflict(bundleId: string, targetScope: InstallationScope): Promise<boolean> {
-    const conflict = await this.checkConflict(bundleId, targetScope);
-    return conflict !== null;
-  }
-
-  /**
-   * Get all scopes where a bundle is currently installed.
-   * @param bundleId - The bundle ID to check
-   * @returns Array of scopes where the bundle is installed
-   */
-  public async getConflictingScopes(bundleId: string): Promise<InstallationScope[]> {
-    const installedScopes: InstallationScope[] = [];
-
-    for (const scope of this.ALL_SCOPES) {
-      const installedBundle = await this.getInstalledBundleForScope(bundleId, scope);
-      if (installedBundle) {
-        installedScopes.push(scope);
-      }
-    }
-
-    return installedScopes;
-  }
-
-  /**
    * Migrate a bundle from one scope to another.
    *
    * This operation:

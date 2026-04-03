@@ -188,11 +188,4 @@ export class HubIntegrationCommands {
 
     return selected ? { hubId: selected.hubId, profileId: selected.profileId } : null;
   }
-
-  /**
-   * Get sync history instance for further integration
-   */
-  public getSyncHistory() {
-    return this.historyCommands.getSyncHistory();
-  }
 }

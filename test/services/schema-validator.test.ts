@@ -66,9 +66,6 @@ suite('SchemaValidator', () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
-
-    // Clear schema cache
-    validator.clearCache();
   });
 
   suite('Schema Loading', () => {
@@ -1231,47 +1228,6 @@ suite('SchemaValidator', () => {
       const result = await validator.validateCollection(invalidMcp);
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors.some((e) => e.includes('command')));
-    });
-  });
-
-  suite('Cache Management', () => {
-    test('should clear cache', async () => {
-      // Load schema
-      await validator.validate({ name: 'Test' }, testSchemaPath);
-
-      // Clear cache
-      validator.clearCache();
-
-      // Should still work after clearing
-      const result = await validator.validate({ name: 'Test' }, testSchemaPath);
-      assert.strictEqual(result.valid, true);
-    });
-
-    test('should reload schema after cache clear', async () => {
-      // Load schema
-      await validator.validate({ name: 'Test' }, testSchemaPath);
-
-      // Modify schema file
-      const modifiedSchema = {
-        $schema: 'http://json-schema.org/draft-07/schema#',
-        type: 'object',
-        required: ['name', 'email'],
-        properties: {
-          name: { type: 'string' },
-          email: { type: 'string' }
-        }
-      };
-      fs.writeFileSync(testSchemaPath, JSON.stringify(modifiedSchema, null, 2));
-
-      // Clear cache to force reload
-      validator.clearCache();
-
-      // Validate with new schema
-      const result = await validator.validate({ name: 'Test' }, testSchemaPath);
-
-      // Should fail because email is now required
-      assert.strictEqual(result.valid, false);
-      assert.ok(result.errors.some((e) => e.includes('email')));
     });
   });
 });

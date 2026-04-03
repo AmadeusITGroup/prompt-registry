@@ -84,14 +84,16 @@ suite('sourceIdNormalizationMigration', () => {
     // Should not throw even if storage has no sources
     await runSourceIdNormalizationMigration(storage, migrationRegistry);
 
-    assert.strictEqual(await migrationRegistry.isMigrationComplete(MIGRATION_NAME), true);
+    const state = await migrationRegistry.getMigrationState();
+    assert.strictEqual(state[MIGRATION_NAME]?.status, 'completed');
   });
 
   test('should complete migration with no sources needing update', async () => {
     // Config starts with empty sources
     await runSourceIdNormalizationMigration(storage, migrationRegistry);
 
-    assert.strictEqual(await migrationRegistry.isMigrationComplete(MIGRATION_NAME), true);
+    const state2 = await migrationRegistry.getMigrationState();
+    assert.strictEqual(state2[MIGRATION_NAME]?.status, 'completed');
   });
 
   test('should migrate a source with legacy ID to new ID', async () => {

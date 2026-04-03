@@ -1,0 +1,399 @@
+
+> prompt-registry@0.0.2 dead-code:methods
+> node scripts/find-dead-methods.ts
+
+
+═══════════════════════════════════════════════════════════
+  Dead Method Analysis — Production Code (src/ only)
+═══════════════════════════════════════════════════════════
+
+── Zero Production Callers (118) ──
+   These methods are never called from any src/ file.
+
+   RepositoryScopeService.addLocalLockfileToGitExclude
+     └─ src/services/repository-scope-service.ts
+   NetworkUtils.buildUrl (static)
+     └─ src/utils/network-utils.ts
+   RegistryStorage.cacheBundleMetadata
+     └─ src/storage/registry-storage.ts
+   FileIntegrityService.calculateDirectoryStats
+     └─ src/services/file-integrity-service.ts
+   NetworkUtils.calculateETA (static)
+     └─ src/utils/network-utils.ts
+   FileIntegrityService.calculateFilesIntegrity
+     └─ src/services/file-integrity-service.ts
+   FileUtils.changeExtension (static)
+     └─ src/utils/file-utils.ts
+   HubSyncCommands.checkAllHubsForUpdates
+     └─ src/commands/hub-sync-commands.ts
+   ScaffoldCommand.checkAndShowMigrationRecommendation (static)
+     └─ src/commands/scaffold-command.ts
+   UpdateChecker.checkBundleUpdate
+     └─ src/services/update-checker.ts
+   NetworkUtils.checkConnectivity (static)
+     └─ src/utils/network-utils.ts
+   UserScopeService.cleanAll
+     └─ src/services/user-scope-service.ts
+   Logger.clear
+     └─ src/utils/logger.ts
+   PromptLoader.clearCache
+     └─ src/services/prompt-loader.ts
+   SchemaValidator.clearCache
+     └─ src/services/schema-validator.ts
+   UpdateChecker.clearCache
+     └─ src/services/update-checker.ts
+   VersionConsolidator.clearCache
+     └─ src/services/version-consolidator.ts
+   HubStorage.clearCache
+     └─ src/storage/hub-storage.ts
+   ApmCliWrapper.compile
+     └─ src/services/apm-cli-wrapper.ts
+   FileUtils.copyFile (static)
+     └─ src/utils/file-utils.ts
+   HubManager.createChangeQuickPickItems
+     └─ src/services/hub-manager.ts
+   HubProfileComparisonView.createComparisonQuickPickItems
+     └─ src/commands/hub-profile-comparison-view.ts
+   ErrorHandler.createServiceHandler (static)
+     └─ src/utils/error-handler.ts
+   HubManager.deleteAllHubs
+     └─ src/services/hub-manager.ts
+   FileUtils.deleteDirectory (static)
+     └─ src/utils/file-utils.ts
+   FileUtils.deleteFile (static)
+     └─ src/utils/file-utils.ts
+   NetworkUtils.downloadFile (static)
+     └─ src/utils/network-utils.ts
+   BundleScopeCommands.executeAction
+     └─ src/commands/bundle-scope-commands.ts
+   PromptExecutor.executeWithTemplates
+     └─ src/services/prompt-executor.ts
+   NetworkUtils.extractDomain (static)
+     └─ src/utils/network-utils.ts
+   HubManager.formatBundleAdditionDetail
+     └─ src/services/hub-manager.ts
+   HubManager.formatBundleRemovalDetail
+     └─ src/services/hub-manager.ts
+   HubManager.formatBundleUpdateDetail
+     └─ src/services/hub-manager.ts
+   FileUtils.formatFileSize (static)
+     └─ src/utils/file-utils.ts
+   NetworkUtils.formatSpeed (static)
+     └─ src/utils/network-utils.ts
+   HubProfileComparisonView.generateComparisonSummary
+     └─ src/commands/hub-profile-comparison-view.ts
+   FileIntegrityService.generateIntegrityReport
+     └─ src/services/file-integrity-service.ts
+   RegistryStorage.getActiveProfile
+     └─ src/storage/registry-storage.ts
+   AutoUpdateService.getActiveUpdates
+     └─ src/services/auto-update-service.ts
+   GitHubAdapter.getAuthenticationMethod
+     └─ src/adapters/github-adapter.ts
+   PromptExecutor.getAvailableModels
+     └─ src/services/prompt-executor.ts
+   FileUtils.getBasename (static)
+     └─ src/utils/file-utils.ts
+   UpdateChecker.getCacheAge
+     └─ src/services/update-checker.ts
+   ScopeConflictResolver.getConflictingScopes
+     └─ src/services/scope-conflict-resolver.ts
+   BundleScopeCommands.getContextMenuActions
+     └─ src/commands/bundle-scope-commands.ts
+   FileUtils.getDirname (static)
+     └─ src/utils/file-utils.ts
+   RepositoryActivationService.getExistingInstance (static)
+     └─ src/services/repository-activation-service.ts
+   FileUtils.getExtension (static)
+     └─ src/utils/file-utils.ts
+   FileUtils.getFileSize (static)
+     └─ src/utils/file-utils.ts
+   BundleInstaller.getInstallPath
+     └─ src/services/bundle-installer.ts
+   UpdateScheduler.getLastCheckTime
+     └─ src/services/update-scheduler.ts
+   Logger.getLogLevel
+     └─ src/utils/logger.ts
+   HubProfileComparisonView.getProfileComparisonData
+     └─ src/commands/hub-profile-comparison-view.ts
+   HubSyncCommands.getRegisteredCommands
+     └─ src/commands/hub-sync-commands.ts
+   RepositoryAdapterFactory.getRegisteredTypes (static)
+     └─ src/adapters/repository-adapter.ts
+   NetworkUtils.getRemoteFileSize (static)
+     └─ src/utils/network-utils.ts
+   McpServerManager.getServersForBundle
+     └─ src/services/mcp-server-manager.ts
+   McpServerManager.getServersForBundleInWorkspace
+     └─ src/services/mcp-server-manager.ts
+   RegistryStorage.getSettings
+     └─ src/storage/registry-storage.ts
+   HubProfileComparisonView.getSideBySideComparison
+     └─ src/commands/hub-profile-comparison-view.ts
+   LocalSkillsAdapter.getSkillName
+     └─ src/adapters/local-skills-adapter.ts
+   LocalSkillsAdapter.getSkillSourcePath
+     └─ src/adapters/local-skills-adapter.ts
+   UserScopeService.getSkillsStatus
+     └─ src/services/user-scope-service.ts
+   RepositoryScopeService.getStatus
+     └─ src/services/repository-scope-service.ts
+   UserScopeService.getStatus
+     └─ src/services/user-scope-service.ts
+   IScopeService.getStatus
+     └─ src/services/scope-service.ts
+   HubStorage.getStoragePath
+     └─ src/storage/hub-storage.ts
+   HubIntegrationCommands.getSyncHistory
+     └─ src/commands/hub-integration-commands.ts
+   UserScopeService.getTargetPath
+     └─ src/services/user-scope-service.ts
+   IScopeService.getTargetPath
+     └─ src/services/scope-service.ts
+   TemplateEngine.getTemplates
+     └─ src/services/template-engine.ts
+   HubManager.getTimeSinceLastSync
+     └─ src/services/hub-manager.ts
+   BundleInstaller.getUserScopeService
+     └─ src/services/bundle-installer.ts
+   ApmCliWrapper.getVersion
+     └─ src/services/apm-cli-wrapper.ts
+   CliWrapper.getVersion
+     └─ src/utils/cli-wrapper.ts
+   NetworkUtils.getWithRetry (static)
+     └─ src/utils/network-utils.ts
+   RepositoryActivationService.getWorkspaceRoot
+     └─ src/services/repository-activation-service.ts
+   ErrorHandler.handleCategorized (static)
+     └─ src/utils/error-handler.ts
+   RepositoryAdapterFactory.hasAdapter (static)
+     └─ src/adapters/repository-adapter.ts
+   ScopeConflictResolver.hasConflict
+     └─ src/services/scope-conflict-resolver.ts
+   HubManager.hasHubUpdates
+     └─ src/services/hub-manager.ts
+   Logger.hide
+     └─ src/utils/logger.ts
+   HubStorage.hubExists
+     └─ src/storage/hub-storage.ts
+   BundleInstaller.install
+     └─ src/services/bundle-installer.ts
+   RegistryManager.installBundles
+     └─ src/services/registry-manager.ts
+   RepositoryActivationService.installMissingBundles
+     └─ src/services/repository-activation-service.ts
+   ApmRuntimeManager.isAvailable
+     └─ src/services/apm-runtime-manager.ts
+   PromptExecutor.isAvailable
+     └─ src/services/prompt-executor.ts
+   UpdateChecker.isCacheValid
+     └─ src/services/update-checker.ts
+   FileUtils.isFile (static)
+     └─ src/utils/file-utils.ts
+   MigrationRegistry.isMigrationComplete
+     └─ src/services/migration-registry.ts
+   UpdateScheduler.isSchedulerInitialized
+     └─ src/services/update-scheduler.ts
+   VersionManager.isValidSemver (static)
+     └─ src/utils/version-manager.ts
+   FileUtils.joinPaths (static)
+     └─ src/utils/file-utils.ts
+   ApmCliWrapper.listDeps
+     └─ src/services/apm-cli-wrapper.ts
+   McpServerManager.listInstalledServers
+     └─ src/services/mcp-server-manager.ts
+   MigrationRegistry.markMigrationSkipped
+     └─ src/services/migration-registry.ts
+   McpConfigLocator.mcpConfigExists (static)
+     └─ src/utils/mcp-config-locator.ts
+   RegistryTreeProvider.onUpdatesDetected
+     └─ src/ui/registry-tree-provider.ts
+   McpConfigService.parseServerPrefix
+     └─ src/services/mcp-config-service.ts
+   VersionManager.parseVersion (static)
+     └─ src/utils/version-manager.ts
+   CliWrapper.promptAndInstall
+     └─ src/utils/cli-wrapper.ts
+   FileIntegrityService.quickVerifyFile
+     └─ src/services/file-integrity-service.ts
+   FileUtils.readJson (static)
+     └─ src/utils/file-utils.ts
+   RepositoryScopeService.removeLocalLockfileFromGitExclude
+     └─ src/services/repository-scope-service.ts
+   HubManager.resolveBundleUrl
+     └─ src/services/hub-manager.ts
+   McpConfigService.restoreBackup
+     └─ src/services/mcp-config-service.ts
+   FileUtils.sanitizeFilename (static)
+     └─ src/utils/file-utils.ts
+   PromptLoader.search
+     └─ src/services/prompt-loader.ts
+   PromptLoader.searchByTag
+     └─ src/services/prompt-loader.ts
+   Logger.setLogLevel
+     └─ src/utils/logger.ts
+   ExtensionNotifications.showInfo
+     └─ src/notifications/extension-notifications.ts
+   ExtensionNotifications.showWarning
+     └─ src/notifications/extension-notifications.ts
+   VersionManager.sortVersionsDescending (static)
+     └─ src/utils/version-manager.ts
+   UserScopeService.syncAllBundles
+     └─ src/services/user-scope-service.ts
+   RegistryStorage.updateSettings
+     └─ src/storage/registry-storage.ts
+   CollectionValidator.validateAllCollections
+     └─ src/utils/collection-validator.ts
+   FileUtils.writeJson (static)
+     └─ src/utils/file-utils.ts
+
+── Self-File Only Callers (62) ──
+   Called within same file but never from outside. Review manually.
+
+   Semaphore.acquire  [1 same-file call(s)]
+     └─ src/services/file-integrity-service.ts
+   SkillWizard.addSkillToCollection  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   AutoUpdateService.autoUpdateBundle  [1 same-file call(s)]
+     └─ src/services/auto-update-service.ts
+   FileIntegrityService.calculateFileIntegrity  [1 same-file call(s)]
+     └─ src/services/file-integrity-service.ts
+   RepositoryActivationService.checkAndOfferMissingSources  [1 same-file call(s)]
+     └─ src/services/repository-activation-service.ts
+   ScopeConflictResolver.checkConflict  [1 same-file call(s)]
+     └─ src/services/scope-conflict-resolver.ts
+   LocalModificationWarningService.checkForModifications  [1 same-file call(s)]
+     └─ src/services/local-modification-warning-service.ts
+   RegistryStorage.clearAllCaches  [1 same-file call(s)]
+     └─ src/storage/registry-storage.ts
+   ApmRuntimeManager.clearCache  [1 same-file call(s)]
+     └─ src/services/apm-runtime-manager.ts
+   RegistryStorage.clearSourceCache  [1 same-file call(s)]
+     └─ src/storage/registry-storage.ts
+   McpConfigService.computeServerIdentity  [1 same-file call(s)]
+     └─ src/services/mcp-config-service.ts
+   TemplateEngine.copyTemplate  [1 same-file call(s)]
+     └─ src/services/template-engine.ts
+   ScaffoldCommand.detectMigrationScenario (static)  [1 same-file call(s)]
+     └─ src/commands/scaffold-command.ts
+   FileUtils.ensureDirectory (static)  [1 same-file call(s)]
+     └─ src/utils/file-utils.ts
+   FileIntegrityService.findFiles  [1 same-file call(s)]
+     └─ src/services/file-integrity-service.ts
+   HubProfileComparisonView.formatBundleComparison  [1 same-file call(s)]
+     └─ src/commands/hub-profile-comparison-view.ts
+   SkillWizard.generateSkillContent  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   UserScopeService.getClaudeSkillsDirectory  [1 same-file call(s)]
+     └─ src/services/user-scope-service.ts
+   SkillWizard.getCollectionFiles  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   HubManager.getHub  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   ApmRuntimeManager.getInstallInstructions  [1 same-file call(s)]
+     └─ src/services/apm-runtime-manager.ts
+   ScaffoldCommand.getMigrationRecommendation (static)  [1 same-file call(s)]
+     └─ src/commands/scaffold-command.ts
+   MigrationRegistry.getMigrationState  [1 same-file call(s)]
+     └─ src/services/migration-registry.ts
+   HubManager.getProfilesWithUpdates  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   FileUtils.getStats (static)  [1 same-file call(s)]
+     └─ src/utils/file-utils.ts
+   RepositoryScopeService.getTargetPath  [1 same-file call(s)]
+     └─ src/services/repository-scope-service.ts
+   McpConfigLocator.getUserMcpConfigPath (static)  [1 same-file call(s)]
+     └─ src/utils/mcp-config-locator.ts
+   ErrorHandler.getUserMessage (static)  [1 same-file call(s)]
+     └─ src/utils/error-handler.ts
+   McpConfigLocator.getUserTrackingPath (static)  [1 same-file call(s)]
+     └─ src/utils/mcp-config-locator.ts
+   McpConfigLocator.getWorkspaceMcpConfigPath (static)  [1 same-file call(s)]
+     └─ src/utils/mcp-config-locator.ts
+   McpConfigLocator.getWorkspaceTrackingPath (static)  [1 same-file call(s)]
+     └─ src/utils/mcp-config-locator.ts
+   CliWrapper.installInTerminal  [1 same-file call(s)]
+     └─ src/utils/cli-wrapper.ts
+   CliWrapper.installWithProgress  [1 same-file call(s)]
+     └─ src/utils/cli-wrapper.ts
+   GitHubAdapter.invalidateAuthCache  [1 same-file call(s)]
+     └─ src/adapters/github-adapter.ts
+   CliWrapper.isAvailable  [1 same-file call(s)]
+     └─ src/utils/cli-wrapper.ts
+   RegistryManager.isHubProfile  [1 same-file call(s)]
+     └─ src/services/registry-manager.ts
+   SetupStateManager.isIncomplete  [1 same-file call(s)]
+     └─ src/services/setup-state-manager.ts
+   ApmCliWrapper.isRuntimeAvailable  [1 same-file call(s)]
+     └─ src/services/apm-cli-wrapper.ts
+   AutoUpdateService.isUpdateInProgress  [1 same-file call(s)]
+     └─ src/services/auto-update-service.ts
+   NetworkUtils.isUrlAccessible (static)  [1 same-file call(s)]
+     └─ src/utils/network-utils.ts
+   HubManager.loadHubSources  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   TemplateEngine.loadManifest  [1 same-file call(s)]
+     └─ src/services/template-engine.ts
+   MigrationRegistry.markMigrationComplete  [1 same-file call(s)]
+     └─ src/services/migration-registry.ts
+   HubCommands.registerCommands  [1 same-file call(s)]
+     └─ src/commands/hub-commands.ts
+   Semaphore.release  [1 same-file call(s)]
+     └─ src/services/file-integrity-service.ts
+   HubManager.resolveProfileBundles  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   HubManager.resolveSource  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   SkillWizard.runValidation  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   UpdateScheduler.schedulePeriodicChecks  [1 same-file call(s)]
+     └─ src/services/update-scheduler.ts
+   ScaffoldCommand.showMigrationRecommendation (static)  [1 same-file call(s)]
+     └─ src/commands/scaffold-command.ts
+   LocalModificationWarningService.showWarningDialog  [1 same-file call(s)]
+     └─ src/services/local-modification-warning-service.ts
+   McpConfigService.substituteVariables  [1 same-file call(s)]
+     └─ src/services/mcp-config-service.ts
+   UserScopeService.syncSkill  [1 same-file call(s)]
+     └─ src/services/user-scope-service.ts
+   RegistryManager.uninstallBundles  [1 same-file call(s)]
+     └─ src/services/registry-manager.ts
+   UserScopeService.unsyncSkill  [1 same-file call(s)]
+     └─ src/services/user-scope-service.ts
+   CollectionValidator.validateCollection  [1 same-file call(s)]
+     └─ src/utils/collection-validator.ts
+   SkillWizard.validateDescription  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   HubManager.validateHub  [1 same-file call(s)]
+     └─ src/services/hub-manager.ts
+   ApmCliWrapper.validatePackageRef  [1 same-file call(s)]
+     └─ src/services/apm-cli-wrapper.ts
+   SkillWizard.validateSkillName  [1 same-file call(s)]
+     └─ src/commands/skill-wizard.ts
+   FileIntegrityService.verifyFileIntegrity  [1 same-file call(s)]
+     └─ src/services/file-integrity-service.ts
+   FileUtils.writeFile (static)  [1 same-file call(s)]
+     └─ src/utils/file-utils.ts
+
+── Types Only Used by Dead Methods (8) ──
+
+   ContextMenuAction
+     └─ src/commands/bundle-scope-commands.ts — Only consumed by dead methods
+   ScopeStatus
+     └─ src/services/scope-service.ts — Only consumed by dead methods
+   ChangeQuickPickItem
+     └─ src/types/hub.ts — Only consumed by dead methods
+   FileCategories
+     └─ src/types/integrity-types.ts — Only consumed by dead methods
+   UserDecision
+     └─ src/types/integrity-types.ts — Only consumed by dead methods
+   UninstallationResult
+     └─ src/types/integrity-types.ts — Only consumed by dead methods
+   InstallationResult
+     └─ src/types/integrity-types.ts — Only consumed by dead methods
+   UninstallPreview
+     └─ src/types/integrity-types.ts — Only consumed by dead methods
+
+── Summary: 118 dead, 62 self-only, 8 dead types (188 total findings) ──
+   66 suppressed (61 command handlers detected)
+

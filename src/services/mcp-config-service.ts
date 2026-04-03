@@ -194,17 +194,6 @@ export class McpConfigService {
     return `prompt-registry:${bundleId}:${serverName}`;
   }
 
-  public parseServerPrefix(prefixedName: string): { bundleId: string; serverName: string } | null {
-    const match = prefixedName.match(/^prompt-registry:([^:]+):(.+)$/);
-    if (!match) {
-      return null;
-    }
-    return {
-      bundleId: match[1],
-      serverName: match[2]
-    };
-  }
-
   public substituteVariables(value: string | undefined, context: McpVariableContext): string | undefined {
     if (!value) {
       return value;
@@ -364,26 +353,5 @@ export class McpConfigService {
     }
 
     return removedServers;
-  }
-
-  public async restoreBackup(scope: 'user' | 'workspace'): Promise<boolean> {
-    const location = McpConfigLocator.getMcpConfigLocation(scope);
-    if (!location) {
-      return false;
-    }
-
-    const backupPath = location.configPath + McpConfigService.BACKUP_SUFFIX;
-    if (!await fs.pathExists(backupPath)) {
-      return false;
-    }
-
-    try {
-      await fs.copyFile(backupPath, location.configPath);
-      this.logger.info(`Restored backup from ${backupPath}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`Failed to restore backup`, error as Error);
-      return false;
-    }
   }
 }

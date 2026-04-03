@@ -38,7 +38,6 @@ suite('ApmAdapter', () => {
     ApmRuntimeManager.resetInstance();
     mockRuntime = sandbox.createStubInstance(ApmRuntimeManager);
     mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
-    mockRuntime.isAvailable.resolves(true);
 
     sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
 

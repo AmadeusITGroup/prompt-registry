@@ -114,28 +114,6 @@ export abstract class CliWrapper {
   }
 
   /**
-   * Get the CLI tool version
-   */
-  public async getVersion(): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
-      let output = '';
-
-      proc.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        resolve(code === 0 ? output.trim() : undefined);
-      });
-
-      proc.on('error', () => {
-        resolve(undefined);
-      });
-    });
-  }
-
-  /**
    * Install dependencies with progress notification
    * @param cwd
    */
@@ -264,32 +242,5 @@ export abstract class CliWrapper {
       vscode.window.showErrorMessage(`Failed to run ${cmdName} install: ${errorMessage}`);
       return { success: false, error: errorMessage };
     }
-  }
-
-  /**
-   * Prompt user and install dependencies
-   * @param cwd
-   * @param useProgress
-   */
-  public async promptAndInstall(cwd: string, useProgress = true): Promise<CliInstallResult> {
-    const cmdName = this.getCommandName();
-
-    const choice = await vscode.window.showInformationMessage(
-      'Scaffolding complete! Would you like to install dependencies now?',
-      `Yes, run ${cmdName} install`,
-      'No, I\'ll do it later'
-    );
-
-    if (choice !== `Yes, run ${cmdName} install`) {
-      vscode.window.showInformationMessage(
-        `To install dependencies later, run: ${cmdName} install`,
-        'OK'
-      );
-      return { success: true };
-    }
-
-    return useProgress
-      ? await this.installWithProgress(cwd)
-      : await this.installInTerminal(cwd);
   }
 }

@@ -69,26 +69,6 @@ export interface SkillItem {
 }
 
 /**
- * Skills repository metadata
- */
-export interface SkillsRepositoryInfo {
-  /** Repository name */
-  name: string;
-
-  /** Repository description */
-  description?: string;
-
-  /** Number of skills found */
-  skillCount: number;
-
-  /** Last updated timestamp */
-  lastUpdated?: string;
-
-  /** Repository URL */
-  url: string;
-}
-
-/**
  * GitHub directory content item (for API responses)
  */
 export interface GitHubContentItem {

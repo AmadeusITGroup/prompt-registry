@@ -146,24 +146,6 @@ export class ErrorHandler {
   }
 
   /**
-   * Handle an error with automatic categorization and user-friendly messages
-   * @param error
-   * @param options
-   */
-  public static async handleCategorized(error: unknown, options: ErrorHandlingOptions): Promise<void> {
-    const errorObj = toError(error);
-    const category = this.categorize(errorObj);
-
-    // Use categorized user message
-    const enhancedOptions = {
-      ...options,
-      userMessagePrefix: options.userMessagePrefix || this.getUserMessage(errorObj, category)
-    };
-
-    return this.handle(error, enhancedOptions);
-  }
-
-  /**
    * Check if error is network-related
    * @param message
    */
@@ -250,39 +232,6 @@ export class ErrorHandler {
       await this.handle(error, options);
       return options.fallbackValue;
     }
-  }
-
-  /**
-   * Create a standardized error handler for a specific service
-   * @param serviceName
-   */
-  public static createServiceHandler(serviceName: string) {
-    return {
-      handle: async (error: unknown, operation: string, context?: Record<string, any>): Promise<void> => {
-        await ErrorHandler.handle(error, {
-          operation: `${serviceName}.${operation}`,
-          context,
-          logLevel: 'error'
-        });
-      },
-
-      handleWithUserMessage: async (error: unknown, operation: string, context?: Record<string, any>): Promise<void> => {
-        await ErrorHandler.handle(error, {
-          operation: `${serviceName}.${operation}`,
-          context,
-          showUserMessage: true,
-          logLevel: 'error'
-        });
-      },
-
-      wrap: async <T>(operation: () => Promise<T>, operationName: string, context?: Record<string, any>): Promise<T | undefined> => {
-        return await ErrorHandler.withErrorHandling(operation, {
-          operation: `${serviceName}.${operationName}`,
-          context,
-          logLevel: 'error'
-        });
-      }
-    };
   }
 }
 

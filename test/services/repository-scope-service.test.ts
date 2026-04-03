@@ -210,85 +210,10 @@ suite('RepositoryScopeService', () => {
     test('should have IScopeService methods', () => {
       assert.ok(typeof service.syncBundle === 'function', 'Should have syncBundle method');
       assert.ok(typeof service.unsyncBundle === 'function', 'Should have unsyncBundle method');
-      assert.ok(typeof service.getTargetPath === 'function', 'Should have getTargetPath method');
-      assert.ok(typeof service.getStatus === 'function', 'Should have getStatus method');
     });
 
     test('should have switchCommitMode method', () => {
       assert.ok(typeof service.switchCommitMode === 'function', 'Should have switchCommitMode method');
-    });
-  });
-
-  suite('getTargetPath', () => {
-    test('should return correct path for prompt type', () => {
-      const targetPath = service.getTargetPath('prompt', 'my-prompt');
-      assert.ok(targetPath.includes('.github/prompts/'), 'Should include .github/prompts/');
-      assert.ok(targetPath.endsWith('my-prompt.prompt.md'), 'Should end with correct filename');
-    });
-
-    test('should return correct path for instructions type', () => {
-      const targetPath = service.getTargetPath('instructions', 'coding-standards');
-      assert.ok(targetPath.includes('.github/instructions/'), 'Should include .github/instructions/');
-      assert.ok(targetPath.endsWith('coding-standards.instructions.md'), 'Should end with correct filename');
-    });
-
-    test('should return correct path for agent type', () => {
-      const targetPath = service.getTargetPath('agent', 'code-reviewer');
-      assert.ok(targetPath.includes('.github/agents/'), 'Should include .github/agents/');
-      assert.ok(targetPath.endsWith('code-reviewer.agent.md'), 'Should end with correct filename');
-    });
-
-    test('should return correct path for skill type', () => {
-      const targetPath = service.getTargetPath('skill', 'my-skill');
-      assert.ok(targetPath.includes('.github/skills/'), 'Should include .github/skills/');
-    });
-
-    test('should return correct path for chatmode type', () => {
-      const targetPath = service.getTargetPath('chatmode', 'expert-mode');
-      assert.ok(targetPath.includes('.github/prompts/'), 'Chatmodes should go to prompts directory');
-      assert.ok(targetPath.endsWith('expert-mode.chatmode.md'), 'Should end with correct filename');
-    });
-
-    test('should return absolute path within workspace', () => {
-      const targetPath = service.getTargetPath('prompt', 'test');
-      assert.ok(path.isAbsolute(targetPath), 'Should return absolute path');
-      assert.ok(targetPath.startsWith(workspaceRoot), 'Should be within workspace root');
-    });
-  });
-
-  suite('getStatus', () => {
-    test('should return status with baseDirectory', async () => {
-      const status = await service.getStatus();
-      assert.ok(status.baseDirectory, 'Should have baseDirectory');
-      assert.ok(status.baseDirectory.includes('.github'), 'baseDirectory should include .github');
-    });
-
-    test('should report dirExists as false when .github does not exist', async () => {
-      const status = await service.getStatus();
-      assert.strictEqual(status.dirExists, false, 'dirExists should be false');
-    });
-
-    test('should report dirExists as true when .github exists', async () => {
-      fs.mkdirSync(path.join(workspaceRoot, '.github'), { recursive: true });
-      const status = await service.getStatus();
-      assert.strictEqual(status.dirExists, true, 'dirExists should be true');
-    });
-
-    test('should count synced files', async () => {
-      // Create .github/prompts with a file
-      const promptsDir = path.join(workspaceRoot, '.github', 'prompts');
-      fs.mkdirSync(promptsDir, { recursive: true });
-      fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
-
-      const status = await service.getStatus();
-      assert.strictEqual(status.syncedFiles, 1, 'Should count synced files');
-      assert.ok(status.files.includes('test.prompt.md'), 'Should list synced files');
-    });
-
-    test('should return empty files array when no files synced', async () => {
-      const status = await service.getStatus();
-      assert.deepStrictEqual(status.files, [], 'Should return empty files array');
-      assert.strictEqual(status.syncedFiles, 0, 'Should have zero synced files');
     });
   });
 

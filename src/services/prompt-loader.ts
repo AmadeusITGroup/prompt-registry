@@ -175,36 +175,4 @@ export class PromptLoader {
       return null;
     }
   }
-
-  /**
-   * Clear prompt cache (call when bundles are installed/uninstalled)
-   */
-  public clearCache(): void {
-    this.promptCache.clear();
-    this.logger.debug('Prompt cache cleared');
-  }
-
-  /**
-   * Search prompts by tag
-   * @param tag
-   */
-  public async searchByTag(tag: string): Promise<PromptInfo[]> {
-    const allPrompts = await this.getAvailablePrompts();
-    return allPrompts.filter((p) => p.tags.includes(tag));
-  }
-
-  /**
-   * Search prompts by keyword in name or description
-   * @param keyword
-   */
-  public async search(keyword: string): Promise<PromptInfo[]> {
-    const allPrompts = await this.getAvailablePrompts();
-    const lowerKeyword = keyword.toLowerCase();
-
-    return allPrompts.filter((p) =>
-      p.name.toLowerCase().includes(lowerKeyword)
-      || p.description.toLowerCase().includes(lowerKeyword)
-      || p.id.toLowerCase().includes(lowerKeyword)
-    );
-  }
 }

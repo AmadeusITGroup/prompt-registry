@@ -39,7 +39,6 @@ import {
 } from './lockfile-manager';
 import {
   IScopeService,
-  ScopeStatus,
   SyncBundleOptions,
 } from './scope-service';
 
@@ -55,11 +54,6 @@ const rm = promisify(fs.rm);
  * Section header for Prompt Registry entries in .git/info/exclude
  */
 const GIT_EXCLUDE_SECTION_HEADER = '# Prompt Registry (local)';
-
-/**
- * Name of the local lockfile that tracks local-only bundles
- */
-const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
 
 /**
  * Directories in .github/ that are managed by Prompt Registry.
@@ -879,46 +873,6 @@ export class RepositoryScopeService implements IScopeService {
   }
 
   /**
-   * Get the current status of the scope service.
-   * Implements IScopeService.getStatus
-   */
-  public async getStatus(): Promise<ScopeStatus> {
-    const githubDir = this.getGitHubDirectory();
-    const status: ScopeStatus = {
-      baseDirectory: githubDir,
-      dirExists: fs.existsSync(githubDir),
-      syncedFiles: 0,
-      files: []
-    };
-
-    if (!status.dirExists) {
-      return status;
-    }
-
-    // Scan all .github subdirectories for files
-    for (const subdir of PROMPT_REGISTRY_MANAGED_DIRS) {
-      const subdirPath = path.join(githubDir, subdir);
-      if (fs.existsSync(subdirPath)) {
-        try {
-          const files = await readdir(subdirPath);
-          for (const file of files) {
-            const filePath = path.join(subdirPath, file);
-            const fileStat = await stat(filePath);
-            if (fileStat.isFile()) {
-              status.syncedFiles++;
-              status.files.push(file);
-            }
-          }
-        } catch {
-          this.logger.debug(`[RepositoryScopeService] Could not read directory: ${subdirPath}`);
-        }
-      }
-    }
-
-    return status;
-  }
-
-  /**
    * Switch the commit mode for a bundle
    * @param bundleId - Bundle identifier
    * @param newMode - New commit mode
@@ -984,38 +938,5 @@ export class RepositoryScopeService implements IScopeService {
     } catch (error) {
       this.logger.error(`[RepositoryScopeService] Failed to switch commit mode for ${bundleId}`, error as Error);
     }
-  }
-
-  /**
-   * Add the local lockfile to .git/info/exclude.
-   * This ensures the local lockfile is not tracked by Git.
-   *
-   * Handles edge cases:
-   * - Missing .git directory: skips without error
-   * - Missing .git/info/exclude file: creates it
-   * - Duplicate entries: prevents adding if already present
-   * @see Requirements 2.1, 2.3, 2.4, 2.5
-   */
-  public async addLocalLockfileToGitExclude(): Promise<void> {
-    if (!this.hasGitDirectory()) {
-      this.logger.debug('[RepositoryScopeService] No .git directory, skipping git exclude');
-      return;
-    }
-    await this.addToGitExclude([LOCAL_LOCKFILE_NAME]);
-  }
-
-  /**
-   * Remove the local lockfile from .git/info/exclude.
-   * Called when the local lockfile is deleted (last local-only bundle removed).
-   *
-   * Handles edge cases:
-   * - Missing .git directory: skips without error
-   * @see Requirements 2.2, 2.3
-   */
-  public async removeLocalLockfileFromGitExclude(): Promise<void> {
-    if (!this.hasGitDirectory()) {
-      return;
-    }
-    await this.removeFromGitExclude([LOCAL_LOCKFILE_NAME]);
   }
 }

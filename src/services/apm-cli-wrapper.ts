@@ -171,18 +171,6 @@ export class ApmCliWrapper {
   }
 
   /**
-   * Get APM version
-   */
-  public async getVersion(): Promise<string | undefined> {
-    try {
-      const status = await this.runtime.getStatus();
-      return status.installed ? status.version : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
    * Validate a package reference
    * Security: Prevents command injection through malicious package names
    * @param ref Package reference (e.g., "owner/repo" or "owner/repo/path")
@@ -291,53 +279,6 @@ dependencies:
         success: false,
         error: `Failed to install package: ${(error as Error).message}`
       };
-    }
-  }
-
-  /**
-   * List installed dependencies
-   * @param projectDir
-   */
-  public async listDeps(projectDir: string): Promise<{ packages: string[] }> {
-    if (!this.validateTargetPath(projectDir)) {
-      return { packages: [] };
-    }
-
-    try {
-      const available = await this.isRuntimeAvailable();
-      if (!available) {
-        return { packages: [] };
-      }
-
-      const { stdout } = await this.executeCommand(['deps', 'list'], projectDir);
-
-      // Parse output (simple line-based for now)
-      const packages = stdout.trim().split('\n').filter((line) => line.trim());
-      return { packages };
-    } catch {
-      return { packages: [] };
-    }
-  }
-
-  /**
-   * Compile AGENTS.md
-   * @param projectDir
-   */
-  public async compile(projectDir: string): Promise<boolean> {
-    if (!this.validateTargetPath(projectDir)) {
-      return false;
-    }
-
-    try {
-      const available = await this.isRuntimeAvailable();
-      if (!available) {
-        return false;
-      }
-
-      await this.executeCommand(['compile'], projectDir);
-      return true;
-    } catch {
-      return false;
     }
   }
 }
