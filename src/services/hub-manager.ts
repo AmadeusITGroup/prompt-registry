@@ -53,6 +53,17 @@ import {
 const execAsync = promisify(exec);
 
 /**
+ * Summary of hub source loading results
+ */
+export interface HubSourceLoadSummary {
+  addedCount: number;
+  updatedCount: number;
+  failedCount: number;
+  disabledCount: number;
+  duplicateCount: number;
+}
+
+/**
  * Resolved bundle with its download URL
  */
 export interface ResolvedBundle {
@@ -108,6 +119,18 @@ export class HubManager {
 
   private authToken: string | undefined;
   private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
+  private _lastSourceLoadSummary: HubSourceLoadSummary | undefined;
+
+  /**
+   * Clear cached authentication state so that the next call to
+   * getAuthenticationToken() performs a fresh authentication attempt.
+   * Used when re-triggering setup after a user previously declined auth.
+   */
+  public clearAuthCache(): void {
+    this.authToken = undefined;
+    this.authMethod = 'none';
+    this.logger.info('[HubManager] Authentication cache cleared');
+  }
 
   /**
    * Initialize HubManager
@@ -115,10 +138,17 @@ export class HubManager {
    * @param validator SchemaValidator instance for validation
    * @param extensionPath Path to the extension directory
    */
-  public readonly onHubImported = this._onHubImported.event;
-  public readonly onHubDeleted = this._onHubDeleted.event;
-  public readonly onHubSynced = this._onHubSynced.event;
-  public readonly onFavoritesChanged = this._onFavoritesChanged.event;
+  readonly onHubImported = this._onHubImported.event;
+  readonly onHubDeleted = this._onHubDeleted.event;
+  readonly onHubSynced = this._onHubSynced.event;
+  readonly onFavoritesChanged = this._onFavoritesChanged.event;
+
+  /**
+   * Get the summary from the most recent loadHubSources call.
+   */
+  get lastSourceLoadSummary(): HubSourceLoadSummary | undefined {
+    return this._lastSourceLoadSummary;
+  }
 
   constructor(
     storage: HubStorage,
@@ -141,6 +171,158 @@ export class HubManager {
     this.validator = validator;
     this.hubSchemaPath = path.join(extensionPath, 'schemas', 'hub-config.schema.json');
     this.logger = Logger.getInstance();
+  }
+
+  /**
+   * Import hub from remote or local source
+   * @param reference Hub reference (GitHub, URL, or local path)
+   * @param hubId Optional hub identifier (auto-generated if not provided)
+   * @returns Hub identifier
+   */
+  async importHub(reference: HubReference, hubId?: string): Promise<string> {
+    // Validate reference
+    const refValidation = await this.validateReference(reference);
+    if (!refValidation.valid) {
+      throw new Error(`Invalid reference: ${refValidation.errors.join(', ')}`);
+    }
+
+    // Fetch hub config from source
+    const config = await this.fetchHubConfig(reference);
+
+    // Validate hub config
+    const validation = await this.validateHub(config);
+    if (!validation.valid) {
+      this.logger.error('Hub validation failed:', undefined, {
+        errors: validation.errors,
+        warnings: validation.warnings
+      });
+      throw new Error(`Hub validation failed: Validation error: ${validation.errors.join(', ')}`);
+    }
+
+    // Generate hub ID if not provided
+    if (!hubId) {
+      hubId = this.generateHubId(config);
+    }
+
+    // Validate hub ID
+    try {
+      sanitizeHubId(hubId);
+    } catch (error) {
+      throw new Error(`Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Save to storage first
+    await this.storage.saveHub(hubId, config, reference);
+
+    // Load hub sources into RegistryManager
+    if (this.registryManager) {
+      this._lastSourceLoadSummary = await this.loadHubSources(hubId);
+    }
+
+    this._onHubImported.fire(hubId);
+
+    return hubId;
+  }
+
+  /**
+   * Load hub from storage
+   * @param hubId Hub identifier
+   * @returns Loaded hub configuration and reference
+   */
+  async loadHub(hubId: string): Promise<LoadHubResult> {
+    const result = await this.storage.loadHub(hubId);
+
+    // Validate loaded config
+    const validation = await this.validateHub(result.config);
+    if (!validation.valid) {
+      this.logger.error('Hub validation failed on load:', undefined, {
+        hubId,
+        errors: validation.errors,
+        warnings: validation.warnings
+      });
+      throw new Error(`Hub validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate hub configuration
+   * @param config Hub configuration to validate
+   * @returns Validation result
+   */
+  async validateHub(config: HubConfig): Promise<ValidationResult> {
+    // Schema validation
+    const schemaResult = await this.validator.validate(config, this.hubSchemaPath);
+    if (!schemaResult.valid) {
+      return schemaResult;
+    }
+
+    // Runtime validation
+    const runtimeResult = validateHubConfig(config);
+    if (!runtimeResult.valid) {
+      return {
+        valid: false,
+        errors: runtimeResult.errors,
+        warnings: []
+      };
+    }
+
+    return {
+      valid: true,
+      errors: [],
+      warnings: []
+    };
+  }
+
+  /**
+   * List all imported hubs
+   * @returns Array of hub list items
+   */
+  async listHubs(): Promise<HubListItem[]> {
+    const hubIds = await this.storage.listHubs();
+    const hubs: HubListItem[] = [];
+
+    for (const id of hubIds) {
+      try {
+        const result = await this.storage.loadHub(id);
+        hubs.push({
+          id,
+          name: result.config.metadata.name,
+          description: result.config.metadata.description,
+          reference: result.reference
+        });
+      } catch (error) {
+        // Skip hubs that fail to load
+        console.error(`Failed to load hub ${id}:`, error);
+      }
+    }
+
+    return hubs;
+  }
+
+  /**
+   * Delete hub from storage
+   * @param hubId Hub identifier to delete
+   */
+  async deleteHub(hubId: string): Promise<void> {
+    // Cleanup resources linked to this hub before deleting
+    await this.cleanupHubResources(hubId);
+
+    await this.storage.deleteHub(hubId);
+    this._onHubDeleted.fire(hubId);
+  }
+
+  async deleteAllHubs(): Promise<void> {
+    const hubIds = await this.storage.listHubs();
+    for (const hubId of hubIds) {
+      try {
+        await this.deleteHub(hubId);
+      } catch (error) {
+        this.logger.warn(`Failed to delete hub ${hubId} during cleanup`, error as Error);
+      }
+    }
+    await this.storage.setActiveHubId(null);
   }
 
   /**
@@ -190,6 +372,56 @@ export class HubManager {
   }
 
   /**
+   * Sync hub from remote source
+   * @param hubId Hub identifier to sync
+   */
+  async syncHub(hubId: string): Promise<void> {
+    // Load existing hub to get reference
+    const existing = await this.storage.loadHub(hubId);
+
+    // Fetch latest config from source
+    const config = await this.fetchHubConfig(existing.reference);
+
+    // Validate updated config
+    const validation = await this.validateHub(config);
+    if (!validation.valid) {
+      throw new Error(`Hub validation failed after sync: ${validation.errors.join(', ')}`);
+    }
+
+    // Update storage
+    await this.storage.saveHub(hubId, config, existing.reference);
+
+    // Reload hub sources into RegistryManager
+    if (this.registryManager) {
+      await this.loadHubSources(hubId);
+    }
+
+    this._onHubSynced.fire(hubId);
+  }
+
+  /**
+   * Get detailed hub information
+   * @param hubId Hub identifier
+   * @returns Hub information
+   */
+  async getHubInfo(hubId: string): Promise<HubInfo> {
+    const result = await this.storage.loadHub(hubId);
+    const metadata = await this.storage.getHubMetadata(hubId);
+
+    return {
+      id: hubId,
+      config: result.config,
+      reference: result.reference,
+      metadata: {
+        name: result.config.metadata.name,
+        description: result.config.metadata.description,
+        lastModified: metadata.lastModified,
+        size: metadata.size
+      }
+    };
+  }
+
+  /**
    * Validate hub reference
    * @param reference Hub reference to validate
    * @returns Validation result
@@ -226,7 +458,6 @@ export class HubManager {
         break;
       }
       default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         errors.push(`Unsupported reference type: ${reference.type}`);
       }
     }
@@ -255,9 +486,34 @@ export class HubManager {
         return this.fetchFromGitHub(reference.location, reference.ref);
       }
       default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         throw new Error(`Unsupported reference type: ${reference.type}`);
       }
+    }
+  }
+
+  /**
+   * Verify if a hub is accessible without importing it
+   * Used to validate default hubs before offering them in the first-run selector
+   * @param reference Hub reference to verify
+   * @returns true if hub is accessible, false otherwise
+   */
+  async verifyHubAvailability(reference: HubReference): Promise<boolean> {
+    try {
+      // Validate reference format
+      const refValidation = await this.validateReference(reference);
+      if (!refValidation.valid) {
+        this.logger.debug(`Hub verification failed: invalid reference - ${refValidation.errors.join(', ')}`);
+        return false;
+      }
+
+      // Try to fetch the hub config
+      await this.fetchHubConfig(reference);
+
+      this.logger.debug(`Hub verification successful: ${reference.type}:${reference.location}`);
+      return true;
+    } catch (error) {
+      this.logger.debug(`Hub verification failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
     }
   }
 
@@ -445,6 +701,131 @@ export class HubManager {
   }
 
   /**
+   * List all profiles from a specific hub
+   * @param hubId Hub identifier
+   * @returns Array of profiles from the hub
+   */
+  async listProfilesFromHub(hubId: string): Promise<HubProfile[]> {
+    const hub = await this.storage.loadHub(hubId);
+    if (!hub) {
+      throw new Error(`Hub not found: ${hubId}`);
+    }
+
+    const profiles = hub.config.profiles || [];
+
+    // Enrich with activation state
+    try {
+      const activeState = await this.storage.getActiveProfileForHub(hubId);
+      if (activeState) {
+        return profiles.map((profile) => ({
+          ...profile,
+          active: activeState.profileId === profile.id
+        }));
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error as Error);
+    }
+
+    return profiles;
+  }
+
+  /**
+   * Get a specific profile from a hub
+   * @param hubId Hub identifier
+   * @param profileId Profile identifier
+   * @returns The requested profile
+   */
+  async getHubProfile(hubId: string, profileId: string): Promise<HubProfile> {
+    const profiles = await this.listProfilesFromHub(hubId);
+    this.logger.info(`Found ${profiles.length} profiles in hub ${hubId}`);
+
+    const profile = profiles.find((p) => p.id === profileId);
+
+    if (!profile) {
+      this.logger.error(`Profile ${profileId} not found in hub ${hubId}. Available: ${profiles.map((p) => p.id).join(', ')}`);
+      throw new Error(`Profile not found: ${profileId} in hub ${hubId}`);
+    }
+
+    this.logger.info(`Found profile ${profileId}: ${profile.name}`);
+    this.logger.info(`Profile bundles: ${JSON.stringify(profile.bundles?.map((b) => ({ id: b.id, version: b.version })) || [])}`);
+
+    return profile;
+  }
+
+  /**
+   * List all profiles from all imported hubs
+   * @returns Array of profiles with hub information
+   */
+  async listAllHubProfiles(): Promise<HubProfileWithMetadata[]> {
+    const hubs = await this.listHubs();
+    const allProfiles: HubProfileWithMetadata[] = [];
+
+    for (const hubItem of hubs) {
+      const profiles = await this.listProfilesFromHub(hubItem.id);
+      for (const profile of profiles) {
+        allProfiles.push({
+          ...profile,
+          hubId: hubItem.id,
+          hubName: hubItem.name
+        });
+      }
+    }
+
+    return allProfiles;
+  }
+
+  /**
+   * Get the currently active hub
+   * @returns Active hub ID, config and reference, or null if no hub is active
+   */
+  async getActiveHub(): Promise<LoadHubResult | null> {
+    const activeHubId = await this.storage.getActiveHubId();
+
+    if (!activeHubId) {
+      return null;
+    }
+
+    try {
+      return await this.storage.loadHub(activeHubId);
+    } catch {
+      // If active hub was deleted, clear the activeHubId
+      await this.storage.setActiveHubId(null);
+      return null;
+    }
+  }
+
+  /**
+   * Set the currently active hub
+   * @param hubId Hub identifier to set as active
+   */
+  async setActiveHub(hubId: string | null): Promise<void> {
+    // Get current active hub to check if we're switching
+    const currentActiveHubId = await this.storage.getActiveHubId();
+
+    // Cleanup previous hub if switching to a different one
+    if (currentActiveHubId && currentActiveHubId !== hubId) {
+      await this.cleanupHubResources(currentActiveHubId);
+    }
+
+    if (hubId !== null) {
+      // Verify hub exists when setting (not clearing)
+      const hub = await this.getHub(hubId);
+      if (!hub) {
+        throw new Error(`Hub not found: ${hubId}`);
+      }
+
+      // Load hub sources into RegistryManager when activating
+      if (this.registryManager) {
+        await this.loadHubSources(hubId);
+      }
+    }
+
+    // Set or clear active hub
+    await this.storage.setActiveHubId(hubId);
+    this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
+  }
+
+  /**
    * Check if a source is a duplicate based on URL and config
    * Compares URL, type, branch, and collectionsPath to determine if sources are identical
    * @param source Source to check
@@ -485,369 +866,6 @@ export class HubManager {
   }
 
   /**
-   * Clear cached authentication state so that the next call to
-   * getAuthenticationToken() performs a fresh authentication attempt.
-   * Used when re-triggering setup after a user previously declined auth.
-   */
-  public clearAuthCache(): void {
-    this.authToken = undefined;
-    this.authMethod = 'none';
-    this.logger.info('[HubManager] Authentication cache cleared');
-  }
-
-  /**
-   * Import hub from remote or local source
-   * @param reference Hub reference (GitHub, URL, or local path)
-   * @param hubId Optional hub identifier (auto-generated if not provided)
-   * @returns Hub identifier
-   */
-  public async importHub(reference: HubReference, hubId?: string): Promise<string> {
-    // Validate reference
-    const refValidation = await this.validateReference(reference);
-    if (!refValidation.valid) {
-      throw new Error(`Invalid reference: ${refValidation.errors.join(', ')}`);
-    }
-
-    // Fetch hub config from source
-    const config = await this.fetchHubConfig(reference);
-
-    // Validate hub config
-    const validation = await this.validateHub(config);
-    if (!validation.valid) {
-      this.logger.error('Hub validation failed:', undefined, {
-        errors: validation.errors,
-        warnings: validation.warnings
-      });
-      throw new Error(`Hub validation failed: Validation error: ${validation.errors.join(', ')}`);
-    }
-
-    // Generate hub ID if not provided
-    if (!hubId) {
-      hubId = this.generateHubId(config);
-    }
-
-    // Validate hub ID
-    try {
-      sanitizeHubId(hubId);
-    } catch (error) {
-      throw new Error(`Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    // Save to storage first
-    await this.storage.saveHub(hubId, config, reference);
-
-    // Load hub sources into RegistryManager
-    if (this.registryManager) {
-      await this.loadHubSources(hubId);
-    }
-
-    this._onHubImported.fire(hubId);
-
-    return hubId;
-  }
-
-  /**
-   * Load hub from storage
-   * @param hubId Hub identifier
-   * @returns Loaded hub configuration and reference
-   */
-  public async loadHub(hubId: string): Promise<LoadHubResult> {
-    const result = await this.storage.loadHub(hubId);
-
-    // Validate loaded config
-    const validation = await this.validateHub(result.config);
-    if (!validation.valid) {
-      this.logger.error('Hub validation failed on load:', undefined, {
-        hubId,
-        errors: validation.errors,
-        warnings: validation.warnings
-      });
-      throw new Error(`Hub validation failed: ${validation.errors.join(', ')}`);
-    }
-
-    return result;
-  }
-
-  /**
-   * Validate hub configuration
-   * @param config Hub configuration to validate
-   * @returns Validation result
-   */
-  public async validateHub(config: HubConfig): Promise<ValidationResult> {
-    // Schema validation
-    const schemaResult = await this.validator.validate(config, this.hubSchemaPath);
-    if (!schemaResult.valid) {
-      return schemaResult;
-    }
-
-    // Runtime validation
-    const runtimeResult = validateHubConfig(config);
-    if (!runtimeResult.valid) {
-      return {
-        valid: false,
-        errors: runtimeResult.errors,
-        warnings: []
-      };
-    }
-
-    return {
-      valid: true,
-      errors: [],
-      warnings: []
-    };
-  }
-
-  /**
-   * List all imported hubs
-   * @returns Array of hub list items
-   */
-  public async listHubs(): Promise<HubListItem[]> {
-    const hubIds = await this.storage.listHubs();
-    const hubs: HubListItem[] = [];
-
-    for (const id of hubIds) {
-      try {
-        const result = await this.storage.loadHub(id);
-        hubs.push({
-          id,
-          name: result.config.metadata.name,
-          description: result.config.metadata.description,
-          reference: result.reference
-        });
-      } catch (error) {
-        // Skip hubs that fail to load
-        console.error(`Failed to load hub ${id}:`, error);
-      }
-    }
-
-    return hubs;
-  }
-
-  /**
-   * Delete hub from storage
-   * @param hubId Hub identifier to delete
-   */
-  public async deleteHub(hubId: string): Promise<void> {
-    // Cleanup resources linked to this hub before deleting
-    await this.cleanupHubResources(hubId);
-
-    await this.storage.deleteHub(hubId);
-    this._onHubDeleted.fire(hubId);
-  }
-
-  public async deleteAllHubs(): Promise<void> {
-    const hubIds = await this.storage.listHubs();
-    await Promise.allSettled(hubIds.map(async (hubId) => {
-      try {
-        await this.deleteHub(hubId);
-      } catch (error) {
-        this.logger.warn(`Failed to delete hub ${hubId} during cleanup`, error as Error);
-      }
-    }));
-  }
-
-  /**
-   * Sync hub from remote source
-   * @param hubId Hub identifier to sync
-   */
-  public async syncHub(hubId: string): Promise<void> {
-    // Load existing hub to get reference
-    const existing = await this.storage.loadHub(hubId);
-
-    // Fetch latest config from source
-    const config = await this.fetchHubConfig(existing.reference);
-
-    // Validate updated config
-    const validation = await this.validateHub(config);
-    if (!validation.valid) {
-      throw new Error(`Hub validation failed after sync: ${validation.errors.join(', ')}`);
-    }
-
-    // Update storage
-    await this.storage.saveHub(hubId, config, existing.reference);
-
-    // Reload hub sources into RegistryManager
-    if (this.registryManager) {
-      await this.loadHubSources(hubId);
-    }
-
-    this._onHubSynced.fire(hubId);
-  }
-
-  /**
-   * Get detailed hub information
-   * @param hubId Hub identifier
-   * @returns Hub information
-   */
-  public async getHubInfo(hubId: string): Promise<HubInfo> {
-    const result = await this.storage.loadHub(hubId);
-    const metadata = await this.storage.getHubMetadata(hubId);
-
-    return {
-      id: hubId,
-      config: result.config,
-      reference: result.reference,
-      metadata: {
-        name: result.config.metadata.name,
-        description: result.config.metadata.description,
-        lastModified: metadata.lastModified,
-        size: metadata.size
-      }
-    };
-  }
-
-  /**
-   * Verify if a hub is accessible without importing it
-   * Used to validate default hubs before offering them in the first-run selector
-   * @param reference Hub reference to verify
-   * @returns true if hub is accessible, false otherwise
-   */
-  public async verifyHubAvailability(reference: HubReference): Promise<boolean> {
-    try {
-      // Validate reference format
-      const refValidation = await this.validateReference(reference);
-      if (!refValidation.valid) {
-        this.logger.debug(`Hub verification failed: invalid reference - ${refValidation.errors.join(', ')}`);
-        return false;
-      }
-
-      // Try to fetch the hub config
-      await this.fetchHubConfig(reference);
-
-      this.logger.debug(`Hub verification successful: ${reference.type}:${reference.location}`);
-      return true;
-    } catch (error) {
-      this.logger.debug(`Hub verification failed: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
-    }
-  }
-
-  /**
-   * List all profiles from a specific hub
-   * @param hubId Hub identifier
-   * @returns Array of profiles from the hub
-   */
-  public async listProfilesFromHub(hubId: string): Promise<HubProfile[]> {
-    const hub = await this.storage.loadHub(hubId);
-    if (!hub) {
-      throw new Error(`Hub not found: ${hubId}`);
-    }
-
-    const profiles = hub.config.profiles || [];
-
-    // Enrich with activation state
-    try {
-      const activeState = await this.storage.getActiveProfileForHub(hubId);
-      if (activeState) {
-        return profiles.map((profile) => ({
-          ...profile,
-          active: activeState.profileId === profile.id
-        }));
-      }
-    } catch (error) {
-      this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error as Error);
-    }
-
-    return profiles;
-  }
-
-  /**
-   * Get a specific profile from a hub
-   * @param hubId Hub identifier
-   * @param profileId Profile identifier
-   * @returns The requested profile
-   */
-  public async getHubProfile(hubId: string, profileId: string): Promise<HubProfile> {
-    const profiles = await this.listProfilesFromHub(hubId);
-    this.logger.info(`Found ${profiles.length} profiles in hub ${hubId}`);
-
-    const profile = profiles.find((p) => p.id === profileId);
-
-    if (!profile) {
-      this.logger.error(`Profile ${profileId} not found in hub ${hubId}. Available: ${profiles.map((p) => p.id).join(', ')}`);
-      throw new Error(`Profile not found: ${profileId} in hub ${hubId}`);
-    }
-
-    this.logger.info(`Found profile ${profileId}: ${profile.name}`);
-    this.logger.info(`Profile bundles: ${JSON.stringify(profile.bundles?.map((b) => ({ id: b.id, version: b.version })) || [])}`);
-
-    return profile;
-  }
-
-  /**
-   * List all profiles from all imported hubs
-   * @returns Array of profiles with hub information
-   */
-  public async listAllHubProfiles(): Promise<HubProfileWithMetadata[]> {
-    const hubs = await this.listHubs();
-    const allProfiles: HubProfileWithMetadata[] = [];
-
-    for (const hubItem of hubs) {
-      const profiles = await this.listProfilesFromHub(hubItem.id);
-      for (const profile of profiles) {
-        allProfiles.push({
-          ...profile,
-          hubId: hubItem.id,
-          hubName: hubItem.name
-        });
-      }
-    }
-
-    return allProfiles;
-  }
-
-  /**
-   * Get the currently active hub
-   * @returns Active hub ID, config and reference, or null if no hub is active
-   */
-  public async getActiveHub(): Promise<LoadHubResult | null> {
-    const activeHubId = await this.storage.getActiveHubId();
-
-    if (!activeHubId) {
-      return null;
-    }
-
-    try {
-      return await this.storage.loadHub(activeHubId);
-    } catch {
-      // If active hub was deleted, clear the activeHubId
-      await this.storage.setActiveHubId(null);
-      return null;
-    }
-  }
-
-  /**
-   * Set the currently active hub
-   * @param hubId Hub identifier to set as active
-   */
-  public async setActiveHub(hubId: string | null): Promise<void> {
-    // Get current active hub to check if we're switching
-    const currentActiveHubId = await this.storage.getActiveHubId();
-
-    // Cleanup previous hub if switching to a different one
-    if (currentActiveHubId && currentActiveHubId !== hubId) {
-      await this.cleanupHubResources(currentActiveHubId);
-    }
-
-    if (hubId !== null) {
-      // Verify hub exists when setting (not clearing)
-      const hub = await this.getHub(hubId);
-      if (!hub) {
-        throw new Error(`Hub not found: ${hubId}`);
-      }
-
-      // Load hub sources into RegistryManager when activating
-      if (this.registryManager) {
-        await this.loadHubSources(hubId);
-      }
-    }
-
-    // Set or clear active hub
-    await this.storage.setActiveHubId(hubId);
-    this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
-  }
-
-  /**
    * Load hub sources into RegistryManager.
    * Converts HubSource objects to RegistrySource and adds them to the registry.
    * Skips sources that are duplicates (same URL, type, branch, and collectionsPath).
@@ -863,10 +881,10 @@ export class HubManager {
    * matching, not ID matching, to handle both formats.
    * @param hubId Hub identifier
    */
-  public async loadHubSources(hubId: string): Promise<void> {
+  async loadHubSources(hubId: string): Promise<HubSourceLoadSummary> {
     if (!this.registryManager) {
       this.logger.warn('RegistryManager not available, skipping source loading');
-      return;
+      return { addedCount: 0, updatedCount: 0, failedCount: 0, disabledCount: 0, duplicateCount: 0 };
     }
 
     this.logger.info(`Loading sources from hub: ${hubId}`);
@@ -881,14 +899,16 @@ export class HubManager {
       const existingSources = await this.registryManager.listSources();
 
       let addedCount = 0;
-      let skippedCount = 0;
       let updatedCount = 0;
+      let failedCount = 0;
+      let disabledCount = 0;
+      let duplicateCount = 0;
 
       for (const hubSource of hubSources) {
         // Skip disabled sources
         if (!hubSource.enabled) {
           this.logger.debug(`Skipping disabled source: ${hubSource.id}`);
-          skippedCount++;
+          disabledCount++;
           continue;
         }
 
@@ -904,19 +924,27 @@ export class HubManager {
         if (existingSourceById) {
           // Update existing source from same hub
           this.logger.info(`Updating existing hub source: ${sourceId}`);
-          await this.registryManager.updateSource(sourceId, {
-            name: hubSource.name,
-            type: hubSource.type,
-            url: hubSource.url,
-            enabled: hubSource.enabled,
-            priority: hubSource.priority,
-            private: hubSource.private,
-            token: hubSource.token,
-            metadata: hubSource.metadata,
-            config: hubSource.config,
-            hubId: hubId
-          });
-          updatedCount++;
+          try {
+            await this.registryManager.updateSource(sourceId, {
+              name: hubSource.name,
+              type: hubSource.type,
+              url: hubSource.url,
+              enabled: hubSource.enabled,
+              priority: hubSource.priority,
+              private: hubSource.private,
+              token: hubSource.token,
+              metadata: hubSource.metadata,
+              config: hubSource.config,
+              hubId: hubId
+            });
+            updatedCount++;
+          } catch (updateError) {
+            this.logger.warn(
+              `Failed to update hub source ${sourceId} (${hubSource.name}): `
+              + `${updateError instanceof Error ? updateError.message : String(updateError)}`
+            );
+            failedCount++;
+          }
           continue;
         }
 
@@ -933,7 +961,7 @@ export class HubManager {
             + `Branch: ${hubSource.config?.branch || 'main'}, `
             + `CollectionsPath: ${hubSource.config?.collectionsPath || 'collections'}`
           );
-          skippedCount++;
+          duplicateCount++;
           continue;
         }
 
@@ -963,14 +991,19 @@ export class HubManager {
             `Failed to add hub source ${sourceId} (${hubSource.name}): `
             + `${sourceError instanceof Error ? sourceError.message : String(sourceError)}`
           );
-          skippedCount++;
+          failedCount++;
         }
       }
 
+      const summary: HubSourceLoadSummary = { addedCount, updatedCount, failedCount, disabledCount, duplicateCount };
+
       this.logger.info(
         `Hub source loading complete for ${hubId}: `
-        + `${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped`
+        + `${addedCount} added, ${updatedCount} updated, ${failedCount} failed, `
+        + `${disabledCount} disabled, ${duplicateCount} duplicates`
       );
+
+      return summary;
     } catch (error) {
       this.logger.error(`Failed to load sources from hub ${hubId}`, error as Error);
       throw error;
@@ -981,7 +1014,7 @@ export class HubManager {
    * List profiles from the active hub only
    * @returns Profiles from active hub, or empty array if no hub is active
    */
-  public async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
+  async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
     const activeHubId = await this.storage.getActiveHubId();
 
     if (!activeHubId) {
@@ -1006,7 +1039,7 @@ export class HubManager {
    * @param hubId
    * @param sourceId
    */
-  public async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
+  async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
     const hubData = await this.storage.loadHub(hubId);
     const source = hubData.config.sources.find((s) => s.id === sourceId);
 
@@ -1022,7 +1055,7 @@ export class HubManager {
    * @param hubId
    * @param bundle
    */
-  public async resolveBundleUrl(hubId: string, bundle: HubProfileBundle): Promise<string> {
+  async resolveBundleUrl(hubId: string, bundle: HubProfileBundle): Promise<string> {
     const source = await this.resolveSource(hubId, bundle.source);
     const githubMatch = source.url.match(/github:(.+)/);
 
@@ -1055,7 +1088,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async resolveProfileBundles(
+  async resolveProfileBundles(
     hubId: string,
     profileId: string
   ): Promise<ResolvedBundle[]> {
@@ -1087,7 +1120,7 @@ export class HubManager {
    * @param profileId
    * @param options
    */
-  public async activateProfile(
+  async activateProfile(
     hubId: string,
     profileId: string,
     options: ProfileActivationOptions
@@ -1095,8 +1128,8 @@ export class HubManager {
     try {
       this.logger.info(`[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`);
 
-      // Verify hub and profile exist (throws if not found)
-      await this.getHubProfile(hubId, profileId);
+      // Verify hub and profile exist
+      const profile = await this.getHubProfile(hubId, profileId);
 
       // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
       // This will uninstall bundles from previously active profiles
@@ -1148,6 +1181,7 @@ export class HubManager {
       await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
       // Install bundles if requested and RegistryManager is available
+      const installResults: { bundleId: string; success: boolean; error?: string }[] = [];
       if (options.installBundles && this.registryManager) {
         this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
 
@@ -1241,10 +1275,10 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
+  async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
     try {
-      // Verify profile exists (throws if not found)
-      await this.getHubProfile(hubId, profileId);
+      // Verify profile exists
+      const profile = await this.getHubProfile(hubId, profileId);
 
       // Get current activation state to track removed bundles
       const currentState = await this.storage.getProfileActivationState(hubId, profileId);
@@ -1276,14 +1310,14 @@ export class HubManager {
    * Get the currently active profile for a hub
    * @param hubId
    */
-  public async getActiveProfile(hubId: string): Promise<ProfileActivationState | null> {
+  async getActiveProfile(hubId: string): Promise<ProfileActivationState | null> {
     return this.storage.getActiveProfileForHub(hubId);
   }
 
   /**
    * List all active profiles across all hubs
    */
-  public async listAllActiveProfiles(): Promise<ProfileActivationState[]> {
+  async listAllActiveProfiles(): Promise<ProfileActivationState[]> {
     return this.storage.listActiveProfiles();
   }
 
@@ -1291,7 +1325,7 @@ export class HubManager {
    * Get a single hub by ID
    * @param hubId
    */
-  public async getHub(hubId: string): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
+  async getHub(hubId: string): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
     try {
       const result = await this.storage.loadHub(hubId);
       return {
@@ -1309,7 +1343,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async hasProfileChanges(hubId: string, profileId: string): Promise<boolean> {
+  async hasProfileChanges(hubId: string, profileId: string): Promise<boolean> {
     const changes = await this.getProfileChanges(hubId, profileId);
     if (!changes) {
       return false;
@@ -1327,7 +1361,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async getProfileChanges(hubId: string, profileId: string): Promise<ProfileChanges | null> {
+  async getProfileChanges(hubId: string, profileId: string): Promise<ProfileChanges | null> {
     // Get activation state
     const state = await this.storage.getProfileActivationState(hubId, profileId);
     if (!state) {
@@ -1392,7 +1426,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async syncProfile(hubId: string, profileId: string): Promise<void> {
+  async syncProfile(hubId: string, profileId: string): Promise<void> {
     // Re-activate to update the state
     await this.activateProfile(hubId, profileId, { installBundles: false });
   }
@@ -1402,7 +1436,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  public async getTimeSinceLastSync(hubId: string, profileId: string): Promise<number | null> {
+  async getTimeSinceLastSync(hubId: string, profileId: string): Promise<number | null> {
     const state = await this.storage.getProfileActivationState(hubId, profileId);
     if (!state) {
       return null;
@@ -1414,7 +1448,7 @@ export class HubManager {
    * Check if hub has updates (any profile has changes)
    * @param hubId
    */
-  public async hasHubUpdates(hubId: string): Promise<boolean> {
+  async hasHubUpdates(hubId: string): Promise<boolean> {
     const profilesWithUpdates = await this.getProfilesWithUpdates(hubId);
     return profilesWithUpdates.length > 0;
   }
@@ -1423,7 +1457,7 @@ export class HubManager {
    * Get list of profiles with pending updates
    * @param hubId
    */
-  public async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
+  async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
     const hub = await this.getHubInfo(hubId);
     if (!hub) {
       return [];
@@ -1458,7 +1492,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @param profileId Profile identifier
    */
-  public async isProfileFavorite(hubId: string, profileId: string): Promise<boolean> {
+  async isProfileFavorite(hubId: string, profileId: string): Promise<boolean> {
     const favorites = await this.storage.getFavoriteProfiles();
     return favorites[hubId]?.includes(profileId) || false;
   }
@@ -1467,7 +1501,7 @@ export class HubManager {
    * Get favorite profiles
    * @returns Map of hub ID to list of profile IDs
    */
-  public async getFavoriteProfiles(): Promise<Record<string, string[]>> {
+  async getFavoriteProfiles(): Promise<Record<string, string[]>> {
     return this.storage.getFavoriteProfiles();
   }
 
@@ -1476,7 +1510,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @param profileId Profile identifier
    */
-  public async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
+  async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
     const favorites = await this.getFavoriteProfiles();
     const hubFavorites = favorites[hubId] || [];
 
@@ -1504,7 +1538,7 @@ export class HubManager {
    * Cleanup orphaned favorites - remove favorites for hubs that no longer exist
    * This handles stale data from hubs that were deleted before cleanup logic was implemented
    */
-  public async cleanupOrphanedFavorites(): Promise<void> {
+  async cleanupOrphanedFavorites(): Promise<void> {
     const favorites = await this.getFavoriteProfiles();
     const existingHubs = await this.listHubs();
     const existingHubIds = new Set(existingHubs.map((h) => h.id));
@@ -1528,7 +1562,7 @@ export class HubManager {
    * Format change summary as human-readable string
    * @param changes
    */
-  public formatChangeSummary(changes: ProfileChanges): string {
+  formatChangeSummary(changes: ProfileChanges): string {
     const lines: string[] = [];
 
     if (changes.bundlesAdded && changes.bundlesAdded.length > 0) {
@@ -1572,7 +1606,7 @@ export class HubManager {
    * Create QuickPick items for displaying changes
    * @param changes
    */
-  public createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
+  createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
     const items: ChangeQuickPickItem[] = [];
 
     if (changes.bundlesAdded) {
@@ -1631,7 +1665,7 @@ export class HubManager {
    * Create conflict resolution dialog
    * @param changes
    */
-  public createConflictResolutionDialog(changes: ProfileChanges): ConflictResolutionDialog {
+  createConflictResolutionDialog(changes: ProfileChanges): ConflictResolutionDialog {
     const changeCount =
       (changes.bundlesAdded?.length || 0)
       + (changes.bundlesRemoved?.length || 0)
@@ -1665,7 +1699,7 @@ export class HubManager {
    * Format detailed bundle addition info
    * @param bundle
    */
-  public formatBundleAdditionDetail(bundle: HubProfileBundle): string {
+  formatBundleAdditionDetail(bundle: HubProfileBundle): string {
     return `Bundle: ${bundle.id}\nVersion: ${bundle.version}\nSource: ${bundle.source}\n${bundle.required ? 'required' : 'optional'}`;
   }
 
@@ -1673,7 +1707,7 @@ export class HubManager {
    * Format detailed bundle removal info
    * @param bundleId
    */
-  public formatBundleRemovalDetail(bundleId: string): string {
+  formatBundleRemovalDetail(bundleId: string): string {
     return `Bundle: ${bundleId}\nStatus: Will be removed`;
   }
 
@@ -1684,7 +1718,7 @@ export class HubManager {
    * @param update.oldVersion
    * @param update.newVersion
    */
-  public formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
+  formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
     return `Bundle: ${update.id}\nOld Version: ${update.oldVersion}\nNew Version: ${update.newVersion}`;
   }
 }

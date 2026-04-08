@@ -33,24 +33,24 @@ class MockSchemaValidator {
   private shouldFail = false;
   private errors: string[] = [];
 
-  public setShouldFail(fail: boolean, errors: string[] = []): void {
+  setShouldFail(fail: boolean, errors: string[] = []): void {
     this.shouldFail = fail;
     this.errors = errors;
   }
 
-  public validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
+  async validate(data: any, schemaPath: string): Promise<ValidationResult> {
     if (this.shouldFail) {
-      return Promise.resolve({
+      return {
         valid: false,
         errors: this.errors.length > 0 ? this.errors : ['Schema validation failed'],
         warnings: []
-      });
+      };
     }
-    return Promise.resolve({
+    return {
       valid: true,
       errors: [],
       warnings: []
-    });
+    };
   }
 }
 
@@ -430,6 +430,7 @@ suite('HubManager', () => {
 
     test('should list profiles from active hub only', async () => {
       const hubId1 = await hubManager.importHub(localRef, 'test-profiles-hub-1');
+      const hubId2 = await hubManager.importHub(localRef, 'test-profiles-hub-2');
 
       // Set first hub as active
       await hubManager.setActiveHub(hubId1);
@@ -601,36 +602,34 @@ suite('Hub Source Loading - SourceId Format', () => {
     public addSourceCalls: RegistrySource[] = [];
     public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
-    public listSources(): Promise<RegistrySource[]> {
-      return Promise.resolve([...this.sources]);
+    async listSources(): Promise<RegistrySource[]> {
+      return [...this.sources];
     }
 
-    public addSource(source: RegistrySource): Promise<void> {
+    async addSource(source: RegistrySource): Promise<void> {
       this.sources.push(source);
       this.addSourceCalls.push(source);
-      return Promise.resolve();
     }
 
-    public updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+    async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
       const index = this.sources.findIndex((s) => s.id === id);
       if (index !== -1) {
         this.sources[index] = { ...this.sources[index], ...updates };
         this.updateSourceCalls.push({ id, updates });
       }
-      return Promise.resolve();
     }
 
-    public reset(): void {
+    reset(): void {
       this.sources = [];
       this.addSourceCalls = [];
       this.updateSourceCalls = [];
     }
 
-    public getSourceCount(): number {
+    getSourceCount(): number {
       return this.sources.length;
     }
 
-    public hasSource(id: string): boolean {
+    hasSource(id: string): boolean {
       return this.sources.some((s) => s.id === id);
     }
   }
@@ -899,9 +898,15 @@ suite('HubManager Ghost Hub Cleanup on Failed Import', () => {
   test('should save hub even when all sources fail validation (no ghost)', async () => {
     // Source validation failures are non-fatal: hub is saved, failing sources are skipped.
     const failingRegistry = {
-      listSources: () => Promise.resolve([]),
-      addSource: (_source: any) => Promise.reject(new Error('Source validation failed: Failed to validate repository: HTTP 404: Not Found')),
-      updateSource: () => Promise.resolve()
+      async listSources() {
+        return [];
+      },
+      async addSource(_source: any) {
+        throw new Error('Source validation failed: Failed to validate repository: HTTP 404: Not Found');
+      },
+      async updateSource() {
+        // no-op
+      }
     };
 
     hubManager = new HubManager(
@@ -927,9 +932,15 @@ suite('HubManager Ghost Hub Cleanup on Failed Import', () => {
   test('should handle repeated imports with source failures gracefully', async () => {
     // Source validation failures are non-fatal: each import succeeds, hub is saved.
     const failingRegistry = {
-      listSources: () => Promise.resolve([]),
-      addSource: (_source: any) => Promise.reject(new Error('Source validation failed: HTTP 404')),
-      updateSource: () => Promise.resolve()
+      async listSources() {
+        return [];
+      },
+      async addSource(_source: any) {
+        throw new Error('Source validation failed: HTTP 404');
+      },
+      async updateSource() {
+        // no-op
+      }
     };
 
     hubManager = new HubManager(
@@ -984,6 +995,74 @@ suite('HubManager Ghost Hub Cleanup on Failed Import', () => {
     assert.strictEqual(hubList.length, 0,
       'After deleteAllHubs, listHubs should return 0 hubs');
   });
+
+  test('deleteAllHubs should continue when one hub deletion fails', async () => {
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+    const hubConfig = yaml.load(fs.readFileSync(fixturePath, 'utf8')) as any;
+
+    // Save two hubs
+    await hubStorage.saveHub('hub-1', hubConfig, { type: 'local', location: fixturePath });
+    await hubStorage.saveHub('hub-2', hubConfig, { type: 'local', location: fixturePath });
+
+    const hubs = await hubStorage.listHubs();
+    assert.strictEqual(hubs.length, 2, 'Should have 2 hubs');
+
+    // Create a HubManager with a corrupted storage that fails on first deletion
+    const corruptedStorage = Object.create(hubStorage);
+    let deleteCallCount = 0;
+    const originalDeleteHub = hubStorage.deleteHub.bind(hubStorage);
+    corruptedStorage.deleteHub = async (hubId: string) => {
+      deleteCallCount++;
+      if (deleteCallCount === 1) {
+        throw new Error('Disk I/O error');
+      }
+      return originalDeleteHub(hubId);
+    };
+    // Keep other methods from original storage
+    corruptedStorage.listHubs = hubStorage.listHubs.bind(hubStorage);
+    corruptedStorage.loadHub = hubStorage.loadHub.bind(hubStorage);
+    corruptedStorage.setActiveHubId = hubStorage.setActiveHubId.bind(hubStorage);
+
+    const hubManagerForCleanup = new HubManager(
+      corruptedStorage as any,
+      mockValidator as any,
+      process.cwd(),
+      undefined,
+      undefined
+    );
+
+    // Should not throw even though one deletion fails
+    await hubManagerForCleanup.deleteAllHubs();
+
+    // At least one hub should have been deleted (the non-failing one)
+    const remainingHubs = await hubStorage.listHubs();
+    assert.ok(remainingHubs.length < 2, 'At least one hub should have been deleted');
+  });
+
+  test('deleteAllHubs should clear the stored active hub ID', async () => {
+    const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+    const hubConfig = yaml.load(fs.readFileSync(fixturePath, 'utf8')) as any;
+
+    await hubStorage.saveHub('active-hub', hubConfig, { type: 'local', location: fixturePath });
+    await hubStorage.setActiveHubId('active-hub');
+
+    // Verify active hub is set
+    const activeId = await hubStorage.getActiveHubId();
+    assert.strictEqual(activeId, 'active-hub', 'Active hub should be set');
+
+    const hubManagerForCleanup = new HubManager(
+      hubStorage,
+      mockValidator as any,
+      process.cwd(),
+      undefined,
+      undefined
+    );
+    await hubManagerForCleanup.deleteAllHubs();
+
+    // Active hub ID should be cleared
+    const activeIdAfter = await hubStorage.getActiveHubId();
+    assert.strictEqual(activeIdAfter, null, 'Active hub ID should be cleared after deleteAllHubs');
+  });
 });
 
 suite('HubManager HTTP Redirect Handling', () => {
@@ -1004,7 +1083,7 @@ suite('HubManager HTTP Redirect Handling', () => {
     // Initialize services
     storage = new HubStorage(tempDir);
     mockValidator = {
-      validate: () => {
+      async validate() {
         return { valid: true, errors: [], warnings: [] };
       }
     };
