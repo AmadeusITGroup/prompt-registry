@@ -6,7 +6,6 @@
  * - Version retrieval
  * - Working directory validation
  * - Progress notifications
- * - Terminal execution
  */
 
 import {
@@ -192,55 +191,5 @@ export abstract class CliWrapper {
         }
       );
     });
-  }
-
-  /**
-   * Install dependencies in terminal (visible to user)
-   * @param cwd
-   */
-  public async installInTerminal(cwd: string): Promise<CliInstallResult> {
-    const cmdName = this.getCommandName();
-    const displayName = this.getDisplayName();
-
-    try {
-      this.validateCwd(cwd);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Invalid working directory';
-      this.logger.error(`${displayName}.installInTerminal validation failed: ${errorMessage}`);
-      vscode.window.showErrorMessage(errorMessage);
-      return { success: false, error: errorMessage };
-    }
-
-    this.logger.debug(`Starting ${cmdName} install in terminal: ${cwd}`);
-
-    const available = await this.isAvailable();
-    if (!available) {
-      const error = `${cmdName} not found. Please install it first.`;
-      this.logger.error(`${cmdName} not available on system`);
-      vscode.window.showErrorMessage(error);
-      return { success: false, error };
-    }
-
-    try {
-      const terminal = vscode.window.createTerminal({
-        name: `${cmdName} install`,
-        cwd
-      });
-
-      terminal.show();
-      terminal.sendText(`${cmdName} install`);
-
-      this.logger.info(`${cmdName} install started in terminal for: ${cwd}`);
-      vscode.window.showInformationMessage(
-        `${cmdName} install started in terminal. Check the terminal output for progress.`
-      );
-
-      return { success: true };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.logger.error(`Failed to create terminal for ${cmdName} install: ${errorMessage}`);
-      vscode.window.showErrorMessage(`Failed to run ${cmdName} install: ${errorMessage}`);
-      return { success: false, error: errorMessage };
-    }
   }
 }

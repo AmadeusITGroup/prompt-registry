@@ -31,7 +31,6 @@ import {
   ProfileActivationState,
   ProfileChanges,
   ProfileDeactivationResult,
-  ProfileWithUpdates,
   sanitizeHubId,
   validateHubConfig,
 } from '../types/hub';
@@ -1001,22 +1000,6 @@ export class HubManager {
   }
 
   /**
-   * Resolve a source by ID from a hub
-   * @param hubId
-   * @param sourceId
-   */
-  public async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
-    const hubData = await this.storage.loadHub(hubId);
-    const source = hubData.config.sources.find((s) => s.id === sourceId);
-
-    if (!source) {
-      throw new Error(`Source not found: ${sourceId} in hub ${hubId}`);
-    }
-
-    return source;
-  }
-
-  /**
    * Resolve all bundles in a profile
    * @param hubId
    * @param profileId
@@ -1361,40 +1344,6 @@ export class HubManager {
   public async syncProfile(hubId: string, profileId: string): Promise<void> {
     // Re-activate to update the state
     await this.activateProfile(hubId, profileId, { installBundles: false });
-  }
-
-  /**
-   * Get list of profiles with pending updates
-   * @param hubId
-   */
-  public async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
-    const hub = await this.getHubInfo(hubId);
-    if (!hub) {
-      return [];
-    }
-
-    const result: ProfileWithUpdates[] = [];
-
-    // Check active profile for updates
-    const activeState = await this.getActiveProfile(hubId);
-    if (activeState) {
-      const changes = await this.getProfileChanges(hubId, activeState.profileId);
-
-      if (changes && (
-        (changes.bundlesAdded && changes.bundlesAdded.length > 0)
-        || (changes.bundlesRemoved && changes.bundlesRemoved.length > 0)
-        || (changes.bundlesUpdated && changes.bundlesUpdated.length > 0)
-        || (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0)
-      )) {
-        result.push({
-          profileId: activeState.profileId,
-          hasChanges: true,
-          changes: changes
-        });
-      }
-    }
-
-    return result;
   }
 
   /**

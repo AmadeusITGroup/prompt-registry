@@ -98,25 +98,22 @@ Repository options are disabled when no workspace is open.
 
 ## Scope Conflict Resolution
 
-A bundle cannot exist at both user and repository scope simultaneously. When installing a bundle that exists at another scope:
+A bundle cannot exist at both user and repository scope simultaneously. When a scope migration is requested:
 
-1. **Detection**: `ScopeConflictResolver.checkConflict()` checks both scopes
-2. **Dialog**: User is prompted to migrate or cancel
-3. **Migration**: If accepted, bundle is uninstalled from old scope first
-4. **Rollback**: If installation fails, attempts to restore at original scope
+1. **Dialog**: User is prompted to migrate or cancel
+2. **Migration**: `ScopeConflictResolver.migrateBundle()` uninstalls from the old scope and installs at the new scope
+3. **Rollback**: If installation at the new scope fails, the resolver automatically attempts to restore the bundle at the original scope
 
 ```mermaid
 flowchart LR
-    A[Check Conflict] --> B{Exists at other scope?}
-    B -->|No| C[Proceed]
-    B -->|Yes| D[Show Migration Dialog]
-    D --> E{User Choice}
-    E -->|Migrate| F[Uninstall Old]
-    E -->|Cancel| G[Abort]
-    F --> H[Install New]
-    H --> I{Success?}
-    I -->|Yes| J[Done]
-    I -->|No| K[Rollback to Old Scope]
+    A[Migration Requested] --> B[Show Migration Dialog]
+    B --> C{User Choice}
+    C -->|Migrate| D[Uninstall Old Scope]
+    C -->|Cancel| E[Abort]
+    D --> F[Install New Scope]
+    F --> G{Success?}
+    G -->|Yes| H[Done]
+    G -->|No| I[Rollback to Old Scope]
 ```
 
 ## Repository Scope Installation

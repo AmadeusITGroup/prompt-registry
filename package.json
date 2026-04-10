@@ -713,7 +713,7 @@
     "package:vsix": "vsce package",
     "compile-tests": "tsc -p tsconfig.test.json && node scripts/copy-test-fixtures.js",
     "watch-tests": "tsc -p tsconfig.test.json -w",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "rimraf test-dist && npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src test && npm run lint -w lib",
     "lint:fix": "eslint src test --fix && npm run lint:fix -w lib",
     "test": "npm run test:all",

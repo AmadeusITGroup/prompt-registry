@@ -238,12 +238,4 @@ export class UpdateChecker {
   public async getCachedResults(): Promise<UpdateCheckResult[] | null> {
     return await this.cache.get();
   }
-
-  /**
-   * Clear update cache
-   */
-  public async clearCache(): Promise<void> {
-    this.logger.debug('Clearing update cache');
-    await this.cache.clear();
-  }
 }
