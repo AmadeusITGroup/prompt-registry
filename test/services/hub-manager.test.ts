@@ -294,6 +294,42 @@ suite('HubManager', () => {
     });
   });
 
+  suite('syncActiveHub()', () => {
+    test('should sync the active hub when one is set', async () => {
+      // Import and set as active
+      await hubManager.importHub(localRef, 'test-active');
+      await storage.setActiveHubId('test-active');
+
+      // Modify the source file to verify sync happened
+      const tempFixture = path.join(tempDir, 'sync-active-hub.yml');
+      const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+      fs.copyFileSync(fixturePath, tempFixture);
+
+      const config = yaml.load(fs.readFileSync(tempFixture, 'utf8')) as any;
+      config.metadata.maintainer = 'Active Sync Team';
+      fs.writeFileSync(tempFixture, yaml.dump(config));
+
+      // Re-import with the modified fixture so syncHub re-fetches it
+      const syncRef: HubReference = { type: 'local', location: tempFixture };
+      await hubManager.importHub(syncRef, 'test-active');
+      await storage.setActiveHubId('test-active');
+
+      // Now modify again to verify syncActiveHub picks it up
+      config.metadata.maintainer = 'Updated Active Sync Team';
+      fs.writeFileSync(tempFixture, yaml.dump(config));
+
+      await hubManager.syncActiveHub();
+
+      const loaded = await storage.loadHub('test-active');
+      assert.strictEqual(loaded.config.metadata.maintainer, 'Updated Active Sync Team');
+    });
+
+    test('should no-op silently when no active hub is set', async () => {
+      // No active hub set — should not throw
+      await hubManager.syncActiveHub();
+    });
+  });
+
   suite('Get Hub Info', () => {
     test('should get detailed hub information', async () => {
       await hubManager.importHub(localRef, 'test-info');

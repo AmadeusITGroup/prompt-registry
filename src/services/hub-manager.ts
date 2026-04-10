@@ -646,6 +646,20 @@ export class HubManager {
   }
 
   /**
+   * Sync the currently active hub from remote source.
+   * Resolves the active hub ID from storage and delegates to syncHub().
+   * No-ops silently if no hub is active.
+   */
+  public async syncActiveHub(): Promise<void> {
+    const activeHubId = await this.storage.getActiveHubId();
+    if (!activeHubId) {
+      this.logger.info('No active hub configured, skipping sync');
+      return;
+    }
+    await this.syncHub(activeHubId);
+  }
+
+  /**
    * Sync hub from remote source
    * @param hubId Hub identifier to sync
    */

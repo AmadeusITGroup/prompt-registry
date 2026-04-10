@@ -68,7 +68,19 @@ class AutoUpdateService {
 }
 ```
 
+## Hub Sync Scheduler
+
+Separate from bundle update checks, `HubSyncScheduler` keeps the active hub configuration fresh:
+
+| Component | Responsibility |
+|-----------|---------------|
+| **HubSyncScheduler** | 24h periodic timer calling `HubManager.syncActiveHub()` |
+| **HubManager.onHubSynced** | Event fired after every hub sync (startup, manual, periodic) |
+
+Source sync is event-driven: a single `onHubSynced` listener in `extension.ts` triggers `syncAllSources({ silent: true })` after any hub sync, ensuring sources stay in sync regardless of how the hub sync was initiated.
+
 ## See Also
 
 - [Installation Flow](./installation-flow.md) — How updates are installed
 - [User Guide: Marketplace](../../user-guide/marketplace.md) — User-facing updates
+- [User Guide: Profiles and Hubs](../../user-guide/profiles-and-hubs.md) — Hub sync behavior

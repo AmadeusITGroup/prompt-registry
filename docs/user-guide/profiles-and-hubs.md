@@ -39,12 +39,14 @@ When you select a hub:
 
 On first run, the extension automatically adds the **Awesome Copilot** source (`github/awesome-copilot`) as a default source. This ensures you have immediate access to community collections.
 
-### Auto-Sync on Startup
+### Automatic Hub Sync
 
-Each time VS Code starts, the active hub is automatically synchronized:
-- Hub configuration is refreshed from its source
-- All sources are synced for latest bundles
-- Tree view updates with current state
+The active hub is automatically synchronized to keep it up-to-date:
+- **On startup**: Hub configuration is refreshed each time VS Code starts
+- **Periodic**: Hub re-syncs every 24 hours while VS Code is open
+- **Manual**: Right-click hub → Sync Hub
+
+After every hub sync (startup, periodic, or manual), all sources are automatically re-synced and the tree view refreshes with the latest bundles.
 
 ### Commands
 
