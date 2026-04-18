@@ -551,7 +551,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
         const content = await this.fetchFileContent(candidate);
         const manifest = this.parseManifest(content, candidate);
         if (manifest) {
-          const filename = candidate.split('/').pop()!;
+          const filename = candidate.split('/').pop() ?? 'deployment-manifest.yml';
           return { manifest, filename };
         }
       } catch {
@@ -570,7 +570,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   private buildBundle(manifest: Record<string, unknown>, dirPath: string, dirName: string): Bundle {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
     // dirPath already starts with '/', so concatenate directly to avoid double slashes
-    const bundleId = `${projectBaseUrl}/${repository}${dirPath}`.replace(/https?:\/\//, '');
+    const bundleId = `${projectBaseUrl}/${repository}${dirPath}`.replace(/^https?:\/\//, '');
 
     return {
       id: bundleId,
@@ -600,7 +600,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   private decodeBundleId(bundleId: string): string {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
     // Prefix has no trailing slash; the path portion starts with '/'
-    const prefix = `${projectBaseUrl}/${repository}`.replace(/https?:\/\//, '');
+    const prefix = `${projectBaseUrl}/${repository}`.replace(/^https?:\/\//, '');
     if (bundleId.startsWith(prefix)) {
       return bundleId.substring(prefix.length); // keeps leading '/'
     }

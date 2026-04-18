@@ -316,7 +316,7 @@ suite('AzureDevOpsAdapter', () => {
   // ---------------------------------------------------------------------------
 
   suite('getManifestUrl() / getDownloadUrl()', () => {
-    test('should return URLs that include the bundle path', () => {
+    test('should return URLs that include the bundle path without double slashes', () => {
       const adapter = new AzureDevOpsAdapter(mockSource);
       // Bundle ID format: {host}/{org}/{project}/{repo}{/path} (no double slash)
       const bundleId = 'dev.azure.com/myorg/myproject/myrepo/my-bundle';
@@ -324,10 +324,12 @@ suite('AzureDevOpsAdapter', () => {
       const manifestUrl = adapter.getManifestUrl(bundleId);
       assert.ok(manifestUrl.includes(repoApiPath), 'manifest URL should include repo API path');
       assert.ok(manifestUrl.includes('deployment-manifest.yml'), 'manifest URL should reference manifest file');
+      assert.ok(!manifestUrl.includes('//my-bundle'), 'manifest URL should not have double slashes in path');
 
       const downloadUrl = adapter.getDownloadUrl(bundleId);
       assert.ok(downloadUrl.includes(repoApiPath), 'download URL should include repo API path');
       assert.ok(downloadUrl.includes('$format=zip'), 'download URL should request ZIP format');
+      assert.ok(!downloadUrl.includes('//my-bundle'), 'download URL should not have double slashes in path');
     });
   });
 

@@ -128,12 +128,16 @@ export class AzureDevOpsAuthService {
    * @returns Authorization header value (e.g. `Basic ...` or `Bearer ...`)
    */
   public buildAuthHeader(token: string, method: AzureDevOpsAuthMethod): string {
+    const trimmed = token.trim();
+    if (trimmed.length === 0) {
+      throw new Error('[AzureDevOpsAuth] Cannot build Authorization header: token is empty');
+    }
     if (method === 'pat') {
       // Azure DevOps PAT uses Basic auth: base64(":" + token)
-      const credentials = Buffer.from(`:${token}`).toString('base64');
+      const credentials = Buffer.from(`:${trimmed}`).toString('base64');
       return `Basic ${credentials}`;
     }
     // Azure CLI tokens are OAuth Bearer tokens
-    return `Bearer ${token}`;
+    return `Bearer ${trimmed}`;
   }
 }
