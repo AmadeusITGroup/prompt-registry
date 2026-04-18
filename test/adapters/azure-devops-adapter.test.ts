@@ -69,6 +69,11 @@ suite('AzureDevOpsAdapter', () => {
       const source = { ...mockSource, url: 'git@ssh.dev.azure.com:v3/org/project/repo' };
       assert.throws(() => new AzureDevOpsAdapter(source), /Invalid Azure DevOps URL/);
     });
+
+    test('should throw for a plain HTTP URL (credentials must use HTTPS)', () => {
+      const source = { ...mockSource, url: 'http://dev.azure.com/myorg/myproject/_git/myrepo' };
+      assert.throws(() => new AzureDevOpsAdapter(source), /Invalid Azure DevOps URL/);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -313,7 +318,8 @@ suite('AzureDevOpsAdapter', () => {
   suite('getManifestUrl() / getDownloadUrl()', () => {
     test('should return URLs that include the bundle path', () => {
       const adapter = new AzureDevOpsAdapter(mockSource);
-      const bundleId = 'dev.azure.com/myorg/myproject/myrepo//my-bundle';
+      // Bundle ID format: {host}/{org}/{project}/{repo}{/path} (no double slash)
+      const bundleId = 'dev.azure.com/myorg/myproject/myrepo/my-bundle';
 
       const manifestUrl = adapter.getManifestUrl(bundleId);
       assert.ok(manifestUrl.includes(repoApiPath), 'manifest URL should include repo API path');
@@ -321,7 +327,7 @@ suite('AzureDevOpsAdapter', () => {
 
       const downloadUrl = adapter.getDownloadUrl(bundleId);
       assert.ok(downloadUrl.includes(repoApiPath), 'download URL should include repo API path');
-      assert.ok(downloadUrl.includes('zip'), 'download URL should request ZIP format');
+      assert.ok(downloadUrl.includes('$format=zip'), 'download URL should request ZIP format');
     });
   });
 

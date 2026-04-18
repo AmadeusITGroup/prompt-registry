@@ -59,7 +59,6 @@
  *    the extension. The adapter will call `az account get-access-token` automatically.
  */
 
-import * as http from 'node:http';
 import * as https from 'node:https';
 import * as yaml from 'js-yaml';
 import {
@@ -198,10 +197,12 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    * - `https://dev.azure.com/.../_git/...`
    * - `https://*.visualstudio.com/.../_git/...`
    * - Any other HTTPS URL containing `/_git/` (covers on-premises deployments)
+   *
+   * Only HTTPS URLs are accepted to ensure credentials are never sent in plain text.
    * @param urlString - URL to validate
    */
   private isValidAdoUrl(urlString: string): boolean {
-    if (!urlString.startsWith('https://') && !urlString.startsWith('http://')) {
+    if (!urlString.startsWith('https://')) {
       return false;
     }
     return urlString.includes('/_git/');
@@ -334,25 +335,24 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
     const headers = await this.buildHeaders(accept);
     const parsedUrl = new URL(requestUrl);
-    const isHttps = parsedUrl.protocol === 'https:';
-    const transport: typeof https | typeof http = isHttps ? https : http;
 
     const sanitized = { ...headers };
     if (sanitized.Authorization) {
-      sanitized.Authorization = sanitized.Authorization.substring(0, 15) + '...';
+      // Log only the auth scheme (e.g. "Basic" or "Bearer") to avoid token exposure
+      sanitized.Authorization = sanitized.Authorization.split(' ')[0] + ' [redacted]';
     }
     this.logger.debug(`[AzureDevOpsAdapter] GET ${requestUrl} headers: ${JSON.stringify(sanitized)}`);
 
     return new Promise((resolve, reject) => {
       const options: https.RequestOptions = {
         hostname: parsedUrl.hostname,
-        port: parsedUrl.port || (isHttps ? 443 : 80),
+        port: parsedUrl.port || 443,
         path: parsedUrl.pathname + parsedUrl.search,
         method: 'GET',
         headers
       };
 
-      const req = transport.request(options, (res) => {
+      const req = https.request(options, (res) => {
         if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
           const redirectUrl = res.headers.location.startsWith('http')
             ? res.headers.location
@@ -399,21 +399,19 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
     const headers = await this.buildHeaders('application/zip');
     const parsedUrl = new URL(requestUrl);
-    const isHttps = parsedUrl.protocol === 'https:';
-    const transport: typeof https | typeof http = isHttps ? https : http;
 
     this.logger.debug(`[AzureDevOpsAdapter] GET (binary) ${requestUrl}`);
 
     return new Promise((resolve, reject) => {
       const options: https.RequestOptions = {
         hostname: parsedUrl.hostname,
-        port: parsedUrl.port || (isHttps ? 443 : 80),
+        port: parsedUrl.port || 443,
         path: parsedUrl.pathname + parsedUrl.search,
         method: 'GET',
         headers
       };
 
-      const req = transport.request(options, (res) => {
+      const req = https.request(options, (res) => {
         if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
           const redirectUrl = res.headers.location.startsWith('http')
             ? res.headers.location
@@ -505,8 +503,10 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
-    // Append $format=zip separately to avoid URLSearchParams escaping the $ sign
-    const requestUrl = `${apiBase}/items?${params.toString()}&%24format=zip`;
+    // `$format` uses a dollar sign which URLSearchParams encodes as %24.
+    // Appending it as a literal string is safe here since `$` is a valid
+    // query-string character (RFC 3986 §3.4) and ADO requires the exact string.
+    const requestUrl = `${apiBase}/items?${params.toString()}&$format=zip`;
 
     this.logger.debug(`[AzureDevOpsAdapter] Downloading directory "${path}" as ZIP`);
     return this.fetchBuffer(requestUrl);
@@ -569,7 +569,8 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    */
   private buildBundle(manifest: Record<string, unknown>, dirPath: string, dirName: string): Bundle {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
-    const bundleId = `${projectBaseUrl}/${repository}/${dirPath}`.replace(/https?:\/\//, '');
+    // dirPath already starts with '/', so concatenate directly to avoid double slashes
+    const bundleId = `${projectBaseUrl}/${repository}${dirPath}`.replace(/https?:\/\//, '');
 
     return {
       id: bundleId,
@@ -592,15 +593,16 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
   /**
    * Decode a bundle ID back to the repository path of the bundle directory.
-   * Bundle IDs are constructed as `{host}/{org}/{project}/{repo}/{path}` with
-   * the `https://` prefix stripped.
+   * Bundle IDs are encoded as `{host}/{org}/{project}/{repo}{path}` with the
+   * `https://` prefix stripped. The path always begins with `/`.
    * @param bundleId - Bundle identifier
    */
   private decodeBundleId(bundleId: string): string {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
-    const prefix = `${projectBaseUrl}/${repository}/`.replace(/https?:\/\//, '');
+    // Prefix has no trailing slash; the path portion starts with '/'
+    const prefix = `${projectBaseUrl}/${repository}`.replace(/https?:\/\//, '');
     if (bundleId.startsWith(prefix)) {
-      return bundleId.substring(prefix.length - 1);
+      return bundleId.substring(prefix.length); // keeps leading '/'
     }
     return `/${bundleId}`;
   }
@@ -803,6 +805,6 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       'versionDescriptor.version': this.branch,
       'api-version': ADO_API_VERSION
     });
-    return `${apiBase}/items?${params.toString()}&%24format=zip`;
+    return `${apiBase}/items?${params.toString()}&$format=zip`;
   }
 }

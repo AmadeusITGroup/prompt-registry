@@ -19,7 +19,7 @@
  */
 
 import {
-  exec,
+  execFile,
 } from 'node:child_process';
 import {
   promisify,
@@ -28,7 +28,7 @@ import {
   Logger,
 } from '../utils/logger';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Azure DevOps resource ID used for token scope when calling Azure CLI.
@@ -93,9 +93,12 @@ export class AzureDevOpsAuthService {
     // 2. Attempt Azure CLI token
     try {
       this.logger.debug('[AzureDevOpsAuth] Trying Azure CLI token...');
-      const { stdout } = await execAsync(
-        `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken --output tsv`
-      );
+      const { stdout } = await execFileAsync('az', [
+        'account', 'get-access-token',
+        '--resource', ADO_RESOURCE_ID,
+        '--query', 'accessToken',
+        '--output', 'tsv'
+      ]);
       const token = stdout.trim();
       if (token && token.length > 0) {
         this.logger.info('[AzureDevOpsAuth] ✓ Using Azure CLI access token');
