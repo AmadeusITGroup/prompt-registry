@@ -29,11 +29,13 @@ interface IRepositoryAdapter {
 | **LocalAwesomeCopilotAdapter** | `local-awesome-copilot` | Buffer-based | Active |
 | **ApmAdapter** | `apm` | URL-based | Active |
 | **LocalApmAdapter** | `local-apm` | Buffer-based | Active |
+| **AzureDevOpsAdapter** | `azure-devops` | Buffer-based (ADO Items API zip) | Active |
 
 Source types are defined in `src/types/registry.ts`:
 ```typescript
 export type SourceType = 'github' | 'local' | 
-    'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm';
+    'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' |
+    'azure-devops';
 ```
 
 ## Two Installation Paths

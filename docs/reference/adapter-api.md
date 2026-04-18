@@ -170,6 +170,35 @@ export type SourceType =
 | `LocalApmAdapter` | `local-apm` | Local APM packages | Active |
 | `SkillsAdapter` | `skills` | Fetches skills from a GitHub repository's `skills/` directory | Active |
 | `LocalSkillsAdapter` | `local-skills` | Local filesystem skills directory | Active |
+| `AzureDevOpsAdapter` | `azure-devops` | Private ADO Git repositories (cloud or on-premises) | Active |
+
+### AzureDevOpsAdapter
+
+Fetches bundles from Azure DevOps Git repositories by scanning for subdirectories that contain
+a `deployment-manifest.yml`. Bundles are downloaded as ZIP archives via the ADO Items API.
+
+**Configuration:**
+
+```json
+{
+  "id": "my-ado-source",
+  "name": "My ADO Prompts",
+  "type": "azure-devops",
+  "url": "https://dev.azure.com/myorg/myproject/_git/myrepo",
+  "enabled": true,
+  "priority": 1,
+  "private": true,
+  "token": "<personal-access-token>",
+  "config": {
+    "branch": "main",
+    "collectionsPath": "/"
+  }
+}
+```
+
+**Authentication:** Uses `AzureDevOpsAuthService` with the following fallback chain:
+1. PAT from `source.token` (Basic auth)
+2. Azure CLI: `az account get-access-token` (Bearer token)
 
 ## Authentication
 
