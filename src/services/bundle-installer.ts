@@ -720,14 +720,6 @@ export class BundleInstaller {
   }
 
   /**
-   * Get the UserScopeService instance
-   * Used by BundleScopeCommands for scope migration
-   */
-  public getUserScopeService(): UserScopeService {
-    return this.copilotSync;
-  }
-
-  /**
    * Create a RepositoryScopeService for the current workspace
    * Used by BundleScopeCommands for scope migration
    * @returns RepositoryScopeService or undefined if no workspace is open

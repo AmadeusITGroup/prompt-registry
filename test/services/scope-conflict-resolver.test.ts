@@ -1,17 +1,14 @@
 /**
  * ScopeConflictResolver Unit Tests
  *
- * Tests for the service that prevents the same bundle from being installed
- * at both user and repository scopes simultaneously.
+ * Tests for the service that migrates bundles between scopes
+ * with rollback capability.
  *
- * Requirements: 6.1-6.6
+ * Requirements: 6.4-6.6
  */
 
 import * as assert from 'node:assert';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import {
   ScopeConflictResolver,
 } from '../../src/services/scope-conflict-resolver';
@@ -30,156 +27,14 @@ suite('ScopeConflictResolver', () => {
   let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
   let resolver: ScopeConflictResolver;
 
-  // ===== Test Utilities =====
-  const createMockContext = (): vscode.ExtensionContext => {
-    const globalStateData = new Map<string, any>();
-    return {
-      globalState: {
-        get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: (key: string, value: any) => {
-          globalStateData.set(key, value);
-        },
-        keys: () => Array.from(globalStateData.keys()),
-        setKeysForSync: sandbox.stub()
-      } as any,
-      globalStorageUri: vscode.Uri.file(path.join(os.tmpdir(), 'test-storage')),
-      subscriptions: [],
-      extensionUri: vscode.Uri.file('/mock/extension'),
-      extensionPath: '/mock/extension',
-      storagePath: '/mock/storage',
-      globalStoragePath: path.join(os.tmpdir(), 'test-storage'),
-      logPath: '/mock/log',
-      extensionMode: 3 as any,
-      workspaceState: {
-        get: sandbox.stub(),
-        update: sandbox.stub(),
-        keys: sandbox.stub().returns([])
-      } as any,
-      secrets: {
-        get: sandbox.stub(),
-        store: sandbox.stub(),
-        delete: sandbox.stub(),
-        onDidChange: sandbox.stub()
-      } as any,
-      environmentVariableCollection: {} as any,
-      extension: {} as any,
-      asAbsolutePath: (relativePath: string) => path.join('/mock/extension', relativePath),
-      storageUri: vscode.Uri.file('/mock/storage'),
-      logUri: vscode.Uri.file('/mock/log'),
-      languageModelAccessInformation: {} as any
-    } as vscode.ExtensionContext;
-  };
-
   setup(() => {
     sandbox = sinon.createSandbox();
-    createMockContext();
     mockStorage = sandbox.createStubInstance(RegistryStorage);
     resolver = new ScopeConflictResolver(mockStorage);
   });
 
   teardown(() => {
     sandbox.restore();
-  });
-
-  suite('checkConflict()', () => {
-    test('should return null when bundle is not installed anywhere', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      mockStorage.getInstalledBundle.resolves(undefined);
-
-      // Act
-      const result = await resolver.checkConflict(bundleId, 'repository');
-
-      // Assert
-      assert.strictEqual(result, null, 'Should return null when no conflict exists');
-    });
-
-    test('should return null when bundle is only installed at target scope', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      const installedBundle = createMockInstalledBundle(bundleId, '1.0.0', { scope: 'repository' });
-
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'user').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'workspace').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'repository').resolves(installedBundle);
-
-      // Act
-      const result = await resolver.checkConflict(bundleId, 'repository');
-
-      // Assert
-      assert.strictEqual(result, null, 'Should return null when bundle is only at target scope');
-    });
-
-    test('should detect conflict when bundle is at user scope and target is repository', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      const installedBundle = createMockInstalledBundle(bundleId, '1.0.0', { scope: 'user' });
-
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'user').resolves(installedBundle);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'workspace').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'repository').resolves(undefined);
-
-      // Act
-      const result = await resolver.checkConflict(bundleId, 'repository');
-
-      // Assert
-      assert.ok(result, 'Should detect conflict');
-      assert.strictEqual(result.bundleId, bundleId);
-      assert.strictEqual(result.existingScope, 'user');
-      assert.strictEqual(result.targetScope, 'repository');
-      assert.strictEqual(result.existingVersion, '1.0.0');
-    });
-
-    test('should detect conflict when bundle is at repository scope and target is user', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      const installedBundle = createMockInstalledBundle(bundleId, '2.0.0', { scope: 'repository' });
-
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'user').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'workspace').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'repository').resolves(installedBundle);
-
-      // Act
-      const result = await resolver.checkConflict(bundleId, 'user');
-
-      // Assert
-      assert.ok(result, 'Should detect conflict');
-      assert.strictEqual(result.bundleId, bundleId);
-      assert.strictEqual(result.existingScope, 'repository');
-      assert.strictEqual(result.targetScope, 'user');
-      assert.strictEqual(result.existingVersion, '2.0.0');
-    });
-
-    test('should detect conflict when bundle is at workspace scope and target is repository', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      const installedBundle = createMockInstalledBundle(bundleId, '1.5.0', { scope: 'workspace' });
-
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'user').resolves(undefined);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'workspace').resolves(installedBundle);
-      mockStorage.getInstalledBundle.withArgs(bundleId, 'repository').resolves(undefined);
-
-      // Act
-      const result = await resolver.checkConflict(bundleId, 'repository');
-
-      // Assert
-      assert.ok(result, 'Should detect conflict');
-      assert.strictEqual(result.existingScope, 'workspace');
-      assert.strictEqual(result.targetScope, 'repository');
-    });
-
-    test('should check all scopes except target scope', async () => {
-      // Arrange
-      const bundleId = 'test-bundle';
-      mockStorage.getInstalledBundle.resolves(undefined);
-
-      // Act
-      await resolver.checkConflict(bundleId, 'repository');
-
-      // Assert - should check user and workspace, but not repository
-      assert.ok(mockStorage.getInstalledBundle.calledWith(bundleId, 'user'), 'Should check user scope');
-      assert.ok(mockStorage.getInstalledBundle.calledWith(bundleId, 'workspace'), 'Should check workspace scope');
-    });
   });
 
   suite('migrateBundle()', () => {
@@ -509,31 +364,6 @@ suite('ScopeConflictResolver', () => {
         assert.strictEqual(result.rollbackAttempted, undefined, 'Rollback attempted should not be set');
         assert.strictEqual(result.rollbackSucceeded, undefined, 'Rollback succeeded should not be set');
       });
-    });
-  });
-
-  suite('Edge cases', () => {
-    test('should handle empty bundle ID gracefully', async () => {
-      // Arrange
-      mockStorage.getInstalledBundle.resolves(undefined);
-
-      // Act
-      const result = await resolver.checkConflict('', 'repository');
-
-      // Assert
-      assert.strictEqual(result, null, 'Should return null for empty bundle ID');
-    });
-
-    test('should handle storage errors gracefully in checkConflict', async () => {
-      // Arrange
-      mockStorage.getInstalledBundle.rejects(new Error('Storage error'));
-
-      // Act & Assert
-      await assert.rejects(
-        () => resolver.checkConflict('test-bundle', 'repository'),
-        /Storage error/,
-        'Should propagate storage errors'
-      );
     });
   });
 });

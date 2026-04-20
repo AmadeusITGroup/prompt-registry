@@ -32,8 +32,6 @@ suite('VersionConsolidator Property Tests', () => {
     consolidator = new VersionConsolidator();
   });
 
-  teardown(() => {});
-
   /**
    * Property 1: Bundle identity consistency
    * Feature: github-version-consolidation, Property 1: Bundle identity consistency

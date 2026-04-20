@@ -107,24 +107,4 @@ export class UpdateCache {
   public async clear(): Promise<void> {
     await this.storage.update(CACHE_CONSTANTS.CACHE_KEY, undefined);
   }
-
-  /**
-   * Get cache age in milliseconds
-   * Returns -1 if cache doesn't exist
-   * Optimized to avoid redundant Date object creation
-   */
-  public getCacheAge(): number {
-    const cached = this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
-
-    if (!cached) {
-      return -1;
-    }
-
-    const now = Date.now();
-    const cacheTime = typeof cached.timestamp === 'number'
-      ? cached.timestamp
-      : new Date(cached.timestamp).getTime();
-
-    return now - cacheTime;
-  }
 }

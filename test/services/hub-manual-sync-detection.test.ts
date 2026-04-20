@@ -231,44 +231,6 @@ suite('Hub Manual Sync Detection', () => {
     });
   });
 
-  suite('Hub Update Detection', () => {
-    test('should list profiles with pending updates', async () => {
-      const hub = createTestHub();
-      hub.profiles.push({
-        id: 'profile-2',
-        name: 'Profile 2',
-        description: 'Second profile',
-        bundles: [],
-        icon: '��',
-        active: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-      await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-
-      // Update profile-1 in hub
-      const updated = await storage.loadHub('test-hub');
-      updated.config.profiles[0].description = 'Updated';
-      updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();
-      await storage.saveHub('test-hub', updated.config, updated.reference);
-
-      const profilesWithUpdates = await hubManager.getProfilesWithUpdates('test-hub');
-      assert.strictEqual(profilesWithUpdates.length, 1);
-      assert.strictEqual(profilesWithUpdates[0].profileId, 'profile-1');
-      assert.ok(profilesWithUpdates[0].hasChanges);
-    });
-
-    test('should return empty list when no profiles have updates', async () => {
-      const hub = createTestHub();
-      await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-      await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-
-      const profilesWithUpdates = await hubManager.getProfilesWithUpdates('test-hub');
-      assert.strictEqual(profilesWithUpdates.length, 0);
-    });
-  });
-
   suite('Change Summary', () => {
     test('should provide comprehensive change summary', async () => {
       const hub = createTestHub();

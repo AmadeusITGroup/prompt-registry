@@ -1,10 +1,10 @@
 /**
  * Scope Conflict Resolver
  *
- * Prevents the same bundle from being installed at both user and repository scopes.
- * Provides conflict detection and migration capabilities.
+ * Handles scope migration for bundles, ensuring a bundle exists at only one scope
+ * at a time. Provides migration with automatic rollback on failure.
  *
- * Requirements: 6.1-6.6
+ * Requirements: 6.4-6.6
  */
 
 import {
@@ -20,22 +20,6 @@ import {
 import {
   Logger,
 } from '../utils/logger';
-
-/**
- * Represents a scope conflict where a bundle is already installed at a different scope.
- */
-export interface ScopeConflict {
-  /** The bundle ID that has a conflict */
-  bundleId: string;
-  /** The scope where the bundle is currently installed */
-  existingScope: InstallationScope;
-  /** The scope where installation was attempted */
-  targetScope: InstallationScope;
-  /** The version currently installed */
-  existingVersion: string;
-  /** The installed bundle information */
-  installedBundle: InstalledBundle;
-}
 
 /**
  * Result of a bundle migration operation.
@@ -68,14 +52,13 @@ export type UninstallCallback = (installedBundle: InstalledBundle) => Promise<vo
 export type InstallCallback = (installedBundle: InstalledBundle, targetScope: InstallationScope) => Promise<void>;
 
 /**
- * Service for detecting and resolving scope conflicts.
+ * Service for migrating bundles between scopes with rollback capability.
  *
  * Ensures that a bundle can only exist at one scope at a time,
  * preventing configuration conflicts between user and repository levels.
  */
 export class ScopeConflictResolver {
   private readonly logger: Logger;
-  private readonly ALL_SCOPES: InstallationScope[] = ['user', 'workspace', 'repository'];
 
   constructor(private readonly storage: RegistryStorage) {
     this.logger = Logger.getInstance();
@@ -89,45 +72,6 @@ export class ScopeConflictResolver {
    */
   private async getInstalledBundleForScope(bundleId: string, scope: InstallationScope): Promise<InstalledBundle | undefined> {
     return getInstalledBundleForScope(this.storage, bundleId, scope);
-  }
-
-  /**
-   * Check if installing a bundle at the target scope would create a conflict.
-   *
-   * A conflict exists when the bundle is already installed at a different scope.
-   * Installing at the same scope (reinstall/update) is not considered a conflict.
-   * @param bundleId - The bundle ID to check
-   * @param targetScope - The scope where installation is intended
-   * @returns ScopeConflict if conflict exists, null otherwise
-   *
-   * Requirements: 6.1, 6.2, 6.3
-   */
-  public async checkConflict(bundleId: string, targetScope: InstallationScope): Promise<ScopeConflict | null> {
-    this.logger.debug(`[ScopeConflictResolver] Checking conflict for bundle ${bundleId} at scope ${targetScope}`);
-
-    // Check all scopes except the target scope
-    for (const scope of this.ALL_SCOPES) {
-      if (scope === targetScope) {
-        continue; // Skip target scope - reinstalling at same scope is allowed
-      }
-
-      const installedBundle = await this.getInstalledBundleForScope(bundleId, scope);
-
-      if (installedBundle) {
-        this.logger.info(`[ScopeConflictResolver] Conflict detected: bundle ${bundleId} exists at ${scope}, target is ${targetScope}`);
-
-        return {
-          bundleId,
-          existingScope: scope,
-          targetScope,
-          existingVersion: installedBundle.version,
-          installedBundle
-        };
-      }
-    }
-
-    this.logger.debug(`[ScopeConflictResolver] No conflict for bundle ${bundleId}`);
-    return null;
   }
 
   /**

@@ -402,12 +402,6 @@ export interface ProfileChanges {
   };
 }
 
-export interface ProfileWithUpdates {
-  profileId: string;
-  hasChanges: boolean;
-  changes?: ProfileChanges;
-}
-
 /**
  * Dialog option for conflict resolution
  */

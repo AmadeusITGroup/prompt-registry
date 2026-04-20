@@ -199,21 +199,4 @@ export class RepositoryAdapterFactory {
 
     return new AdapterClass(source);
   }
-
-  /**
-   * Check if adapter is available for type
-   * @param type Source type
-   * @returns True if adapter exists
-   */
-  public static hasAdapter(type: string): boolean {
-    return this.adapters.has(type);
-  }
-
-  /**
-   * Get all registered adapter types
-   * @returns Array of adapter types
-   */
-  public static getRegisteredTypes(): string[] {
-    return Array.from(this.adapters.keys());
-  }
 }
