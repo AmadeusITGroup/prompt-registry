@@ -33,6 +33,9 @@ import {
   RegistryStorage,
 } from '../../src/storage/registry-storage';
 import {
+  promptGitHubAccountSelection,
+} from '../../src/utils/github-account-prompt';
+import {
   createMockHubData,
 } from '../helpers/setup-state-test-helpers';
 
@@ -772,6 +775,68 @@ suite('E2E: Setup State Flows', () => {
       // Assert: Detection was deferred (NOT_STARTED means setup hasn't completed)
       assert.strictEqual(mockLockfileManager.read.called, false,
         'Detection should be deferred when setup is NOT_STARTED');
+    });
+  });
+
+  suite('14.8: GitHub Account Selection and Setup State Integration', () => {
+    /**
+     * Verifies that when promptGitHubAccountSelection throws (user dismisses
+     * the picker), callers can route the error to markIncomplete().
+     * This mirrors the catch-block wiring in Extension.initializeHub().
+     */
+    test('account selection failure during first-time setup leads to incomplete state', async () => {
+      const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
+        .rejects(new Error('User did not consent to the required permissions.'));
+
+      await setupStateManager.markStarted();
+      const stateBeforeAttempt = await setupStateManager.getState();
+      assert.strictEqual(stateBeforeAttempt, SetupState.IN_PROGRESS);
+
+      // Exercise the actual promptGitHubAccountSelection function;
+      // on failure, transition to INCOMPLETE (as initializeHub's catch does)
+      try {
+        await promptGitHubAccountSelection();
+        assert.fail('promptGitHubAccountSelection should have thrown');
+      } catch {
+        await setupStateManager.markIncomplete();
+      }
+
+      const state = await setupStateManager.getState();
+      assert.strictEqual(state, SetupState.INCOMPLETE,
+        'Setup state should be INCOMPLETE after account selection failure');
+
+      // Verify resume prompt should be shown on next activation
+      const shouldShowPrompt = await setupStateManager.shouldShowResumePrompt();
+      assert.strictEqual(shouldShowPrompt, true,
+        'Should show resume prompt after account selection failure');
+
+      assert.ok(getSessionStub.calledOnce);
+      const options = getSessionStub.firstCall.args[2];
+      assert.ok(options, 'getSession should have been called with options');
+      assert.strictEqual(options.clearSessionPreference, true,
+        'Must use clearSessionPreference to force the account picker');
+    });
+
+    test('successful account selection allows setup to complete', async () => {
+      sandbox.stub(vscode.authentication, 'getSession').resolves({
+        accessToken: 'gho_test',
+        account: { id: 'id-1', label: 'alice' },
+        id: 'session-1',
+        scopes: ['repo']
+      } as any);
+
+      await setupStateManager.markStarted();
+
+      // Account selection succeeds — no throw
+      await promptGitHubAccountSelection();
+
+      // Simulate hub configuration completing after account selection
+      simulateHubConfigured();
+      await setupStateManager.markComplete();
+
+      const state = await setupStateManager.getState();
+      assert.strictEqual(state, SetupState.COMPLETE,
+        'Setup state should be COMPLETE after successful account selection and hub config');
     });
   });
 });
