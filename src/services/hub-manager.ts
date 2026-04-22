@@ -103,6 +103,7 @@ export class HubManager {
   private readonly _onHubDeleted = new vscode.EventEmitter<string>();
   private readonly _onHubSynced = new vscode.EventEmitter<string>();
   private readonly _onFavoritesChanged = new vscode.EventEmitter<void>();
+  private readonly _onActiveHubChanged = new vscode.EventEmitter<{ oldHubId: string | null; newHubId: string | null }>();
 
   private authToken: string | undefined;
   private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
@@ -117,6 +118,7 @@ export class HubManager {
   public readonly onHubDeleted = this._onHubDeleted.event;
   public readonly onHubSynced = this._onHubSynced.event;
   public readonly onFavoritesChanged = this._onFavoritesChanged.event;
+  public readonly onActiveHubChanged = this._onActiveHubChanged.event;
 
   constructor(
     storage: HubStorage,
@@ -795,6 +797,14 @@ export class HubManager {
   }
 
   /**
+   * Get the ID of the currently active hub.
+   * @returns Active hub ID, or null if no hub is active
+   */
+  public async getActiveHubId(): Promise<string | null> {
+    return this.storage.getActiveHubId();
+  }
+
+  /**
    * Get the currently active hub
    * @returns Active hub ID, config and reference, or null if no hub is active
    */
@@ -843,6 +853,10 @@ export class HubManager {
     // Set or clear active hub
     await this.storage.setActiveHubId(hubId);
     this.logger.info(hubId ? `Set active hub: ${hubId}` : 'Cleared active hub');
+
+    if (currentActiveHubId !== hubId) {
+      this._onActiveHubChanged.fire({ oldHubId: currentActiveHubId ?? null, newHubId: hubId });
+    }
   }
 
   /**
