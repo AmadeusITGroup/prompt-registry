@@ -9,7 +9,6 @@
     "metadata",
     "sources"
   ],
-  "additionalProperties": false,
   "properties": {
     "version": {
       "type": "string",
@@ -25,7 +24,6 @@
         "maintainer",
         "updatedAt"
       ],
-      "additionalProperties": false,
       "properties": {
         "name": {
           "type": "string",
@@ -68,7 +66,6 @@
           "enabled",
           "priority"
         ],
-        "additionalProperties": true,
         "properties": {
           "id": {
             "type": "string",
@@ -119,7 +116,6 @@
           "config": {
             "type": "object",
             "description": "Source-specific configuration settings (e.g., branch, collectionsPath for awesome-copilot sources)",
-            "additionalProperties": true,
             "properties": {
               "branch": {
                 "type": "string",
@@ -138,7 +134,6 @@
           "metadata": {
             "type": "object",
             "description": "Additional source metadata",
-            "additionalProperties": true,
             "properties": {
               "description": {
                 "type": "string",
@@ -169,7 +164,6 @@
           "description",
           "bundles"
         ],
-        "additionalProperties": true,
         "properties": {
           "id": {
             "type": "string",
@@ -220,7 +214,6 @@
                 "source",
                 "required"
               ],
-              "additionalProperties": false,
               "properties": {
                 "id": {
                   "type": "string",
@@ -264,7 +257,6 @@
     "configuration": {
       "type": "object",
       "description": "Optional hub-level configuration settings",
-      "additionalProperties": true,
       "properties": {
         "autoSync": {
           "type": "boolean",
@@ -282,10 +274,34 @@
         }
       }
     },
+    "telemetry": {
+      "type": "object",
+      "description": "Telemetry configuration for this hub",
+      "properties": {
+        "elasticSearch": {
+          "type": "object",
+          "description": "ES telemetry proxy configuration",
+          "required": ["node"],
+          "properties": {
+            "node": {
+              "type": "string",
+              "description": "ES telemetry proxy URL (e.g. https://es-proxy.internal:8080)",
+              "format": "uri"
+            },
+            "indexPrefix": {
+              "type": "string",
+              "description": "Custom index prefix (default: prompt-registry-telemetry)",
+              "pattern": "^[a-z0-9-]+$",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        }
+      }
+    },
     "engagement": {
       "type": "object",
       "description": "Engagement features configuration (telemetry, ratings, feedback)",
-      "additionalProperties": false,
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -295,7 +311,6 @@
           "type": "object",
           "description": "Backend configuration for engagement data storage",
           "required": ["type"],
-          "additionalProperties": true,
           "properties": {
             "type": {
               "type": "string",
@@ -317,7 +332,6 @@
         "telemetry": {
           "type": "object",
           "description": "Telemetry configuration",
-          "additionalProperties": false,
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -332,7 +346,6 @@
         "ratings": {
           "type": "object",
           "description": "Rating configuration",
-          "additionalProperties": false,
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -348,7 +361,6 @@
         "feedback": {
           "type": "object",
           "description": "Feedback configuration",
-          "additionalProperties": false,
           "properties": {
             "enabled": {
               "type": "boolean",

@@ -163,3 +163,8 @@ post-compile-fixes-cross-platform.js
 
 # Claude local settings file
 .claude/settings.local.json
+
+# Elastic Search certificates and setup scripts (not needed for development and may contain sensitive info)
+scripts/netskope.pem
+scripts/podman-ca-setup.sh
+elastic-start-local/
