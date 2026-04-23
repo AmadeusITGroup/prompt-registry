@@ -1,0 +1,8 @@
+{
+  "id": "no-items-plugin",
+  "name": "no-items-plugin",
+  "description": "A plugin without an items array",
+  "path": "plugins/no-items-plugin",
+  "tags": ["testing"],
+  "itemCount": 0
+}

@@ -1,0 +1,12 @@
+{
+  "id": "test-plugin",
+  "name": "test-plugin",
+  "description": "A test plugin for unit testing",
+  "path": "plugins/test-plugin",
+  "tags": ["test", "example", "azure"],
+  "itemCount": 2,
+  "items": [
+    { "kind": "skill", "path": "./skills/my-skill" },
+    { "kind": "agent", "path": "./agents" }
+  ]
+}

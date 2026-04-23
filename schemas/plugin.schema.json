@@ -1,0 +1,288 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/AmadeusITGroup/prompt-registry/schemas/plugin.schema.json",
+  "title": "Awesome Copilot Plugin",
+  "description": "Schema for Copilot plugin manifest files (plugin.json). Compatible with github/awesome-copilot plugin format and extended with Prompt Registry features (MCP servers, display preferences).",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "description",
+    "items"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the plugin (lowercase letters, numbers, and hyphens only)",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "examples": [
+        "azure-cloud-development",
+        "frontend-web-dev",
+        "python-mcp-development"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the plugin",
+      "minLength": 1,
+      "maxLength": 100,
+      "examples": [
+        "azure-cloud-development",
+        "Frontend Web Dev"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the plugin's purpose and contents",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "items": {
+      "type": "array",
+      "description": "List of resources in this plugin",
+      "minItems": 0,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "path"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Type of resource",
+            "enum": [
+              "prompt",
+              "instruction",
+              "chat-mode",
+              "agent",
+              "skill"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path to the resource (relative to plugin root, starts with ./)",
+            "minLength": 1,
+            "examples": [
+              "./agents",
+              "./skills/my-skill",
+              "./skills/code-review"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional display title for the resource"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description of the resource"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Optional tags for categorization",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "path": {
+      "type": "string",
+      "description": "Path of this plugin within the repository (e.g., plugins/azure-cloud-development)"
+    },
+    "itemCount": {
+      "type": "integer",
+      "description": "Number of items in the plugin (informational, may differ from items array length)",
+      "minimum": 0
+    },
+    "mcp": {
+      "type": "object",
+      "description": "Model Context Protocol (MCP) server configurations to be installed with this plugin",
+      "properties": {
+        "items": {
+          "type": "object",
+          "description": "MCP servers to install (follows mcp.json spec)",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "type": "object",
+              "description": "MCP server configuration",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Transport type for the MCP server",
+                  "enum": ["stdio", "http", "sse"],
+                  "default": "stdio"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Command to start the MCP server (required for stdio type)"
+                },
+                "args": {
+                  "type": "array",
+                  "description": "Arguments for the server command (stdio only)",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "env": {
+                  "type": "object",
+                  "description": "Environment variables for the server (stdio only)",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "envFile": {
+                  "type": "string",
+                  "description": "Path to an environment file to load variables from (stdio only)"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL for the remote MCP server (required for http/sse types)"
+                },
+                "headers": {
+                  "type": "object",
+                  "description": "HTTP headers for authentication or configuration (http/sse only)",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "disabled": {
+                  "type": "boolean",
+                  "description": "Whether the server is disabled",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "Alternative MCP server configuration (top-level, compatible with collection format)",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of the plugin",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": [
+        "1.0.0",
+        "2.1.3"
+      ]
+    },
+    "author": {
+      "description": "Author of the plugin (string or object with name/url/email)",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Author name"
+            },
+            "url": {
+              "type": "string",
+              "description": "Author URL or website"
+            },
+            "email": {
+              "type": "string",
+              "description": "Author email"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for the entire plugin",
+      "items": {
+        "type": "string"
+      }
+    },
+    "display": {
+      "type": "object",
+      "description": "Display preferences for the plugin",
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "Color theme for the plugin"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon identifier for the plugin"
+        },
+        "ordering": {
+          "type": "string",
+          "description": "How to order items in the plugin",
+          "enum": [
+            "manual",
+            "alphabetical"
+          ]
+        },
+        "show_badge": {
+          "type": "boolean",
+          "description": "Whether to show a badge for the plugin"
+        }
+      },
+      "additionalProperties": false
+    },
+    "featured": {
+      "type": "boolean",
+      "description": "Whether this plugin is featured/highlighted"
+    },
+    "external": {
+      "type": "boolean",
+      "description": "Whether the plugin content is hosted in an external repository"
+    },
+    "repository": {
+      "type": "string",
+      "description": "URL of the plugin's source repository"
+    },
+    "homepage": {
+      "type": "string",
+      "description": "URL of the plugin's homepage or documentation"
+    },
+    "license": {
+      "type": "string",
+      "description": "License identifier (e.g., MIT, Apache-2.0)"
+    },
+    "source": {
+      "type": "object",
+      "description": "Source location for external plugins",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Source type (e.g., github)"
+        },
+        "repo": {
+          "type": "string",
+          "description": "Repository identifier (e.g., owner/repo)"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path within the source repository"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

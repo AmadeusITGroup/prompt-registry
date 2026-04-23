@@ -170,6 +170,13 @@ suite('VersionManager Unit Tests', () => {
       assert.throws(() => VersionManager.extractBundleIdentity(longId, 'github'), /exceeds maximum length/);
     });
 
+    test('should return empty string for undefined or null bundleId', () => {
+      assert.strictEqual(VersionManager.extractBundleIdentity(undefined as any, 'github'), '');
+      assert.strictEqual(VersionManager.extractBundleIdentity(null as any, 'github'), '');
+      assert.strictEqual(VersionManager.extractBundleIdentity('', 'github'), '');
+      assert.strictEqual(VersionManager.extractBundleIdentity(undefined as any, 'awesome-copilot-plugin'), '');
+    });
+
     test('should return as-is for non-GitHub sources', () => {
       assert.strictEqual(
         VersionManager.extractBundleIdentity('bundle-id-v1.0.0', 'local'),

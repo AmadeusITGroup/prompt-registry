@@ -164,6 +164,8 @@ flowchart TD
     FACTORY --> LA[LocalAdapter]
     FACTORY --> ACA[AwesomeCopilotAdapter]
     FACTORY --> LACA[LocalAwesomeCopilotAdapter]
+    FACTORY --> ACPA[AwesomeCopilotPluginAdapter]
+    FACTORY --> LACPA[LocalAwesomeCopilotPluginAdapter]
     FACTORY --> APMA[ApmAdapter]
     FACTORY --> LAPMA[LocalApmAdapter]
     
@@ -208,6 +210,8 @@ RepositoryAdapterFactory.register('github', GitHubAdapter);
 RepositoryAdapterFactory.register('local', LocalAdapter);
 RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
 RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
+RepositoryAdapterFactory.register('awesome-copilot-plugin', AwesomeCopilotPluginAdapter);
+RepositoryAdapterFactory.register('local-awesome-copilot-plugin', LocalAwesomeCopilotPluginAdapter);
 RepositoryAdapterFactory.register('local-apm', LocalApmAdapter);
 RepositoryAdapterFactory.register('apm', ApmAdapter);
 ```
@@ -275,6 +279,26 @@ async fetchBundles(): Promise<Bundle[]> {
 **Files**: `src/adapters/LocalAwesomeCopilotAdapter.ts`, `src/adapters/LocalApmAdapter.ts`  
 **Purpose**: Local filesystem variants of AwesomeCopilot and APM adapters
 
+#### AwesomeCopilotPluginAdapter & LocalAwesomeCopilotPluginAdapter
+**Files**: `src/adapters/awesome-copilot-plugin-adapter.ts`, `src/adapters/local-awesome-copilot-plugin-adapter.ts`  
+**Purpose**: Fetch bundles from repositories using the **plugin** format (`plugins/<id>/.github/plugin/plugin.json`), upstream-compatible with `github/awesome-copilot` PR #717.
+
+```typescript
+async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    // 1. derive PluginItem[] from plugin.json (items array OR upstream agents/skills arrays)
+    // 2. resolve directory-style refs ("./skills/my-skill") into concrete files
+    //    (SKILL.md, AGENT.md, or flat .md files)
+    // 3. build deployment-manifest.yml + zip archive on-the-fly
+}
+```
+
+**Features**:
+- Supports both our `items` format and the upstream `agents`/`skills` directory-reference format
+- Resolves `./skills/<name>` directories to their `SKILL.md` entry files
+- Resolves `./agents` directories to one entry per `.md` file (or `AGENT.md` if present)
+- Shared pure logic extracted into `src/adapters/plugin-adapter-shared.ts` (types, manifest parsing, YAML serialization, breakdown, deployment-manifest construction)
+- Remote variant uses the same three-tier auth chain as `AwesomeCopilotAdapter`
+
 #### ApmAdapter
 **File**: `src/adapters/ApmAdapter.ts`  
 **Purpose**: Fetches APM (AI Prompt Manager) packages from GitHub
@@ -329,9 +353,11 @@ RepositoryAdapterFactory.register('mytype', MyAdapter);
 3. **Add Source Type**:
 ```typescript
 // src/types/registry.ts
-type SourceType = 'github' | 'local' | 
-    'awesome-copilot' | 'local-awesome-copilot' | 
-    'apm' | 'local-apm' | 'mytype';
+type SourceType = 'github' | 'local' |
+    'awesome-copilot' | 'local-awesome-copilot' |
+    'awesome-copilot-plugin' | 'local-awesome-copilot-plugin' |
+    'apm' | 'local-apm' |
+    'skills' | 'local-skills' | 'mytype';
 ```
 
 4. **Write Tests**:

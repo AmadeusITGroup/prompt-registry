@@ -55,7 +55,12 @@ See [Collection Schema](./collection-schema.md) for full reference.
 
 - [Validation](./validation.md)
 
+## Alternative: Plugin Format
+
+If you prefer the newer JSON-based format introduced by `github/awesome-copilot` PR #717 (with `plugins/<id>/.github/plugin/plugin.json` instead of `collections/*.collection.yml`), see the [Plugin Schema](./plugin-schema.md). Both formats are supported side-by-side through their own source types (`awesome-copilot` vs. `awesome-copilot-plugin`).
+
 ## See Also
 
 - [Collection Schema](./collection-schema.md) — Full YAML reference
+- [Plugin Schema](./plugin-schema.md) — `plugin.json` alternative format
 - [Publishing](./publishing.md) — Distribute your collections

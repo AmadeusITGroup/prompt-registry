@@ -136,8 +136,10 @@ This is useful when bundle files have been manually deleted but the lockfile sti
 |---------|-------|-------------|
 | `promptRegistry.createCollection` | Create New Collection | Create a new prompt collection |
 | `promptRegistry.validateCollections` | Validate Collections | Validate collection YAML files including file references and duplicate detection |
+| `promptRegistry.validatePlugins` | Validate Plugins | Validate `plugins/<id>/.github/plugin/plugin.json` files including file references and duplicate id detection |
 | `promptRegistry.validateApm` | Validate APM Package | Validate an APM package |
 | `promptRegistry.listCollections` | List All Collections | Display all collections |
+| `promptRegistry.listPlugins` | List All Plugins | Display all plugins in the workspace |
 
 ## Scaffolding & Resources
 

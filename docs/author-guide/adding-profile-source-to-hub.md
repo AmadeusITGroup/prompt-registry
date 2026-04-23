@@ -41,6 +41,7 @@ Choose the appropriate source type for organization we recommend github source t
 |------|----------|-----------------|
 | `github` | GitHub repository | `repository` |
 | `awesome-copilot` | YAML collections | `repository` |
+| `awesome-copilot-plugin` | JSON plugins (`plugin.json` format) | `repository` |
 | `apm` | APM packages | `url` |
 
 ### 4. Priority Guidelines

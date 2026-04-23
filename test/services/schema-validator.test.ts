@@ -1230,4 +1230,173 @@ suite('SchemaValidator', () => {
       assert.ok(result.errors.some((e) => e.includes('command')));
     });
   });
+
+  suite('Plugin Validation (plugin.schema.json)', () => {
+    const validPlugin = {
+      id: 'azure-cloud-development',
+      name: 'azure-cloud-development',
+      description: 'Comprehensive Azure cloud development tools',
+      items: [
+        { kind: 'agent', path: './agents' },
+        { kind: 'skill', path: './skills/azure-resource-health-diagnose' }
+      ]
+    };
+
+    const validPluginFull = {
+      id: 'test-plugin',
+      name: 'Test Plugin',
+      description: 'A fully-specified plugin for validation testing',
+      version: '1.0.0',
+      author: { name: 'Test Author', url: 'https://example.com' },
+      tags: ['test', 'azure', 'cloud'],
+      path: 'plugins/test-plugin',
+      itemCount: 3,
+      featured: true,
+      display: { ordering: 'manual', show_badge: true },
+      repository: 'https://github.com/test/repo',
+      homepage: 'https://example.com/docs',
+      license: 'MIT',
+      items: [
+        { kind: 'agent', path: './agents' },
+        { kind: 'skill', path: './skills/my-skill' },
+        { kind: 'skill', path: './skills/other-skill' }
+      ]
+    };
+
+    const validPluginWithMcp = {
+      id: 'mcp-plugin',
+      name: 'MCP Plugin',
+      description: 'Plugin with MCP servers',
+      items: [
+        { kind: 'skill', path: './skills/mcp-skill' }
+      ],
+      mcp: {
+        items: {
+          'my-server': {
+            type: 'stdio',
+            command: 'node',
+            args: ['${bundlePath}/server.js']
+          }
+        }
+      }
+    };
+
+    test('should validate a minimal valid plugin', async () => {
+      const result = await validator.validatePlugin(validPlugin);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+      assert.strictEqual(result.errors.length, 0);
+    });
+
+    test('should validate a fully-specified plugin', async () => {
+      const result = await validator.validatePlugin(validPluginFull);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should validate a plugin with MCP servers', async () => {
+      const result = await validator.validatePlugin(validPluginWithMcp);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should reject plugin missing id', async () => {
+      const invalid = { name: 'No ID', description: 'Missing id', items: [] };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('id')));
+    });
+
+    test('should reject plugin missing name', async () => {
+      const invalid = { id: 'no-name', description: 'Missing name', items: [] };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('name')));
+    });
+
+    test('should reject plugin missing description', async () => {
+      const invalid = { id: 'no-desc', name: 'No Desc', items: [] };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('description')));
+    });
+
+    test('should reject plugin missing items', async () => {
+      const invalid = { id: 'no-items', name: 'No Items', description: 'Missing items' };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('items')));
+    });
+
+    test('should reject invalid id pattern', async () => {
+      const invalid = { id: 'UPPER_CASE', name: 'Bad ID', description: 'Invalid id', items: [] };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('pattern')));
+    });
+
+    test('should reject invalid item kind', async () => {
+      const invalid = {
+        id: 'bad-kind',
+        name: 'Bad Kind',
+        description: 'Invalid item kind',
+        items: [{ kind: 'invalid-kind', path: './foo' }]
+      };
+      const result = await validator.validatePlugin(invalid);
+      assert.strictEqual(result.valid, false);
+    });
+
+    test('should accept author as string', async () => {
+      const plugin = { ...validPlugin, author: 'Simple Author' };
+      const result = await validator.validatePlugin(plugin);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should accept author as object', async () => {
+      const plugin = { ...validPlugin, author: { name: 'Author', url: 'https://example.com', email: 'a@b.com' } };
+      const result = await validator.validatePlugin(plugin);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should accept external plugin', async () => {
+      const plugin = {
+        ...validPlugin,
+        external: true,
+        repository: 'https://github.com/other/repo',
+        source: { source: 'github', repo: 'other/repo', path: 'plugins/foo' }
+      };
+      const result = await validator.validatePlugin(plugin);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should validate real awesome-copilot plugin data from website', async () => {
+      // This matches the exact format from the awesome-copilot website plugins.json
+      const realPlugin = {
+        id: 'csharp-dotnet-development',
+        name: 'csharp-dotnet-development',
+        description: 'Essential prompts, instructions, and chat modes for C# and .NET development.',
+        path: 'plugins/csharp-dotnet-development',
+        tags: ['csharp', 'dotnet', 'aspnet', 'testing'],
+        itemCount: 9,
+        items: [
+          { kind: 'agent', path: './agents' },
+          { kind: 'skill', path: './skills/csharp-async' },
+          { kind: 'skill', path: './skills/aspnet-minimal-api-openapi' },
+          { kind: 'skill', path: './skills/csharp-xunit' }
+        ]
+      };
+      const result = await validator.validatePlugin(realPlugin);
+      assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(', ')}`);
+    });
+
+    test('should reject invalid version format', async () => {
+      const plugin = { ...validPlugin, version: 'not-semver' };
+      const result = await validator.validatePlugin(plugin);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors.some((e) => e.includes('pattern')));
+    });
+
+    test('should reject invalid display ordering', async () => {
+      const plugin = { ...validPlugin, display: { ordering: 'random' } };
+      const result = await validator.validatePlugin(plugin);
+      assert.strictEqual(result.valid, false);
+    });
+  });
 });

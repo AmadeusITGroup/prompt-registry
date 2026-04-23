@@ -21,6 +21,7 @@ Marketplace and registry for Copilot prompt bundles in VS Code.
 - **[Creating Collections](author-guide/creating-source-bundle.md)** — How to create collections
 - **[Collection Scripts](author-guide/collection-scripts.md)** — Shared npm package for validation and building
 - **[Collection Schema](author-guide/collection-schema.md)** — YAML schema reference
+- **[Plugin Schema](author-guide/plugin-schema.md)** — `plugin.json` schema reference (awesome-copilot plugin format)
 - **[Validation](author-guide/validation.md)** — Validating collections
 - **[Publishing](author-guide/publishing.md)** — Publishing to registries
 
