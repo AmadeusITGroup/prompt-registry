@@ -30,6 +30,10 @@ profiles:
 configuration:
   autoSync: true
   # ... hub configuration
+telemetry:
+  elasticSearch:
+    node: "https://..."
+    # ... ES configuration
 ```
 
 ## Required Fields
@@ -222,6 +226,28 @@ configuration:
   strictMode: true
 ```
 
+## Telemetry Object (Optional)
+
+Hub-level telemetry configuration for forwarding extension events to an Elastic Search cluster.
+
+### Elastic Search Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `node` | string | Yes | Elastic Search telemetry proxy URL (e.g., `https://es-proxy.internal:8080`) |
+| `indexPrefix` | string | No | Custom index prefix (default: `prompt-registry-telemetry`) |
+
+> **Note:** Authentication is handled by the telemetry proxy. The extension sends events to the proxy, which manages credentials and forwards data to Elastic Search.
+
+### Example
+
+```yaml
+telemetry:
+  elasticSearch:
+    node: "https://es-proxy.internal:8080"
+    indexPrefix: "my-team-telemetry"
+```
+
 ## Complete Example
 
 ```yaml
@@ -267,6 +293,10 @@ profiles:
 configuration:
   autoSync: true
   syncInterval: 3600
+
+telemetry:
+  elasticSearch:
+    node: "https://es-proxy.internal:8080"
 ```
 
 ## Validation

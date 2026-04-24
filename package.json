@@ -791,6 +791,7 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^9.3.4",
     "@prompt-registry/collection-scripts": "workspace:^",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",

@@ -63,6 +63,12 @@ import {
   AutoUpdateService,
 } from './services/auto-update-service';
 import {
+  ConsoleTransport,
+} from './services/console-transport';
+import {
+  ElasticSearchTransport,
+} from './services/elastic-search-transport';
+import {
   HubManager,
 } from './services/hub-manager';
 import {
@@ -202,12 +208,19 @@ export class PromptRegistryExtension {
   }
 
   /**
-   * Initialize telemetry service and subscribe to bundle lifecycle events.
+   * Initialize telemetry service and subscribe to events.
    */
   private initializeTelemetry(): void {
     try {
       this.telemetryService = TelemetryService.getInstance();
       this.telemetryService.subscribeToRegistryEvents(this.registryManager);
+      this.telemetryService.addTransport(new ConsoleTransport());
+
+      if (this.hubManager) {
+        const esTransport = new ElasticSearchTransport();
+        esTransport.subscribeToHubEvents(this.hubManager);
+        this.telemetryService.addTransport(esTransport);
+      }
     } catch (error) {
       this.logger.warn('Failed to initialize telemetry service (non-fatal)', error as Error);
     }

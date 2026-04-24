@@ -6,6 +6,10 @@ import {
   SourceSyncedEvent,
 } from '../types/registry';
 import {
+  TelemetryDocument,
+  TelemetryTransport,
+} from '../types/telemetry';
+import {
   Logger,
 } from '../utils/logger';
 import {
@@ -23,30 +27,13 @@ import {
  *  - `error` → only error events are sent
  *  - `crash` / `off` → nothing is sent
  *
- * The TelemetryLogger gates calls to the sender based on `isUsageEnabled`
- * and `isErrorsEnabled`, so the sender itself logs unconditionally.
- * Currently logs events locally — no data is sent to external servers.
+ * Optionally forwards events to one or more {@link TelemetryTransport}
+ * instances (e.g. Elastic Search, console).
  */
 export class TelemetryService {
   private static instance: TelemetryService;
 
-  public static getInstance(): TelemetryService {
-    if (!TelemetryService.instance) {
-      TelemetryService.instance = new TelemetryService();
-    }
-    return TelemetryService.instance;
-  }
-
-  /**
-   * Reset the singleton instance (for testing only).
-   */
-  public static resetInstance(): void {
-    if (TelemetryService.instance) {
-      TelemetryService.instance.dispose();
-    }
-    TelemetryService.instance = undefined!;
-  }
-
+  private readonly transports: TelemetryTransport[] = [];
   private readonly telemetryLogger: vscode.TelemetryLogger;
   private disposables: vscode.Disposable[] = [];
 
@@ -54,17 +41,31 @@ export class TelemetryService {
     const logger = Logger.getInstance();
 
     const sender: vscode.TelemetrySender = {
-      sendEventData: (eventName: string, data?: Record<string, any>): void => {
+      sendEventData: (eventName: string, data?: Record<string, any>) => {
         logger.info(`[Telemetry] ${eventName} ${JSON.stringify(data)}`);
+        this.send({ timestamp: new Date().toISOString(), eventName, data });
       },
-      sendErrorData: (error: Error, data?: Record<string, any>): void => {
+      sendErrorData: (error: Error, data?: Record<string, any>) => {
         logger.error(`[Telemetry] ${error.message} ${JSON.stringify(data)}`);
+        this.send({
+          timestamp: new Date().toISOString(),
+          error: { message: error.message, stack: error.stack },
+          data
+        });
       }
     };
 
     this.telemetryLogger = vscode.env.createTelemetryLogger(sender);
     this.telemetryLogger.logUsage('telemetryService.started');
     this.disposables.push(this.telemetryLogger);
+  }
+
+  /**
+   * Forward a telemetry document to all attached transports.
+   * @param doc - the telemetry document to send
+   */
+  private send(doc: TelemetryDocument): void {
+    this.transports.forEach((transport) => transport.send(doc));
   }
 
   private trackBundleEvent(eventName: string, bundle: InstalledBundle): void {
@@ -97,10 +98,36 @@ export class TelemetryService {
     });
   }
 
+  public static getInstance(): TelemetryService {
+    if (!TelemetryService.instance) {
+      TelemetryService.instance = new TelemetryService();
+    }
+    return TelemetryService.instance;
+  }
+
+  /**
+   * Reset the singleton instance (for testing only).
+   */
+  public static resetInstance(): void {
+    if (TelemetryService.instance) {
+      TelemetryService.instance.dispose();
+    }
+    TelemetryService.instance = undefined!;
+  }
+
+  /**
+   * Add a transport for forwarding telemetry events to an external backend.
+   * Multiple transports can be attached; each receives every event.
+   * @param transports - the transports to add
+   */
+  public addTransport(...transports: TelemetryTransport[]): void {
+    this.transports.push(...transports);
+  }
+
   /**
    * Subscribe to RegistryManager bundle lifecycle events.
    * Subscriptions are owned by this service and cleaned up on dispose().
-   * @param registryManager
+   * @param registryManager - the registry manager to subscribe to
    */
   public subscribeToRegistryEvents(registryManager: RegistryManager): void {
     this.disposables.push(
@@ -132,6 +159,8 @@ export class TelemetryService {
    */
   public dispose(): void {
     this.telemetryLogger.logUsage('telemetryService.stopped');
+    this.transports.forEach((t) => t.dispose());
+    this.transports.length = 0;
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
   }
