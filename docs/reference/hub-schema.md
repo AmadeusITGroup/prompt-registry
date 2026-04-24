@@ -93,6 +93,8 @@ The `sources` array defines bundle sources available in the hub.
 | `local-awesome-copilot` | Local YAML collections |
 | `apm` | APM package repositories |
 | `local-apm` | Local APM packages |
+| `skills` | GitHub repository with skills |
+| `local-skills` | Local filesystem skills directory |
 
 ### Optional Fields per Source
 
