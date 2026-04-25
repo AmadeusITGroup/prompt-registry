@@ -4,14 +4,32 @@
  * Fetches prompt bundles from Azure DevOps (ADO) Git repositories.
  * Supports both Azure DevOps Services (cloud) and Azure DevOps Server (on-premises).
  *
- * ## How bundles are discovered
- * The adapter scans the repository at the configured `collectionsPath` (default: root `/`).
- * Each top-level subdirectory that contains a `deployment-manifest.yml` (or `.yaml` / `.json`)
- * is treated as a prompt bundle.
+ * ## Bundle discovery strategy — "full-tree blob scan"
+ *
+ * Rather than listing directories one-by-one and probing each for a manifest
+ * (an N+1 HTTP pattern), the adapter retrieves the **entire repository tree
+ * in a single API call** using `recursionLevel=Full`, then filters the
+ * returned item list in memory for blob entries (files) whose filename is
+ * one of:
+ *
+ * - `deployment-manifest.yml`
+ * - `deployment-manifest.yaml`
+ * - `deployment-manifest.json`
+ *
+ * Only manifests that sit **exactly one directory level** beneath
+ * `collectionsPath` are treated as bundle roots.  This prevents deeply-nested
+ * manifests from accidentally being picked up as separate bundles.
+ *
+ * After finding manifest blob paths, the adapter fetches the **content** of
+ * each manifest file (one request per bundle) and parses it to construct
+ * `Bundle` objects.
+ *
+ * **API call count**: 1 (full tree) + N (one per discovered bundle)
+ * versus the old approach's 1 + up-to-3N calls.
  *
  * ## Downloading bundles
- * Bundles are downloaded as ZIP archives using the ADO Items API's `$format=zip` option,
- * which packages the entire bundle directory on demand.
+ * Bundles are downloaded as ZIP archives using the ADO Items API's
+ * `$format=zip` option, which packages the entire bundle directory on demand.
  *
  * ## Configuration example
  *
@@ -52,11 +70,18 @@
  * ```
  *
  * ## Authentication
- * Configure authentication in one of two ways:
+ * Configure authentication in priority order — the first option that succeeds is used:
+ *
  * 1. **Personal Access Token (PAT)**: Set `token` on the source. Generate a PAT with
- *    "Code (read)" scope at https://dev.azure.com/{org}/_usersettings/tokens
- * 2. **Azure CLI**: Ensure the Azure CLI is installed and run `az login` before using
- *    the extension. The adapter will call `az account get-access-token` automatically.
+ *    "Code (read)" scope at https://dev.azure.com/{org}/_usersettings/tokens.
+ *    Produces an `Authorization: Basic base64(":"+PAT)` header.
+ *
+ * 2. **VS Code Microsoft auth**: Sign in to VS Code with your Microsoft/Entra account.
+ *    No CLI tooling needed. The adapter calls `vscode.authentication.getSession('microsoft', ...)`
+ *    silently and produces an `Authorization: Bearer <token>` header.
+ *
+ * 3. **Azure CLI**: Run `az login` before using the extension. The adapter calls
+ *    `az account get-access-token` automatically and produces a Bearer header.
  */
 
 import * as https from 'node:https';
@@ -305,7 +330,8 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     switch (statusCode) {
       case 401: {
         return `Azure DevOps authentication failed (HTTP 401) for ${requestUrl}. `
-          + 'Check that your PAT is valid and has "Code (read)" scope, or run `az login`.';
+          + 'Check that your PAT has "Code (read)" scope, sign in to VS Code with your '
+          + 'Microsoft account, or run `az login`.';
       }
       case 403: {
         return `Azure DevOps access denied (HTTP 403) for ${requestUrl}. `
@@ -450,25 +476,97 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * List all items directly under `path` in the repository (one level deep).
-   * Returns only items of type `tree` (directories) and `blob` (files).
-   * @param path - Repository path to list (e.g. `/` or `/prompt-bundles`)
+   * Fetch **all** Git items under `collectionsPath` in a **single API call**
+   * using `recursionLevel=Full`.
+   *
+   * The ADO Items API returns a flat list of every blob (file) and tree
+   * (directory) in the subtree, together with their `path`, `isFolder`,
+   * and `gitObjectType` fields.  Retrieving the full tree in one request is
+   * the foundation of the efficient blob-scan discovery strategy.
+   * @returns Flat array of every item (blob or tree) under `collectionsPath`
    */
-  private async listItems(path: string): Promise<AdoItem[]> {
+  private async fetchFullTree(): Promise<AdoItem[]> {
     const apiBase = this.buildApiBase();
     const params = new URLSearchParams({
-      path,
-      recursionLevel: 'OneLevel',
+      path: this.collectionsPath,
+      recursionLevel: 'Full',
       'versionDescriptor.version': this.branch,
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
     const requestUrl = `${apiBase}/items?${params.toString()}`;
 
-    this.logger.debug(`[AzureDevOpsAdapter] Listing items at path "${path}"`);
+    this.logger.debug(
+      `[AzureDevOpsAdapter] Fetching full tree at "${this.collectionsPath}" `
+      + `(branch: ${this.branch})`
+    );
     const responseText = await this.fetchString(requestUrl);
     const response = JSON.parse(responseText) as AdoItemsResponse;
     return response.value ?? [];
+  }
+
+  /**
+   * Filter a flat item list for **manifest blobs** that are exactly one
+   * directory level beneath `collectionsPath`.
+   *
+   * **Why blobs?**  `gitObjectType === 'blob'` means the item is a file,
+   * not a directory.  We only want to look at files named like a deployment
+   * manifest; directories can be ignored here.
+   *
+   * **Why depth-1?**  We treat only *immediate* children of `collectionsPath`
+   * as bundle roots.  Manifests nested deeper (e.g. inside a sub-directory of
+   * a bundle) are intentionally skipped to avoid false positives.
+   *
+   * A path is "depth-1" when, after stripping the `collectionsPath` prefix,
+   * it contains exactly two non-empty segments:
+   * ```
+   * <bundleDirectoryName>/<manifest-filename>
+   * ```
+   *
+   * Examples (collectionsPath = '/prompts'):
+   * ```
+   * /prompts/my-bundle/deployment-manifest.yml  → depth 1 ✓
+   * /prompts/nested/inner/deployment-manifest.yml → depth 2 ✗ (skipped)
+   * ```
+   * @param items - All items returned by {@link fetchFullTree}
+   * @returns Items that are manifest blobs at depth-1 under `collectionsPath`
+   */
+  private findManifestBlobs(items: AdoItem[]): AdoItem[] {
+    const MANIFEST_NAMES = new Set([
+      'deployment-manifest.yml',
+      'deployment-manifest.yaml',
+      'deployment-manifest.json'
+    ]);
+
+    // Strip trailing slash from the base so the depth calculation is consistent
+    // for both '/' (which becomes '') and '/bundles' (which stays '/bundles').
+    const base = this.collectionsPath.replace(/\/$/, '');
+
+    return items.filter((item) => {
+      // Only blobs (files) — skip trees (directories)
+      if (item.isFolder) {
+        return false;
+      }
+
+      // File must be named like a deployment manifest
+      const filename = item.path.split('/').pop() ?? '';
+      if (!MANIFEST_NAMES.has(filename)) {
+        return false;
+      }
+
+      // Compute the path relative to collectionsPath.  We then split on '/'
+      // and count non-empty segments; exactly 2 means <bundleDir>/<manifest>.
+      const relative = item.path.startsWith(base)
+        ? item.path.substring(base.length).replace(/^\//, '')
+        : item.path.replace(/^\//, '');
+
+      const segments = relative.split('/').filter(Boolean);
+
+      // segments[0] = bundle directory name
+      // segments[1] = manifest file name
+      // length > 2  = nested too deep, skip
+      return segments.length === 2;
+    });
   }
 
   /**
@@ -518,9 +616,9 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
   /**
    * Attempt to parse a deployment manifest from YAML or JSON text.
-   * Returns `null` if the text cannot be parsed.
+   * Returns `null` if the text cannot be parsed (malformed file).
    * @param text - Raw file content
-   * @param filename - Filename used to determine parse format
+   * @param filename - Filename used to determine parse format (`.json` vs YAML)
    */
   private parseManifest(text: string, filename: string): Record<string, unknown> | null {
     try {
@@ -532,33 +630,6 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       this.logger.warn(`[AzureDevOpsAdapter] Failed to parse manifest "${filename}": ${err}`);
       return null;
     }
-  }
-
-  /**
-   * Try to load `deployment-manifest.yml`, `.yaml`, or `.json` from a directory.
-   * Returns `{ manifest, filename }` for the first one found, or `null` if none exist.
-   * @param dirPath - Repository path of the directory to check
-   */
-  private async loadManifestFromDir(dirPath: string): Promise<{ manifest: Record<string, unknown>; filename: string } | null> {
-    const candidates = [
-      `${dirPath}/deployment-manifest.yml`,
-      `${dirPath}/deployment-manifest.yaml`,
-      `${dirPath}/deployment-manifest.json`
-    ];
-
-    for (const candidate of candidates) {
-      try {
-        const content = await this.fetchFileContent(candidate);
-        const manifest = this.parseManifest(content, candidate);
-        if (manifest) {
-          const filename = candidate.split('/').pop() ?? 'deployment-manifest.yml';
-          return { manifest, filename };
-        }
-      } catch {
-        // File not found — try next candidate
-      }
-    }
-    return null;
   }
 
   /**
@@ -643,9 +714,22 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   /**
    * Fetch all bundles from the Azure DevOps repository.
    *
-   * Scans the `collectionsPath` for subdirectories containing a
-   * `deployment-manifest.yml` (or `.yaml` / `.json`) and returns a `Bundle`
-   * for each one found.
+   * Uses the **full-tree blob-scan** strategy for efficient discovery:
+   *
+   * 1. **Fetch the full tree** — one `GET /items?recursionLevel=Full` call
+   *    retrieves every file and directory in `collectionsPath` at once.
+   *
+   * 2. **Filter manifest blobs** — scan the returned item list in memory for
+   *    file entries whose name is `deployment-manifest.{yml,yaml,json}` and
+   *    that sit exactly one level beneath `collectionsPath`.  This avoids
+   *    probing every subdirectory individually (no wasted HTTP calls).
+   *
+   * 3. **Fetch manifest content** — for each manifest blob found, one
+   *    `GET /items?path=…` call retrieves the file content, which is then
+   *    parsed and converted to a `Bundle`.
+   *
+   * Total API calls: **1** (full tree) + **N** (one per discovered bundle),
+   * compared with the old N+1-per-directory probing approach.
    * @returns Array of discovered bundles
    */
   public async fetchBundles(): Promise<Bundle[]> {
@@ -655,23 +739,45 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     );
 
     try {
-      const items = await this.listItems(this.collectionsPath);
+      // ── Step 1: Retrieve the full repository tree in a single API call ──────
+      const allItems = await this.fetchFullTree();
 
-      const directories = items.filter(
-        (item) => item.isFolder && item.path !== this.collectionsPath && item.path !== '/'
+      // ── Step 2: Filter for manifest blobs exactly one level deep ────────────
+      // "Blob" = ADO term for a regular file (gitObjectType === 'blob' / isFolder === false).
+      // We only pick up manifests that are direct children of a bundle directory,
+      // which itself is a direct child of collectionsPath.
+      const manifestBlobs = this.findManifestBlobs(allItems);
+
+      this.logger.debug(
+        `[AzureDevOpsAdapter] Full tree: ${allItems.length} item(s), `
+        + `${manifestBlobs.length} manifest blob(s) found`
       );
 
-      this.logger.debug(`[AzureDevOpsAdapter] Found ${directories.length} candidate directories`);
-
+      // ── Step 3: Fetch and parse each manifest ───────────────────────────────
       const bundles: Bundle[] = [];
 
-      for (const dir of directories) {
-        const result = await this.loadManifestFromDir(dir.path);
-        if (result) {
-          const dirName = dir.path.split('/').pop() ?? dir.path;
-          const bundle = this.buildBundle(result.manifest, dir.path, dirName);
-          bundles.push(bundle);
-          this.logger.debug(`[AzureDevOpsAdapter] Found bundle: ${bundle.id} (${bundle.name} v${bundle.version})`);
+      for (const blob of manifestBlobs) {
+        try {
+          const content = await this.fetchFileContent(blob.path);
+          const filename = blob.path.split('/').pop() ?? 'deployment-manifest.yml';
+          const manifest = this.parseManifest(content, filename);
+
+          if (manifest) {
+            // The bundle directory is the parent of the manifest file
+            const dirPath = blob.path.substring(0, blob.path.lastIndexOf('/'));
+            const dirName = dirPath.split('/').pop() ?? dirPath;
+            const bundle = this.buildBundle(manifest, dirPath, dirName);
+            bundles.push(bundle);
+            this.logger.debug(
+              `[AzureDevOpsAdapter] Found bundle: ${bundle.id} `
+              + `(${bundle.name} v${bundle.version})`
+            );
+          }
+        } catch (err) {
+          // Log and continue — a single bad manifest should not block others
+          this.logger.warn(
+            `[AzureDevOpsAdapter] Failed to load manifest at "${blob.path}": ${err}`
+          );
         }
       }
 
