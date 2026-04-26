@@ -106,7 +106,7 @@ suite('AzureDevOpsAdapter', () => {
       // The adapter fetches the FULL tree with recursionLevel=Full (one call)
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 3,
           value: [
@@ -139,7 +139,7 @@ suite('AzureDevOpsAdapter', () => {
       // Full tree returned with only a directory, no manifest blob
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 2,
           value: [
@@ -161,7 +161,7 @@ suite('AzureDevOpsAdapter', () => {
       // two levels below collectionsPath and must NOT become a bundle.
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 4,
           value: [
@@ -185,7 +185,7 @@ suite('AzureDevOpsAdapter', () => {
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 5,
           value: [
@@ -241,10 +241,28 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(capturedPath, '/bundles');
     });
 
+    test('should omit path param when collectionsPath is "/" (ADO API rejects path=%2F with 400)', async () => {
+      // The ADO Items API returns HTTP 400 when path=/ is combined with recursionLevel=Full.
+      // The adapter must omit the path parameter entirely when collectionsPath is '/'.
+      let capturedQuery: Record<string, string> = {};
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => {
+          capturedQuery = q as Record<string, string>;
+          return !q.path && q.recursionLevel === 'Full';
+        })
+        .reply(200, { count: 0, value: [] });
+
+      const adapter = new AzureDevOpsAdapter(mockSource); // mockSource has collectionsPath: '/'
+      await adapter.fetchBundles();
+
+      assert.strictEqual(capturedQuery.path, undefined, 'path query param must be absent for root collectionsPath');
+    });
+
     test('should throw when ADO API returns an error', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(401, { message: 'Unauthorized' });
 
       const adapter = new AzureDevOpsAdapter(mockSource);
@@ -278,7 +296,7 @@ suite('AzureDevOpsAdapter', () => {
       // The full-tree request must carry a Bearer header (not Basic)
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .matchHeader('Authorization', `Bearer ${mockToken}`)
         .reply(200, { count: 0, value: [] });
 
@@ -308,7 +326,7 @@ suite('AzureDevOpsAdapter', () => {
       // fetchBundles is called internally — return empty to keep test focused
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, { count: 0, value: [] });
 
       const adapter = new AzureDevOpsAdapter(mockSource);
@@ -347,7 +365,7 @@ suite('AzureDevOpsAdapter', () => {
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 3,
           value: [
@@ -378,7 +396,7 @@ suite('AzureDevOpsAdapter', () => {
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/' && q.recursionLevel === 'Full')
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, { count: 0, value: [] });
 
       const adapter = new AzureDevOpsAdapter(mockSource);

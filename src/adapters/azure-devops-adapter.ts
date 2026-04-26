@@ -487,13 +487,18 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    */
   private async fetchFullTree(): Promise<AdoItem[]> {
     const apiBase = this.buildApiBase();
+    // The ADO Items API returns HTTP 400 when path='/' is combined with
+    // recursionLevel=Full.  Omitting the path parameter is the correct way
+    // to request the repository root — the API defaults to root when path is absent.
     const params = new URLSearchParams({
-      path: this.collectionsPath,
       recursionLevel: 'Full',
       'versionDescriptor.version': this.branch,
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
+    if (this.collectionsPath !== '/') {
+      params.set('path', this.collectionsPath);
+    }
     const requestUrl = `${apiBase}/items?${params.toString()}`;
 
     this.logger.debug(
