@@ -476,6 +476,20 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   // ---------------------------------------------------------------------------
 
   /**
+   * Encode a repository path for use as a query-string parameter value.
+   *
+   * `URLSearchParams` percent-encodes forward slashes (`/` → `%2F`), but the
+   * Azure DevOps Items API returns HTTP 400 when it receives `path=%2Fskills`
+   * instead of `path=/skills`.  This helper percent-encodes each path segment
+   * individually so that slashes remain literal in the query string.
+   *
+   * @param path - Repository path, e.g. `/my-bundle/deployment-manifest.yml`
+   */
+  private encodePath(path: string): string {
+    return path.split('/').map(encodeURIComponent).join('/');
+  }
+
+  /**
    * Fetch **all** Git items under `collectionsPath` in a **single API call**
    * using `recursionLevel=Full`.
    *
@@ -496,10 +510,13 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
-    if (this.collectionsPath !== '/') {
-      params.set('path', this.collectionsPath);
-    }
-    const requestUrl = `${apiBase}/items?${params.toString()}`;
+    // URLSearchParams encodes '/' as '%2F', but the ADO Items API returns HTTP 400
+    // when it receives path=%2Fskills instead of path=/skills.  Append the path
+    // outside of URLSearchParams so that slashes remain literal.
+    const pathSuffix = this.collectionsPath !== '/'
+      ? `&path=${this.encodePath(this.collectionsPath)}`
+      : '';
+    const requestUrl = `${apiBase}/items?${params.toString()}${pathSuffix}`;
 
     this.logger.debug(
       `[AzureDevOpsAdapter] Fetching full tree at "${this.collectionsPath}" `
@@ -580,13 +597,14 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    */
   private async fetchFileContent(path: string): Promise<string> {
     const apiBase = this.buildApiBase();
+    // Path must be appended outside URLSearchParams to keep '/' characters literal.
+    // URLSearchParams encodes '/' as '%2F', which the ADO Items API rejects (HTTP 400).
     const params = new URLSearchParams({
-      path,
       'versionDescriptor.version': this.branch,
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
-    const requestUrl = `${apiBase}/items?${params.toString()}`;
+    const requestUrl = `${apiBase}/items?${params.toString()}&path=${this.encodePath(path)}`;
 
     this.logger.debug(`[AzureDevOpsAdapter] Fetching file "${path}"`);
     return this.fetchString(requestUrl, 'text/plain');
@@ -598,8 +616,9 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    */
   private async downloadDirectoryAsZip(path: string): Promise<Buffer> {
     const apiBase = this.buildApiBase();
+    // Path must be appended outside URLSearchParams to keep '/' characters literal.
+    // URLSearchParams encodes '/' as '%2F', which the ADO Items API rejects (HTTP 400).
     const params = new URLSearchParams({
-      path,
       download: 'true',
       recursionLevel: 'Full',
       'versionDescriptor.version': this.branch,
@@ -609,7 +628,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     // `$format` uses a dollar sign which URLSearchParams encodes as %24.
     // Appending it as a literal string is safe here since `$` is a valid
     // query-string character (RFC 3986 §3.4) and ADO requires the exact string.
-    const requestUrl = `${apiBase}/items?${params.toString()}&$format=zip`;
+    const requestUrl = `${apiBase}/items?${params.toString()}&path=${this.encodePath(path)}&$format=zip`;
 
     this.logger.debug(`[AzureDevOpsAdapter] Downloading directory "${path}" as ZIP`);
     return this.fetchBuffer(requestUrl);

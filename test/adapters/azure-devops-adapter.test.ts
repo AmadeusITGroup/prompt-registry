@@ -259,6 +259,31 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(capturedQuery.path, undefined, 'path query param must be absent for root collectionsPath');
     });
 
+    test('should send path with literal slashes for non-root collectionsPath (ADO API rejects %2F-encoded slashes)', async () => {
+      // URLSearchParams encodes '/' as '%2F'. The ADO Items API returns HTTP 400
+      // when it receives path=%2Fskills instead of path=/skills.
+      // Nock URL-decodes query parameters before matching, so both encodings appear
+      // equal to the nock callback — but the adapter must produce a URL accepted by ADO.
+      const source = {
+        ...mockSource,
+        config: { branch: 'main', collectionsPath: '/skills' }
+      };
+
+      let capturedPath = '';
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => {
+          capturedPath = q.path as string;
+          return q.recursionLevel === 'Full' && q.path === '/skills';
+        })
+        .reply(200, { count: 0, value: [] });
+
+      const adapter = new AzureDevOpsAdapter(source);
+      await adapter.fetchBundles();
+
+      assert.strictEqual(capturedPath, '/skills');
+    });
+
     test('should throw when ADO API returns an error', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
