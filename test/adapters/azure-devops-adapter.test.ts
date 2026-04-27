@@ -221,11 +221,11 @@ suite('AzureDevOpsAdapter', () => {
         config: { branch: 'main', collectionsPath: '/bundles' }
       };
 
-      let capturedPath = '';
+      let capturedQuery: Record<string, unknown> = {};
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => {
-          capturedPath = q.path as string;
+          capturedQuery = q as Record<string, unknown>;
           return q.recursionLevel === 'Full';
         })
         .reply(200, {
@@ -238,50 +238,30 @@ suite('AzureDevOpsAdapter', () => {
       const adapter = new AzureDevOpsAdapter(source);
       await adapter.fetchBundles();
 
-      assert.strictEqual(capturedPath, '/bundles');
+      assert.strictEqual(capturedQuery.path, undefined, 'path query param must always be absent — ADO API is unreliable with path+recursionLevel=Full');
     });
 
-    test('should omit path param when collectionsPath is "/" (ADO API rejects path=%2F with 400)', async () => {
-      // The ADO Items API returns HTTP 400 when path=/ is combined with recursionLevel=Full.
-      // The adapter must omit the path parameter entirely when collectionsPath is '/'.
-      let capturedQuery: Record<string, string> = {};
-      nock(apiBase)
-        .get(`${repoApiPath}/items`)
-        .query((q) => {
-          capturedQuery = q as Record<string, string>;
-          return !q.path && q.recursionLevel === 'Full';
-        })
-        .reply(200, { count: 0, value: [] });
+    test('should always omit path param from tree fetch regardless of collectionsPath (ADO API rejects path with recursionLevel=Full on many versions)', async () => {
+      // The ADO Items API returns HTTP 400 for path=/ and is unreliable with any
+      // path value when combined with recursionLevel=Full. The adapter must omit
+      // path entirely and filter to collectionsPath in memory via findManifestBlobs.
+      for (const cp of ['/', '/skills', '/prompts/bundles']) {
+        const source = { ...mockSource, config: { branch: 'main', collectionsPath: cp } };
+        let capturedQuery: Record<string, unknown> = {};
+        nock(apiBase)
+          .get(`${repoApiPath}/items`)
+          .query((q) => {
+            capturedQuery = q as Record<string, unknown>;
+            return !q.path && q.recursionLevel === 'Full';
+          })
+          .reply(200, { count: 0, value: [] });
 
-      const adapter = new AzureDevOpsAdapter(mockSource); // mockSource has collectionsPath: '/'
-      await adapter.fetchBundles();
+        const adapter = new AzureDevOpsAdapter(source);
+        await adapter.fetchBundles();
 
-      assert.strictEqual(capturedQuery.path, undefined, 'path query param must be absent for root collectionsPath');
-    });
-
-    test('should send path with literal slashes for non-root collectionsPath (ADO API rejects %2F-encoded slashes)', async () => {
-      // URLSearchParams encodes '/' as '%2F'. The ADO Items API returns HTTP 400
-      // when it receives path=%2Fskills instead of path=/skills.
-      // Nock URL-decodes query parameters before matching, so both encodings appear
-      // equal to the nock callback — but the adapter must produce a URL accepted by ADO.
-      const source = {
-        ...mockSource,
-        config: { branch: 'main', collectionsPath: '/skills' }
-      };
-
-      let capturedPath = '';
-      nock(apiBase)
-        .get(`${repoApiPath}/items`)
-        .query((q) => {
-          capturedPath = q.path as string;
-          return q.recursionLevel === 'Full' && q.path === '/skills';
-        })
-        .reply(200, { count: 0, value: [] });
-
-      const adapter = new AzureDevOpsAdapter(source);
-      await adapter.fetchBundles();
-
-      assert.strictEqual(capturedPath, '/skills');
+        assert.strictEqual(capturedQuery.path, undefined,
+          `path query param must be absent for collectionsPath="${cp}"`);
+      }
     });
 
     test('should throw when ADO API returns an error', async () => {

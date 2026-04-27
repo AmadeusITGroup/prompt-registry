@@ -490,33 +490,32 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch **all** Git items under `collectionsPath` in a **single API call**
-   * using `recursionLevel=Full`.
+   * Fetch **all** Git items in the repository in a **single API call** using
+   * `recursionLevel=Full`.
    *
    * The ADO Items API returns a flat list of every blob (file) and tree
-   * (directory) in the subtree, together with their `path`, `isFolder`,
+   * (directory) in the repository, together with their `path`, `isFolder`,
    * and `gitObjectType` fields.  Retrieving the full tree in one request is
    * the foundation of the efficient blob-scan discovery strategy.
-   * @returns Flat array of every item (blob or tree) under `collectionsPath`
+   *
+   * The `path` query parameter is intentionally **omitted** from this call.
+   * Passing `path=<folder>` with `recursionLevel=Full` is unreliable across
+   * ADO versions and on-premises installations — some return HTTP 400 for any
+   * path value, others reject only `path=/` or percent-encoded slashes.
+   * Fetching the whole tree from root and filtering in memory via
+   * {@link findManifestBlobs} is simpler, correct on every ADO version, and
+   * has no correctness cost (prompt bundle repos are typically small).
+   * @returns Flat array of every item (blob or tree) in the repository
    */
   private async fetchFullTree(): Promise<AdoItem[]> {
     const apiBase = this.buildApiBase();
-    // The ADO Items API returns HTTP 400 when path='/' is combined with
-    // recursionLevel=Full.  Omitting the path parameter is the correct way
-    // to request the repository root — the API defaults to root when path is absent.
     const params = new URLSearchParams({
       recursionLevel: 'Full',
       'versionDescriptor.version': this.branch,
       'versionDescriptor.versionType': 'branch',
       'api-version': ADO_API_VERSION
     });
-    // URLSearchParams encodes '/' as '%2F', but the ADO Items API returns HTTP 400
-    // when it receives path=%2Fskills instead of path=/skills.  Append the path
-    // outside of URLSearchParams so that slashes remain literal.
-    const pathSuffix = this.collectionsPath !== '/'
-      ? `&path=${this.encodePath(this.collectionsPath)}`
-      : '';
-    const requestUrl = `${apiBase}/items?${params.toString()}${pathSuffix}`;
+    const requestUrl = `${apiBase}/items?${params.toString()}`;
 
     this.logger.debug(
       `[AzureDevOpsAdapter] Fetching full tree at "${this.collectionsPath}" `
