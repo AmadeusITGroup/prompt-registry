@@ -26,6 +26,18 @@ export interface HubReference {
 }
 
 /**
+ * Elastic Search telemetry configuration for a hub.
+ * Authentication is handled by the es-telemetry-proxy — no credentials needed.
+ */
+export interface ElasticSearchConfig {
+  /** Elastic Search proxy URL (e.g. "https://es-proxy.internal:8080") */
+  node: string;
+
+  /** Optional custom index prefix (default: "prompt-registry-telemetry") */
+  indexPrefix?: string;
+}
+
+/**
  * Hub configuration structure
  */
 export interface HubConfig {
@@ -43,6 +55,11 @@ export interface HubConfig {
 
   /** Optional registry configuration */
   configuration?: RegistryConfiguration;
+
+  /** Optional telemetry configuration */
+  telemetry?: {
+    elasticSearch?: ElasticSearchConfig;
+  };
 }
 
 /**

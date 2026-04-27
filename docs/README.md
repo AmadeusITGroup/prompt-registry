@@ -29,6 +29,7 @@ Marketplace and registry for Copilot prompt bundles in VS Code.
 ## 🔧 For Contributors
 
 - **[Development Setup](contributor-guide/development-setup.md)** — Local dev environment
+- **[Elastic Search Local Setup](contributor-guide/elastic-search-local-setup.md)** — Running ES locally with Docker/Podman
 - **[Architecture](contributor-guide/architecture.md)** — System overview
   - [Adapters](contributor-guide/architecture/adapters.md)
   - [Authentication](contributor-guide/architecture/authentication.md)
