@@ -42,6 +42,9 @@ import {
   ValidateCollectionsCommand,
 } from './commands/validate-collections-command';
 import {
+  ValidatePluginsCommand,
+} from './commands/validate-plugins-command';
+import {
   getEnabledDefaultHubs,
 } from './config/default-hubs';
 import {
@@ -152,6 +155,7 @@ export class PromptRegistryExtension {
   private hubManager: HubManager | undefined;
   private setupStateManager: SetupStateManager | undefined;
   private validateCollectionsCommand: ValidateCollectionsCommand | undefined;
+  private validatePluginsCommand: ValidatePluginsCommand | undefined;
   private validateApmCommand: ValidateApmCommand | undefined;
   private createCollectionCommand: CreateCollectionCommand | undefined;
   private copilotIntegration: CopilotIntegration | undefined;
@@ -276,6 +280,7 @@ export class PromptRegistryExtension {
     const addResourceCommand = new AddResourceCommand(this.context.extensionPath);
     const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
     this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
+    this.validatePluginsCommand = new ValidatePluginsCommand(this.context);
     this.validateApmCommand = new ValidateApmCommand(this.context);
     this.createCollectionCommand = new CreateCollectionCommand();
 
@@ -387,6 +392,14 @@ export class PromptRegistryExtension {
 
       vscode.commands.registerCommand('promptRegistry.listCollections', async () => {
         await this.validateCollectionsCommand!.execute({ listOnly: true });
+      }),
+
+      vscode.commands.registerCommand('promptRegistry.validatePlugins', async (options?) => {
+        await this.validatePluginsCommand!.execute(options);
+      }),
+
+      vscode.commands.registerCommand('promptRegistry.listPlugins', async () => {
+        await this.validatePluginsCommand!.execute({ listOnly: true });
       }),
 
       vscode.commands.registerCommand('promptRegistry.validateApm', async () => {
@@ -1615,6 +1628,7 @@ export class PromptRegistryExtension {
 
       // Dispose collection commands
       this.validateCollectionsCommand?.dispose();
+      this.validatePluginsCommand?.dispose();
       this.validateApmCommand?.dispose();
       this.createCollectionCommand?.dispose();
 

@@ -1,0 +1,13 @@
+{
+  "id": "skills-plugin",
+  "name": "skills-plugin",
+  "description": "A test plugin with multiple skills and nested resource subdirectories",
+  "path": "plugins/skills-plugin",
+  "tags": ["testing", "skills"],
+  "itemCount": 2,
+  "items": [
+    { "kind": "skill", "path": "./skills/analyzer" },
+    { "kind": "skill", "path": "./skills/reporter" }
+  ],
+  "author": { "name": "Test Author" }
+}

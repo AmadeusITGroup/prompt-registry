@@ -86,6 +86,16 @@
         "category": "Prompt Registry"
       },
       {
+        "command": "promptRegistry.validatePlugins",
+        "title": "Validate Plugins",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.listPlugins",
+        "title": "List All Plugins",
+        "category": "Prompt Registry"
+      },
+      {
         "command": "promptRegistry.createProfile",
         "title": "Create New Profile",
         "category": "Prompt Registry"

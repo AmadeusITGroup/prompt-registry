@@ -11,6 +11,9 @@ import {
   AwesomeCopilotAdapter,
 } from '../adapters/awesome-copilot-adapter';
 import {
+  AwesomeCopilotPluginAdapter,
+} from '../adapters/awesome-copilot-plugin-adapter';
+import {
   GitHubAdapter,
 } from '../adapters/github-adapter';
 import {
@@ -22,6 +25,9 @@ import {
 import {
   LocalAwesomeCopilotAdapter,
 } from '../adapters/local-awesome-copilot-adapter';
+import {
+  LocalAwesomeCopilotPluginAdapter,
+} from '../adapters/local-awesome-copilot-plugin-adapter';
 import {
   LocalSkillsAdapter,
 } from '../adapters/local-skills-adapter';
@@ -185,6 +191,8 @@ export class RegistryManager {
     RepositoryAdapterFactory.register('local', LocalAdapter);
     RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
     RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
+    RepositoryAdapterFactory.register('awesome-copilot-plugin', AwesomeCopilotPluginAdapter);
+    RepositoryAdapterFactory.register('local-awesome-copilot-plugin', LocalAwesomeCopilotPluginAdapter);
     RepositoryAdapterFactory.register('local-apm', LocalApmAdapter);
     RepositoryAdapterFactory.register('apm', ApmAdapter);
     RepositoryAdapterFactory.register('skills', SkillsAdapter);
@@ -1249,7 +1257,9 @@ export class RegistryManager {
     // Apply source-type-specific sync behavior
     switch (source.type) {
       case 'awesome-copilot':
-      case 'local-awesome-copilot': {
+      case 'local-awesome-copilot':
+      case 'awesome-copilot-plugin':
+      case 'local-awesome-copilot-plugin': {
         // Awesome Copilot sources: Auto-update installed bundles
         this.logger.info(`[${source.type}] Auto-updating installed bundles from source '${sourceId}'`);
         await this.autoUpdateInstalledBundles(sourceId, bundles);

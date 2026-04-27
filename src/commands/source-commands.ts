@@ -90,6 +90,32 @@ export class SourceCommands {
         return uris && uris.length > 0 ? uris[0].fsPath : undefined;
       }
 
+      case 'awesome-copilot-plugin': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter GitHub repository URL (or press Enter for official awesome-copilot)',
+          placeHolder: 'https://github.com/github/awesome-copilot',
+          value: 'https://github.com/github/awesome-copilot',
+          validateInput: (value) => {
+            if (!value || !/github\.com/.test(value)) {
+              return 'Please enter a valid GitHub URL';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
+      case 'local-awesome-copilot-plugin': {
+        const pluginUris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          title: 'Select local awesome-copilot plugins directory'
+        });
+
+        return pluginUris && pluginUris.length > 0 ? pluginUris[0].fsPath : undefined;
+      }
+
       case 'apm': {
         return await vscode.window.showInputBox({
           prompt: 'Enter GitHub repository URL',
@@ -311,6 +337,16 @@ export class SourceCommands {
             value: 'local-awesome-copilot' as SourceType
           },
           {
+            label: '$(plug) Plugin from GitHub repository',
+            description: 'GitHub repository with plugins/<id>/.github/plugin/plugin.json (new Awesome Copilot plugin format)',
+            value: 'awesome-copilot-plugin' as SourceType
+          },
+          {
+            label: '$(folder-library) Local Plugin Collection',
+            description: 'Local filesystem directory with plugins/<id>/.github/plugin/plugin.json (new Awesome Copilot plugin format)',
+            value: 'local-awesome-copilot-plugin' as SourceType
+          },
+          {
             label: '$(package) APM Repository',
             description: 'Remote APM repository (GitHub) containing apm.yml',
             value: 'apm' as SourceType
@@ -404,6 +440,42 @@ export class SourceCommands {
 
           break;
         }
+        case 'awesome-copilot-plugin': {
+          const branch = await vscode.window.showInputBox({
+            prompt: 'Enter branch name (or press Enter for "main")',
+            placeHolder: 'main',
+            value: 'main',
+            ignoreFocusOut: true
+          });
+
+          const pluginsPath = await vscode.window.showInputBox({
+            prompt: 'Enter plugins directory path (or press Enter for "plugins")',
+            placeHolder: 'plugins',
+            value: 'plugins',
+            ignoreFocusOut: true
+          });
+
+          config = {
+            branch: branch || 'main',
+            pluginsPath: pluginsPath || 'plugins'
+          };
+
+          break;
+        }
+        case 'local-awesome-copilot-plugin': {
+          const pluginsPath = await vscode.window.showInputBox({
+            prompt: 'Enter plugins directory path (or press Enter for "plugins")',
+            placeHolder: 'plugins',
+            value: 'plugins',
+            ignoreFocusOut: true
+          });
+
+          config = {
+            pluginsPath: pluginsPath || 'plugins'
+          };
+
+          break;
+        }
         case 'apm': {
           const branch = await vscode.window.showInputBox({
             prompt: 'Enter branch name (or press Enter for "main")',
@@ -424,7 +496,11 @@ export class SourceCommands {
       // Step 4: Check if private/authentication needed (skip for local sources)
       let token: string | undefined;
       let isPrivate: { label: string; description: string; value: boolean } | undefined;
-      const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot' || sourceType.value === 'local-apm';
+      const isLocalSource = sourceType.value === 'local'
+        || sourceType.value === 'local-awesome-copilot'
+        || sourceType.value === 'local-awesome-copilot-plugin'
+        || sourceType.value === 'local-apm'
+        || sourceType.value === 'local-skills';
 
       if (!isLocalSource) {
         isPrivate = await vscode.window.showQuickPick(

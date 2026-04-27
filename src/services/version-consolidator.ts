@@ -237,8 +237,17 @@ export class VersionConsolidator {
   public consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
     this.logger.debug(`Consolidating ${bundles.length} bundles`);
 
+    // Filter out bundles with missing id to prevent downstream crashes
+    const validBundles = bundles.filter((bundle) => {
+      if (!bundle.id) {
+        this.logger.warn(`Skipping bundle with missing id from source ${bundle.sourceId}`);
+        return false;
+      }
+      return true;
+    });
+
     // Pre-calculate identities to avoid redundant computation
-    const bundlesWithIdentity = bundles.map((bundle) => ({
+    const bundlesWithIdentity = validBundles.map((bundle) => ({
       bundle,
       identity: this.getBundleIdentity(bundle)
     }));

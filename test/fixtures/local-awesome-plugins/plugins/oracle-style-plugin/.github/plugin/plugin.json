@@ -1,0 +1,12 @@
+{
+  "name": "oracle-style-plugin",
+  "description": "Mimics the real-world oracle-to-postgres-migration-expert plugin shape: agents is a parent dir with flat .md files, skills point to subdirectories each containing SKILL.md",
+  "version": "1.0.0",
+  "author": {
+    "name": "Test Author"
+  },
+  "license": "MIT",
+  "keywords": ["oracle", "postgresql", "migration"],
+  "agents": ["./agents"],
+  "skills": ["./skills/migrate-data"]
+}
