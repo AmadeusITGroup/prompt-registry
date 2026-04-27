@@ -168,6 +168,8 @@ export type SourceType =
 | `LocalAwesomeCopilotAdapter` | `local-awesome-copilot` | Local YAML collections for development | Active |
 | `ApmAdapter` | `apm` | APM package repositories | Active |
 | `LocalApmAdapter` | `local-apm` | Local APM packages | Active |
+| `SkillsAdapter` | `skills` | Fetches skills from a GitHub repository's `skills/` directory | Active |
+| `LocalSkillsAdapter` | `local-skills` | Local filesystem skills directory | Active |
 
 ## Authentication
 

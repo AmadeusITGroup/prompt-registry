@@ -16,10 +16,12 @@ If you select a hub during first-run setup, all sources defined in that hub are 
 | `local-awesome-copilot` | Local collection development/testing | Active |
 | `awesome-copilot-plugin` | Community plugins using the new `plugin.json` format (GitHub-hosted) | Active |
 | `local-awesome-copilot-plugin` | Local plugin development/testing | Active |
-| `github` | GitHub repository releases | Active |
+| `github` | GitHub repository releases | Active ( Recommended ) |
 | `local` | File system directories | Active |
 | `apm` | APM package repositories | Active |
 | `local-apm` | Local APM packages | Active |
+| `skills` | GitHub repository with skills | Active |
+| `local-skills` | Local filesystem skills directory | Active |
 
 ## Adding a Source
 

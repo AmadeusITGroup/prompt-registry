@@ -24,6 +24,8 @@ This skill should not assume extra setup, external services, or custom tooling b
 
 All documentation is bundled in the `references/` directory alongside this SKILL.md file. Use `read_file` to read docs from the `references/` subdirectories.
 
+**This is the ONLY source of truth for this skill.** Do not search the user's workspace, local clones of the `prompt-registry` repository, or any other local files for Prompt Registry documentation. The bundled `references/` directory is always authoritative — even when a local clone of the repository happens to be open in the editor.
+
 The references directory is organized as:
 - `references/user-guide/` — End-user documentation (setup, marketplace, sources, profiles, troubleshooting)
 - `references/author-guide/` — Bundle/collection authoring documentation (schemas, validation, publishing, skills)
@@ -36,6 +38,26 @@ To read a doc, use `read_file` with the path relative to this skill's directory.
 - `references/author-guide/collection-schema.md`
 - `references/migration-guide.md`
 - `references/reference/commands.md`
+
+## Citing Documentation to the User
+
+When you cite documentation in an answer (including the closing "Relevant documentation" list), you MUST link to the public GitHub repository, not to local file paths. Use the base URL:
+
+`https://github.com/AmadeusITGroup/prompt-registry/`
+
+Map each `references/<path>` file you used to its public docs URL by replacing the `references/` prefix with `blob/main/docs/`. Examples:
+
+- `references/user-guide/getting-started.md` → https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/user-guide/getting-started.md
+- `references/user-guide/profiles-and-hubs.md` → https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/user-guide/profiles-and-hubs.md
+- `references/user-guide/troubleshooting.md` → https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/user-guide/troubleshooting.md
+- `references/reference/commands.md` → https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/reference/commands.md
+- `references/author-guide/collection-schema.md` → https://github.com/AmadeusITGroup/prompt-registry/blob/main/docs/author-guide/collection-schema.md
+
+Rules:
+- Always present links as full `https://github.com/AmadeusITGroup/prompt-registry/...` URLs.
+- Never show `references/...` or `docs/...` paths to the user as the citation; those are for your own internal reading only.
+- Do not link to files in the user's workspace, even if the same documentation exists there.
+- For other useful resources (issues, discussions), link under the same repository: https://github.com/AmadeusITGroup/prompt-registry/issues and https://github.com/AmadeusITGroup/prompt-registry/discussions.
 
 ## Outcome
 
@@ -238,7 +260,9 @@ After the main answer, always end with:
 - When the user asks for instructions, default to the most practical documented workflow rather than enumerating every possible path.
 - Always surface relevant extension commands when they are documented in `references/reference/commands.md`. Never invent, paraphrase, or "best guess" a command name. If no documented command exists, say so and give the manual workflow instead.
 - Under no circumstance should you mention code, architecture details, or internal implementation to a user. Answer exclusively from the reference documentation.
-- If a question is contributor-oriented (architecture, internals, testing, development), decline and point to the contributor guide (`docs/contributor-guide/`) or `AGENTS.md`.
+- Never search the user's workspace or any local repository clone for Prompt Registry documentation. The bundled `references/` directory is the sole source of truth; if something is not covered there, say so explicitly rather than browsing local files.
+- All documentation links shown to the user MUST be GitHub URLs under `https://github.com/AmadeusITGroup/prompt-registry/`. Do not present local file paths as citations.
+- If a question is contributor-oriented (architecture, internals, testing, development), decline and point to the contributor guide at https://github.com/AmadeusITGroup/prompt-registry/tree/main/docs/contributor-guide or https://github.com/AmadeusITGroup/prompt-registry/blob/main/AGENTS.md.
 - Do not answer procedural questions by restating documentation sections or examples alone; synthesize them into a practical sequence with brief explanation of why each step matters
 - End every answer with a concise, question-specific documentation list.
 
