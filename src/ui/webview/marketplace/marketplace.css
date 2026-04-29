@@ -1045,3 +1045,18 @@ body {
     font-size: 48px;
     margin-bottom: 12px;
 }
+
+/* Rating badge on marketplace tiles (populated from bundleRating view-model field) */
+.rating-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.rating-stars {
+  color: var(--vscode-charts-yellow, #d4a526);
+}
+.rating-count {
+  color: var(--vscode-descriptionForeground);
+}

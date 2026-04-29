@@ -5,14 +5,30 @@
 
 import * as assert from 'node:assert';
 import {
+  afterEach,
   beforeEach,
   suite,
   test,
 } from 'mocha';
+import * as sinon from 'sinon';
+import * as vscode from 'vscode';
+import {
+  CachedRating,
+  RatingCache,
+} from '../../src/services/engagement/rating-cache';
+import {
+  RegistryManager,
+} from '../../src/services/registry-manager';
+import {
+  SetupStateManager,
+} from '../../src/services/setup-state-manager';
 import {
   Bundle,
   RegistrySource,
 } from '../../src/types/registry';
+import {
+  MarketplaceViewProvider,
+} from '../../src/ui/marketplace-view-provider';
 import {
   extractAllTags,
   extractBundleSources,
@@ -733,5 +749,124 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
         { version: '1.0.0' }
       ]);
     });
+  });
+});
+
+suite('MarketplaceViewProvider - bundleRating hydration', () => {
+  let sandbox: sinon.SinonSandbox;
+  let marketplaceProvider: MarketplaceViewProvider;
+  let postedMessages: any[];
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+    postedMessages = [];
+
+    // Reset the RatingCache singleton between tests so one test's entry does not leak into the next
+    RatingCache.resetInstance();
+
+    const mockContext = {
+      subscriptions: [],
+      extensionUri: vscode.Uri.file(process.cwd()),
+      extensionPath: process.cwd(),
+      storagePath: '/mock/storage',
+      globalStoragePath: '/mock/global-storage',
+      logPath: '/mock/logs',
+      extensionMode: 2
+    } as any;
+
+    const mockBundle: Bundle = {
+      id: 'rated-bundle',
+      name: 'Rated Bundle',
+      version: '1.0.0',
+      description: 'A bundle with a cached rating',
+      author: 'Test',
+      sourceId: 'source-with-ratings',
+      environments: ['vscode'],
+      tags: [],
+      lastUpdated: '2024-01-01',
+      size: '1MB',
+      dependencies: [],
+      license: 'MIT',
+      manifestUrl: 'https://example.com/manifest.yml',
+      downloadUrl: 'https://example.com/bundle.zip'
+    };
+
+    const mockRegistryManager = {
+      onBundleInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUpdated: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
+      onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
+      onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
+      searchBundles: sandbox.stub().resolves([mockBundle]),
+      listInstalledBundles: sandbox.stub().resolves([]),
+      listSources: sandbox.stub().resolves([
+        { id: 'source-with-ratings', name: 'src', type: 'github', url: '', enabled: true, priority: 1 }
+      ]),
+      autoUpdateService: null
+    } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
+
+    const mockSetupStateManager = {
+      getState: sandbox.stub().resolves('complete')
+    } as unknown as sinon.SinonStubbedInstance<SetupStateManager>;
+
+    marketplaceProvider = new MarketplaceViewProvider(
+      mockContext,
+      mockRegistryManager as any,
+      mockSetupStateManager as any
+    );
+
+    const mockWebview = {
+      postMessage: (message: any) => {
+        postedMessages.push(message);
+        return Promise.resolve(true);
+      },
+      onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+      asWebviewUri: (uri: vscode.Uri) => uri,
+      cspSource: "'self'",
+      options: {},
+      html: ''
+    };
+    (marketplaceProvider as any)._view = { webview: mockWebview };
+  });
+
+  test('attaches bundleRating from RatingCache to each bundle sent to the webview', async () => {
+    // Seed the cache with a rating keyed by (sourceId, bundleId) — matches what the provider looks up
+    const cached: CachedRating = {
+      sourceId: 'source-with-ratings',
+      bundleId: 'rated-bundle',
+      starRating: 4.3,
+      wilsonScore: 0.81,
+      voteCount: 17,
+      confidence: 'medium',
+      cachedAt: Date.now()
+    };
+    RatingCache.getInstance().setRating(cached);
+
+    await (marketplaceProvider as any).loadBundles();
+
+    assert.strictEqual(postedMessages.length, 1);
+    assert.strictEqual(postedMessages[0].type, 'bundlesLoaded');
+    const bundles = postedMessages[0].bundles;
+    assert.strictEqual(bundles.length, 1);
+    assert.deepStrictEqual(bundles[0].bundleRating, cached);
+  });
+
+  test('leaves bundleRating undefined when the cache has no matching entry', async () => {
+    // No setRating call — cache is empty after resetInstance
+
+    await (marketplaceProvider as any).loadBundles();
+
+    assert.strictEqual(postedMessages.length, 1);
+    const bundles = postedMessages[0].bundles;
+    assert.strictEqual(bundles.length, 1);
+    assert.strictEqual(bundles[0].bundleRating, undefined);
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+    RatingCache.resetInstance();
   });
 });

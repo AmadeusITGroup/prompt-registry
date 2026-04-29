@@ -7,6 +7,9 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import {
+  RatingCache,
+} from '../services/engagement/rating-cache';
+import {
   RegistryManager,
 } from '../services/registry-manager';
 import {
@@ -306,6 +309,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           ? autoUpdatePreferences[installed.bundleId] ?? false
           : false;
 
+        // Pull cached rating summary (if any) so tiles can show a rating badge
+        const bundleRating = RatingCache.getInstance().getRating(bundle.sourceId, bundle.id);
+
         return {
           ...bundle,
           installed: !!installed,
@@ -315,7 +321,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           hubName,
           contentBreakdown,
           availableVersions,
-          autoUpdateEnabled
+          autoUpdateEnabled,
+          bundleRating
         };
       });
 
