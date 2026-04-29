@@ -46,6 +46,10 @@ npx --package @prompt-registry/collection-scripts list-collections
 
 # Publish affected collections (CI/CD)
 npx --package @prompt-registry/collection-scripts publish-collections
+
+# Analyze hub release downloads
+npx --package @prompt-registry/collection-scripts hub-release-analyzer https://github.com/owner/repo
+npx --package @prompt-registry/collection-scripts hub-release-analyzer ./hub-config.yml --output-dir ./reports
 ```
 
 ### After Installation
@@ -70,51 +74,7 @@ create-skill my-skill --description "A helpful skill"
 | `publish-collections` | Build and publish affected collections |
 | `list-collections` | List all collections in repo |
 | `create-skill` | Create a new skill directory structure |
-| `compute-ratings` | Compute ratings from GitHub Discussion feedback comments (star ratings) |
-| `setup-discussions` | Create GitHub Discussions for bundle ratings |
-
-## Engagement Tools
-
-These tools help set up and manage the engagement system for collecting bundle ratings and feedback.
-
-### setup-discussions
-
-Creates GitHub Discussions for all bundles in a hub configuration. The discussions are used to collect ratings and feedback via comments with star ratings (1-5 ⭐).
-
-```bash
-# Basic usage - creates discussions for all bundles
-GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions https://github.com/org/hub-config
-
-# Dry run to preview what would be created
-GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions --dry-run org/hub-config
-
-# Specify branch and output file
-GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions -b develop -o my-collections.yaml org/hub-config
-
-# Specify discussion category
-GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions --category "Bundle Ratings" org/hub-config
-```
-
-**Requirements:**
-- Hub config must have `engagement.backend.repository` configured
-- GitHub token needs `repo` and `write:discussion` scopes
-- Engagement repository must have GitHub Discussions enabled
-
-**Output:** Creates a `collections.yaml` file mapping bundles to discussion numbers.
-
-### compute-ratings
-
-Fetches feedback comments from GitHub Discussions, parses star ratings (1-5), and computes aggregate ratings. Also supports legacy thumbs up/down reactions for backward compatibility.
-
-```bash
-# Compute ratings from collections.yaml
-GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts compute-ratings --config collections.yaml --output ratings.json
-```
-
-**Workflow:**
-1. Run `setup-discussions` once to create discussions and generate `collections.yaml`
-2. Run `compute-ratings` periodically (e.g., via GitHub Actions) to update `ratings.json`
-3. Host `ratings.json` statically and reference it in hub config's `engagement.ratings.ratingsUrl`
+| `hub-release-analyzer` | Analyze GitHub release download statistics for hub configs |
 
 ## Programmatic API
 
@@ -166,6 +126,15 @@ npm run build
 npm test
 ```
 
+### Releasing
+
+The package is configured to use provenance signing for npm publish. Make sure to set up OIDC authentication if publishing to npm.
+The version is taken from the package.json file. Therefore it is important to bump the version before publishing 
+
+```bash
+npm version <patch|minor|major>
+```
+
 ## License
 
-MIT
+Apache License Version 2.0

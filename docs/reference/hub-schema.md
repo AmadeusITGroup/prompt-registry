@@ -88,13 +88,13 @@ The `sources` array defines bundle sources available in the hub.
 | Type | Description |
 |------|-------------|
 | `github` | GitHub repository releases |
-| `gitlab` | GitLab repository releases |
-| `http` / `url` | HTTP/HTTPS bundle URLs |
 | `local` | Local file system directory |
 | `awesome-copilot` | GitHub-hosted YAML collections |
 | `local-awesome-copilot` | Local YAML collections |
 | `apm` | APM package repositories |
 | `local-apm` | Local APM packages |
+| `skills` | GitHub repository with skills |
+| `local-skills` | Local filesystem skills directory |
 
 ### Optional Fields per Source
 

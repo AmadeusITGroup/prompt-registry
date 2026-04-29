@@ -1,13 +1,13 @@
 /**
  * Publish Collections CLI Tests
- * 
+ *
  * Tests for the publish-collections.js CLI script functions.
  * These tests cover the critical CI/CD workflow functionality.
  */
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // Import the publish-collections module - use require for CommonJS
 // When compiled to dist-test/test/, need to resolve back to lib/bin/
@@ -40,7 +40,7 @@ describe('Publish Collections CLI', () => {
         if (cmd === 'git' && args[0] === 'diff') {
           return {
             status: 0,
-            stdout: 'prompts/a.md\nprompts/b.md\nprompts/a.md\n',
+            stdout: 'prompts/a.md\nprompts/b.md\nprompts/a.md\n'
           };
         }
         return { status: 1 };
@@ -51,7 +51,7 @@ describe('Publish Collections CLI', () => {
         base: 'abc123',
         head: 'def456',
         env: {},
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(result.isInitialCommit, false);
@@ -66,7 +66,7 @@ describe('Publish Collections CLI', () => {
         base: '0000000000000000000000000000000000000000',
         head: 'abc123',
         env: {},
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(result.isInitialCommit, true);
@@ -81,7 +81,7 @@ describe('Publish Collections CLI', () => {
         base: '',
         head: 'abc123',
         env: {},
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(result.isInitialCommit, true);
@@ -92,8 +92,12 @@ describe('Publish Collections CLI', () => {
       const mockSpawnSync = (cmd: string, args: string[]) => {
         if (cmd === 'git' && args[0] === 'rev-parse') {
           const ref = args[2];
-          if (ref === 'nonexistent^{commit}') return { status: 1 };
-          if (ref === 'abc123~1^{commit}') return { status: 0 };
+          if (ref === 'nonexistent^{commit}') {
+            return { status: 1 };
+          }
+          if (ref === 'abc123~1^{commit}') {
+            return { status: 0 };
+          }
           return { status: 0 };
         }
         if (cmd === 'git' && args[0] === 'diff') {
@@ -109,7 +113,7 @@ describe('Publish Collections CLI', () => {
         base: 'nonexistent',
         head: 'abc123',
         env: {},
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(diffCalled, true);
@@ -123,7 +127,7 @@ describe('Publish Collections CLI', () => {
         base: 'abc123',
         head: '',
         env: {},
-        spawnSync: () => ({ status: 0 }),
+        spawnSync: () => ({ status: 0 })
       });
 
       assert.strictEqual(result.isInitialCommit, false);
@@ -143,9 +147,9 @@ describe('Publish Collections CLI', () => {
       cleanup(tempDir);
     });
 
-    it('should return entry names from a zip file', async function() {
+    it('should return entry names from a zip file', async function () {
       this.timeout(5000);
-      
+
       const archiver = require('archiver');
       const zipPath = path.join(tempDir, 'test.zip');
       const output = fs.createWriteStream(zipPath);
@@ -222,15 +226,15 @@ items: []
       cleanup(tempDir);
     });
 
-    it('should not invoke gh release create in dry-run mode', async function() {
-      this.timeout(10000);
+    it('should not invoke gh release create in dry-run mode', async function () {
+      this.timeout(10_000);
 
       writeFile(tempDir, 'package.json', JSON.stringify({
         name: 'test',
         description: 'test',
         license: 'MIT',
         repository: { url: 'https://example.com/test' },
-        keywords: [],
+        keywords: []
       }));
       writeFile(tempDir, 'collections/test.collection.yml', `
 id: test-collection
@@ -241,7 +245,7 @@ items:
 `);
       writeFile(tempDir, 'prompts/test.md', '# Test Prompt');
 
-      const { spawnSync } = require('child_process');
+      const { spawnSync } = require('node:child_process');
       spawnSync('git', ['init'], { cwd: tempDir });
       spawnSync('git', ['config', 'user.email', 'test@test.com'], { cwd: tempDir });
       spawnSync('git', ['config', 'user.name', 'Test'], { cwd: tempDir });
@@ -257,11 +261,11 @@ items:
         return spawnSync(cmd, args, opts);
       };
 
-      const result = await main({
+      await main({
         repoRoot: tempDir,
         argv: ['--dry-run', '--changed-path', 'collections/test.collection.yml', '--repo-slug', 'test-owner/test-repo'],
         env: { GITHUB_TOKEN: 'fake-token' },
-        spawnSync: mockSpawnSync,
+        spawnSync: mockSpawnSync
       });
 
       assert.strictEqual(ghReleaseCalled, false, 'gh release create should not be called in dry-run mode');

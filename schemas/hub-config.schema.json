@@ -79,12 +79,9 @@
           },
           "type": {
             "type": "string",
-            "description": "Type of the source repository (github, gitlab, http/url, local, awesome-copilot, local-awesome-copilot, apm, local-apm, skills)",
+            "description": "Type of the source repository (github, local, awesome-copilot, local-awesome-copilot, apm, local-apm, skills)",
             "enum": [
               "github",
-              "gitlab",
-              "http",
-              "url",
               "local",
               "awesome-copilot",
               "local-awesome-copilot",

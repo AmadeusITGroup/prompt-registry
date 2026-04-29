@@ -94,9 +94,7 @@ body:
       description: Which type of registry source are you using?
       options:
         - GitHub
-        - GitLab
         - Local
-        - HTTP
         - Awesome Copilot
         - Not sure
 

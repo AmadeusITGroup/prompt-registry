@@ -39,6 +39,23 @@ View logs: `View → Output → Prompt Registry`
 - Check repository visibility (public/private)
 - Wait if rate-limited
 
+### Hub Not Displaying After Selection
+
+If you selected a hub but it doesn't appear in the Registry Explorer:
+
+1. Check logs (`View → Output → Prompt Registry`) for hub sync errors
+2. Verify the hub URL is reachable from your network
+3. Run `Prompt Registry: Sync Hub` from the Command Palette
+4. If the hub still doesn't appear, run `Prompt Registry: Reset First Run`, then reload VS Code (`Ctrl+R`)
+
+### Hub Selector Not Shown on First Launch
+
+If you installed the extension but were never prompted to select a hub:
+
+1. Ensure VS Code is version 1.99.3 or above
+2. Run `Prompt Registry: Reset First Run` from the Command Palette
+3. Reload VS Code (`Ctrl+R`) — the hub selector should appear
+
 ## Useful Commands
 
 Access these commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):

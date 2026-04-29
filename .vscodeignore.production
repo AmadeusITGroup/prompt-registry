@@ -139,11 +139,13 @@ INTEGRATION_TEST_*.md
 !dist/webview/**
 
 
-# IMPORTANT: Include templates and config directories with all its contents
+# IMPORTANT: Include templates, config, and resources directories with all its contents
 !templates/
 !templates/**
 !config/
 !config/**
+!resources/
+!resources/**
 
 # Cache directories
 .cache/

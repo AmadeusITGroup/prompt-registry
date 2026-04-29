@@ -1,0 +1,33 @@
+{
+  "eslint.codeActionsOnSave.mode": "all",
+  "eslint.format.enable": true,
+  "eslint.probe": [
+    "javascript",
+    "typescript",
+    "typescriptreact",
+    "html",
+    "markdown",
+    "json",
+    "yaml"
+  ],
+  "eslint.rules.customizations": [
+    {
+      "fixable": true,
+      "rule": "@stylistic/*",
+      "severity": "off"
+    },
+    {
+      "fixable": true,
+      "rule": "!@stylistic/*",
+      "severity": "info"
+    }
+  ],
+  "eslint.useFlatConfig": true,
+  "eslint.validate": [
+    "html",
+    "javascript",
+    "typescript",
+    "json",
+    "yaml"
+  ]
+}

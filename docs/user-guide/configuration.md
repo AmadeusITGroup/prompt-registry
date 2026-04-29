@@ -14,6 +14,31 @@ Access: `File → Preferences → Settings → Extensions → Prompt Registry`
 | `promptregistry.updateCheck.autoUpdate` | Auto-install updates | `false` |
 | `promptregistry.updateCheck.cacheTTL` | Cache TTL (ms) | `300000` |
 
+## Telemetry
+
+Telemetry respects VS Code's built-in telemetry setting. To enable or disable it:
+
+1. Open **File → Preferences → Settings** (or `Cmd+,` / `Ctrl+,`)
+2. Search for `telemetry.telemetryLevel`
+3. Choose a level:
+
+| Level | Effect on Prompt Registry |
+|-------|--------------------------|
+| `all` | Telemetry events are collected |
+| `error` | Only error events are collected |
+| `crash` | Telemetry is disabled |
+| `off` | Telemetry is disabled |
+
+You can also set it in `settings.json`:
+
+```json
+{
+  "telemetry.telemetryLevel": "all"
+}
+```
+
+Enabling telemetry helps us understand how the extension is used so we can focus on the features that matter most.
+
 ## Export/Import Settings
 
 - **Export**: Registry Explorer toolbar → Export button

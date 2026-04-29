@@ -11,9 +11,7 @@ fixtures/
 │   └── testing-bundle/     # Testing & QA prompts
 ├── github/                 # GitHub API response mocks
 │   └── releases-response.json
-├── gitlab/                 # GitLab API response mocks
-│   └── releases-response.json
-└── http/                   # HTTP registry mocks
+└── apm/                    # APM registry mocks
     └── index.json
 ```
 
@@ -59,30 +57,6 @@ Simulates GitHub Releases API responses with:
 - Testing GitHubAdapter without real API calls
 - Testing release filtering and parsing
 - Testing authentication scenarios
-
-### GitLab Releases (`gitlab/releases-response.json`)
-
-Simulates GitLab Releases API responses with:
-- Release metadata in GitLab format
-- Asset links structure
-- Tag and version information
-
-**Used for:**
-- Testing GitLabAdapter without real API calls
-- Testing GitLab-specific asset handling
-- Testing self-hosted GitLab scenarios
-
-### HTTP Registry Index (`http/index.json`)
-
-Simulates HTTP-based registry index with:
-- Bundle catalog with metadata
-- Category organization
-- Version and download information
-
-**Used for:**
-- Testing HttpAdapter functionality
-- Testing registry index parsing
-- Testing bundle discovery
 
 ## Using Test Fixtures
 
@@ -136,7 +110,7 @@ import {
     setupReleaseMocks,
     createMockGitHubSource,
     cleanupReleaseMocks
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 // Set up complete GitHub release mocks
 setupReleaseMocks(

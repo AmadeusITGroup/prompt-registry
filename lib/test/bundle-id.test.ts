@@ -1,8 +1,10 @@
 /**
  * Bundle ID module tests
  */
-import * as assert from 'assert';
-import { generateBundleId } from '../src/bundle-id';
+import * as assert from 'node:assert';
+import {
+  generateBundleId,
+} from '../src/bundle-id';
 
 describe('Bundle ID Module', () => {
   describe('generateBundleId()', () => {

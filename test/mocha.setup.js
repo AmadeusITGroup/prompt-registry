@@ -1,7 +1,7 @@
 // Mock vscode module for unit tests
-const path = require('path');
-const fs = require('fs');
-const Module = require('module');
+const path = require('node:path');
+const fs = require('node:fs');
+const Module = require('node:module');
 
 // Set test environment flag to prevent UpdateScheduler from running
 process.env.NODE_ENV = 'test';
@@ -89,12 +89,9 @@ const vscode = {
     getConfiguration: (section) => ({
       get: (key, defaultValue) => {
         // Return mock configuration values for testing
-        if (section === 'olaf') {
+        if (section === 'promptregistry') {
           const config = {
-            'repositoryOwner': 'test-owner',
-            'repositoryName': 'test-repo',
-            'githubToken': 'test-token',
-            'usePrivateRepository': false
+            'githubToken': 'test-token'
           };
           return config[key] || defaultValue;
         }
@@ -113,8 +110,7 @@ const vscode = {
           const config = {
             'githubToken': '',
             'autoCheckUpdates': false, // Disable auto updates during tests
-            'installationScope': 'user',
-            'defaultVersion': 'latest'
+            'installationScope': 'user'
           };
           return config[key] || defaultValue;
         }
@@ -259,8 +255,36 @@ const vscode = {
     machineId: 'mock-machine-id',
     sessionId: 'mock-session-id',
     remoteName: undefined,
+    uriScheme: 'vscode',
     shell: '/bin/bash',
-    openExternal: (uri) => Promise.resolve(true)
+    isTelemetryEnabled: true,
+    openExternal: (uri) => Promise.resolve(true),
+    createTelemetryLogger: (sender, options) => {
+      let _isUsageEnabled = true;
+      return {
+        get isUsageEnabled() { return _isUsageEnabled; },
+        set isUsageEnabled(v) { _isUsageEnabled = v; },
+        get isErrorsEnabled() { return _isUsageEnabled; },
+        onDidChangeEnableStates: () => ({ dispose: () => {} }),
+        logUsage: (eventName, data) => {
+          if (_isUsageEnabled) {
+            sender.sendEventData(eventName, data);
+          }
+        },
+        logError: (eventNameOrError, data) => {
+          if (_isUsageEnabled) {
+            if (eventNameOrError instanceof Error) {
+              sender.sendErrorData(eventNameOrError, data);
+            } else {
+              sender.sendEventData(eventNameOrError, data);
+            }
+          }
+        },
+        dispose: () => {
+          if (sender.flush) { sender.flush(); }
+        }
+      };
+    }
   },
   ConfigurationTarget: {
     Global: 1,

@@ -1,6 +1,6 @@
 # Marketplace
 
-Open via Activity Bar icon or `Ctrl+Shift+P` → "Prompt Registry: Open Marketplace"
+Open via Activity Bar icon or `Ctrl+Shift+P` → "Prompt Registry: Focus On Marketplace View"
 
 ## Browsing
 

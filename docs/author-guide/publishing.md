@@ -1,6 +1,35 @@
 # Publishing Collections
 
-## GitHub (Recommended)
+## Choosing Where to Publish
+
+Before publishing, decide where your collection should live:
+
+### Publish to an existing shared source
+
+Best when your organization already maintains a central collection repository.
+
+- **Pros:** Less setup — no source creation needed; immediate visibility to all hub users
+- **Cons:** You follow the repository's review process; ownership is per-author per-collection
+
+### Publish to your own source
+
+Best when you want full control over the review and release cycle.
+
+- **Pros:** Independent review and release cycle; source can be scoped per team or project
+- **Cons:** Initial setup required (create repo, link to hub); users must add your source or it must be added to a hub
+
+## Contributing to an Existing Source
+
+If you're contributing a collection to a source you don't own:
+
+1. **Fork** the source repository on GitHub
+2. **Clone** your fork and open it in VS Code with Prompt Registry installed
+3. **Create a new collection**: `Ctrl+Shift+P` → "Prompt Registry: Create Collection"
+4. Fill in the collection metadata (id, name, description, version, author, tags) and link your primitives — see [Collection Schema](./collection-schema.md)
+5. **Validate**: `Ctrl+Shift+P` → "Prompt Registry: Validate Collections"
+6. Create a new branch, commit, and open a **Pull Request** against the upstream source repository
+
+## Creating a New Source (GitHub Recommended)
 
 ### Setup
 

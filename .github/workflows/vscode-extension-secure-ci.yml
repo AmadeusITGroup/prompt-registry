@@ -23,7 +23,7 @@ on:
 permissions: read-all
 env:
   # Security: Use environment variables for configuration
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
   EXTENSION_DIR: "."
   EXTENSION_NAME: "prompt-registry"
 
@@ -151,7 +151,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        node-version: [20]
+        node-version: [24]
 
     steps:
       - name: Harden Runner
@@ -171,17 +171,14 @@ jobs:
           cache: "npm"
           cache-dependency-path: "package-lock.json"
 
-      - name: Build lib package
-        working-directory: lib
-        run: |
-          npm ci --fund=false
-          npm run build
-
       - name: Install dependencies
         run: npm ci --fund=false
 
+      - name: Build lib package
+        run: npm run compile-lib
+
       - name: Run linting
-        run: npm run lint
+        run: npm run lint -- --quiet
 
       - name: Run type checking
         run: npm run compile

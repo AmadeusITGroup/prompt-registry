@@ -2,11 +2,15 @@
  * Collection file utilities.
  * @module collections
  */
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as yaml from 'js-yaml';
-import { normalizeRepoRelativePath } from './validate';
-import type { Collection } from './types';
+import type {
+  Collection,
+} from './types';
+import {
+  normalizeRepoRelativePath,
+} from './validate';
 
 /**
  * List all collection files in the repository.
@@ -26,7 +30,7 @@ export function listCollectionFiles(repoRoot: string): string[] {
  * @param repoRoot - Repository root path
  * @param collectionFile - Collection file path (absolute or repo-relative)
  * @returns Parsed collection object
- * @throws Error if file is invalid YAML or not an object
+ * @throws {Error} if file is invalid YAML or not an object
  */
 export function readCollection(repoRoot: string, collectionFile: string): Collection {
   const abs = path.isAbsolute(collectionFile)

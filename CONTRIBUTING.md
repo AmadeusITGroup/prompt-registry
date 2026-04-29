@@ -110,7 +110,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 ```
 prompt-registry/
 ├── src/
-│   ├── adapters/          # Source adapters (GitHub, GitLab, Local, etc.)
+│   ├── adapters/          # Source adapters (GitHub, Local, etc.)
 │   ├── commands/          # VS Code commands
 │   ├── services/          # Core business logic
 │   ├── ui/                # WebView UI components
@@ -359,10 +359,10 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ```bash
 # Feature
-feat(adapters): add GitLab adapter support
+feat(adapters): add APM adapter support
 
-Implements GitLab adapter with private repository support,
-authentication via personal access tokens, and release fetching.
+Implements APM adapter with package repository support
+and release fetching.
 
 Closes #42
 

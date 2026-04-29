@@ -30,49 +30,13 @@ This document describes all configuration settings available for the Prompt Regi
 
 ## GitHub Settings
 
-### `promptregistry.githubApiUrl`
-
-- **Type:** `string`
-- **Default:** `"https://api.github.com"`
-- **Description:** GitHub API URL for fetching releases. Change this for GitHub Enterprise installations.
-
-### `promptregistry.repositoryOwner`
-
-- **Type:** `string`
-- **Default:** `"AmadeusITGroup"`
-- **Description:** GitHub repository owner for the default source.
-
-### `promptregistry.repositoryName`
-
-- **Type:** `string`
-- **Default:** `"prompt-registry"`
-- **Description:** GitHub repository name for the default source.
-
 ### `promptregistry.githubToken`
 
 - **Type:** `string`
 - **Default:** `""`
 - **Description:** GitHub personal access token for private repositories. Generate with `gh auth token` or create a PAT in GitHub settings.
 
-### `promptregistry.usePrivateRepository`
-
-- **Type:** `boolean`
-- **Default:** `false`
-- **Description:** Enable access to private GitHub repositories using authentication.
-
-### `promptregistry.useGitHubCli`
-
-- **Type:** `boolean`
-- **Default:** `false`
-- **Description:** Use GitHub CLI (`gh`) for automatic token generation instead of manual token configuration.
-
 ## Update Settings
-
-### `promptregistry.defaultVersion`
-
-- **Type:** `string`
-- **Default:** `"latest"`
-- **Description:** Default version to install. Use `"latest"` for the latest release or specify a version like `"v1.0.0"`.
 
 ### `promptregistry.updateCheck.enabled`
 
@@ -122,34 +86,6 @@ This document describes all configuration settings available for the Prompt Regi
 {
   "promptregistry.enableLogging": true,
   "promptregistry.installationScope": "user"
-}
-```
-
-### Private Repository Access
-
-```json
-{
-  "promptregistry.usePrivateRepository": true,
-  "promptregistry.useGitHubCli": true
-}
-```
-
-Or with explicit token:
-
-```json
-{
-  "promptregistry.usePrivateRepository": true,
-  "promptregistry.githubToken": "ghp_xxxxxxxxxxxx"
-}
-```
-
-### GitHub Enterprise
-
-```json
-{
-  "promptregistry.githubApiUrl": "https://github.mycompany.com/api/v3",
-  "promptregistry.repositoryOwner": "my-org",
-  "promptregistry.repositoryName": "prompt-bundles"
 }
 ```
 

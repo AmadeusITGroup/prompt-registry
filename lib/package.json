@@ -1,6 +1,6 @@
 {
   "name": "@prompt-registry/collection-scripts",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Shared scripts for building, validating, and publishing Copilot prompt collections",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,15 +14,15 @@
     "publish-collections": "./bin/publish-collections.js",
     "list-collections": "./bin/list-collections.js",
     "create-skill": "./bin/create-skill.js",
-    "compute-ratings": "./bin/compute-ratings.js",
-    "setup-discussions": "./bin/setup-discussions.js"
+    "hub-release-analyzer": "./bin/hub-release-analyzer.js"
   },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run compile-tests && mocha 'dist-test/test/**/*.test.js'",
-    "lint": "eslint src/**/*.ts test/**/*.ts",
+    "lint": "eslint src test",
+    "lint:fix": "eslint src test --fix",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -38,7 +38,7 @@
     "bundling"
   ],
   "author": "Prompt Registry Contributors",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/AmadeusITGroup/prompt-registry/issues"
   },

@@ -16,9 +16,6 @@ const ITEMS_TO_COPY = [
     'suite/index.js',     // Integration test entry point
     'mocks/loggerMockSetup.js',
     'mocks/loggerMocks.js',
-    'mocks/githubMocks.js',
-    'mocks/testSetup.js',
-    'helpers/mockData.js',
     'vscode-mock.js',
     'mocha.setup.js',
     'unit.setup.js'

@@ -16,6 +16,7 @@ yarn-error.log
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/extensions.json
+!.vscode/settings.json
 !.vscode/README.md
 *.swp
 *.swo
@@ -34,6 +35,9 @@ build/
 *.tsbuildinfo
 *.js.map
 *.d.ts.map
+
+# Generated skill references (copied from docs/ at build time)
+resources/skills/prompt-registry-helper/references
 
 # Test outputs
 test-out/

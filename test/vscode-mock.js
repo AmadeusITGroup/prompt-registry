@@ -1,18 +1,15 @@
 // Mock vscode API for unit tests
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 module.exports = {
   workspace: {
     getConfiguration: (section) => ({
       get: (key, defaultValue) => {
         // Return mock configuration values for testing
-        if (section === 'olaf') {
+        if (section === 'promptregistry') {
           const config = {
-            'repositoryOwner': 'test-owner',
-            'repositoryName': 'test-repo',
-            'githubToken': 'test-token',
-            'usePrivateRepository': false
+            'githubToken': 'test-token'
           };
           return config[key] || defaultValue;
         }

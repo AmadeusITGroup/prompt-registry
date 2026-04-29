@@ -1,75 +1,91 @@
-import eslint from "@eslint/js";
-import tseslint from "typescript-eslint";
-import eslintConfigPrettier from "eslint-config-prettier";
+import {
+  defineConfig,
+  globalIgnores,
+} from 'eslint/config';
+import globals from 'globals';
+import jsonParser from 'jsonc-eslint-parser';
+import {
+  createSharedConfig,
+  temporaryWarnRules,
+  temporaryWarnRulesTs,
+} from './eslint.shared.mjs';
 
-export default tseslint.config(
+export default defineConfig([
+  globalIgnores(
+    [
+      'out/',
+      'test-out/',
+      'dist/',
+      'test-dist/',
+      '**/*.d.ts',
+      'node_modules/',
+      'test/**/*.js',
+      'lib/'
+    ],
+    'prompt-registry/ignores'
+  ),
+  ...createSharedConfig({
+    name: 'prompt-registry',
+    tsProjects: ['tsconfig.json', 'tsconfig.test.json'],
+    tsconfigRootDir: import.meta.dirname,
+    nodeGlobFiles: ['src/**/*.ts']
+  }),
   {
-    ignores: ["out/", "test-out/", "dist/", "test-dist/", "**/*.d.ts", "node_modules/", "lib/"],
-  },
-  eslint.configs.recommended,
-  eslintConfigPrettier,
-  {
-    files: ["src/**/*.ts"],
-    plugins: {
-      "@typescript-eslint": tseslint.plugin,
-    },
-    languageOptions: {
-      parser: tseslint.parser,
-      ecmaVersion: 2020,
-      sourceType: "module",
-      globals: {
-        Buffer: "readonly",
-        NodeJS: "readonly",
-        console: "readonly",
-        process: "readonly",
-        setTimeout: "readonly",
-        clearTimeout: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
-        URL: "readonly",
-        __dirname: "readonly",
-        __filename: "readonly",
-        require: "readonly",
-        module: "readonly",
-        exports: "readonly",
-      },
-    },
+    // TODO to be discussed and fixed in a future PRs
+    name: 'prompt-registry/temporary-warn-rules-ts',
+    files: ['**/*.ts'],
     rules: {
-      "no-unused-vars": "off",
-      "@typescript-eslint/naming-convention": [
-        "warn",
-        {
-          selector: "import",
-          format: ["camelCase", "PascalCase"],
-        },
-      ],
-      curly: "warn",
-      eqeqeq: "warn",
-      "no-throw-literal": "warn",
-      semi: "off",
-    },
+      ...temporaryWarnRulesTs
+    }
   },
   {
-    files: ["src/ui/webview/**/*.js"],
+    name: 'prompt-registry/test-ts-rules',
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-require-imports': 'off'
+    }
+  },
+  {
+    // TODO to be discussed and fixed in a future PRs
+    name: 'prompt-registry/temporary-warn-rules',
+    files: ['**/*.{j,t}s'],
+    rules: {
+      ...temporaryWarnRules
+    }
+  },
+  {
+    name: 'prompt-registry/parser/json',
+    files: ['**/*.json'],
+    languageOptions: {
+      parser: jsonParser
+    }
+  },
+  {
+    name: 'prompt-registry/webview-js',
+    files: ['src/ui/webview/**/*.js'],
     languageOptions: {
       ecmaVersion: 2020,
-      sourceType: "module",
+      sourceType: 'module',
       globals: {
-        document: "readonly",
-        window: "readonly",
-        console: "readonly",
-        acquireVsCodeApi: "readonly",
-        setTimeout: "readonly",
-        clearTimeout: "readonly",
-        MutationObserver: "readonly",
-        HTMLElement: "readonly",
-      },
-    },
-    rules: {
-      "no-unused-vars": "off",
-      curly: "warn",
-      eqeqeq: "warn",
-      semi: "off",
-    },
+        ...globals.browser,
+        acquireVsCodeApi: 'readonly'
+      }
+    }
+  },
+  {
+    name: 'prompt-registry/test',
+    files: ['test/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.mocha,
+        NodeJS: true
+      }
+    }
   }
-);
+]);

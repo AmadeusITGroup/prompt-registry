@@ -1,6 +1,6 @@
 /**
- * @prompt-registry/collection-scripts
- * 
+ * `@prompt-registry/collection-scripts`
+ *
  * Shared scripts for building, validating, and publishing Copilot prompt collections.
  * @module @prompt-registry/collection-scripts
  */

@@ -2,42 +2,65 @@
 
 ## Purpose
 
-Adapters provide a unified interface for different prompt bundle sources (GitHub, GitLab, HTTP, Local, Awesome Copilot).
+Adapters provide a unified interface for prompt bundle sources (GitHub, Local, Awesome Copilot, APM, Skills, and their local variants).
 
 ## Adding a New Adapter
 
-1. Copy an existing adapter (e.g., `HttpAdapter.ts`)
-2. Implement `IRepositoryAdapter` interface
-3. Register in `RepositoryAdapterFactory`
+1. Copy an existing adapter (e.g., `github-adapter.ts`)
+2. Extend `RepositoryAdapter` (see `repository-adapter.ts`) — it implements shared auth/header logic
+3. Register in `RegistryManager` via `RepositoryAdapterFactory.register('type', AdapterClass)`
 
-### Required Methods
+## Interface
+
+`IRepositoryAdapter` (defined in `src/adapters/repository-adapter.ts`):
 
 ```typescript
 interface IRepositoryAdapter {
-    fetchBundles(source: RegistrySource): Promise<Bundle[]>;
-    getDownloadUrl(bundle: Bundle): Promise<string | Buffer>;
-    validate(source: RegistrySource): Promise<boolean>;
+  readonly type: string;
+  readonly source: RegistrySource;
+
+  fetchBundles(): Promise<Bundle[]>;
+  downloadBundle(bundle: Bundle): Promise<Buffer>;
+  fetchMetadata(): Promise<SourceMetadata>;
+  validate(): Promise<ValidationResult>;
+  requiresAuthentication(): boolean;
+  getManifestUrl(bundleId: string, version?: string): string;
+  getDownloadUrl(bundleId: string, version?: string): string;
+  forceAuthentication?(): Promise<void>;   // optional
 }
 ```
 
-### Two Download Patterns
-
-| Pattern | Return Type | Used By | When |
-|---------|-------------|---------|------|
-| URL-based | `string` | GitHub, GitLab, HTTP | Pre-packaged bundles |
-| Buffer-based | `Buffer` | Awesome Copilot, Local | Dynamically created bundles |
+- `downloadBundle` always returns a `Buffer` — whether the source provides pre-packaged ZIPs (GitHub) or builds them dynamically (Awesome Copilot, Local).
+- `getDownloadUrl` / `getManifestUrl` return `string` URLs — used for UI display and debug links, not for the actual download (which goes through `downloadBundle`).
+- `validate` returns a `ValidationResult` (not a boolean) — contains error details for user-facing diagnostics.
 
 ## Authentication Chain (GitHub)
 
-1. Explicit token from source configuration
-2. VS Code GitHub authentication session
+Resolved in order:
+1. Explicit `token` on `RegistrySource`
+2. VS Code GitHub authentication session (`vscode.authentication.getSession('github', ...)`)
 3. GitHub CLI (`gh auth token`)
 4. No auth (public repos only)
 
+## Existing Adapters
+
+| File | Type |
+|------|------|
+| `github-adapter.ts` | Remote GitHub repo releases |
+| `awesome-copilot-adapter.ts` | Awesome Copilot repo (dynamic bundle assembly) |
+| `apm-adapter.ts` | Remote APM registry |
+| `skills-adapter.ts` | Remote Skills source |
+| `local-adapter.ts` | Local filesystem bundles |
+| `local-apm-adapter.ts` | Local APM registry |
+| `local-awesome-copilot-adapter.ts` | Local Awesome Copilot clone |
+| `local-skills-adapter.ts` | Local Skills source |
+
 ## Checklist
 
-- [ ] Extends `RepositoryAdapter` base class
-- [ ] Implements all three methods
-- [ ] Handles authentication appropriately
-- [ ] Returns proper error messages
+- [ ] Extends `RepositoryAdapter`
+- [ ] Implements all required `IRepositoryAdapter` methods
+- [ ] Returns `Buffer` from `downloadBundle`
+- [ ] Returns `ValidationResult` from `validate` with actionable error messages
+- [ ] Handles authentication via inherited helpers where possible
+- [ ] Registered in `RepositoryAdapterFactory`
 - [ ] Has corresponding test file in `test/adapters/`

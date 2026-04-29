@@ -2,17 +2,22 @@ name: Collection Scripts Library CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "lib/**"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "lib/**"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
+  EXTENSION_DIR: "."
 
 jobs:
   lint-and-test:
@@ -20,9 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: lib
 
     steps:
       - name: Checkout code
@@ -33,29 +35,28 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          cache-dependency-path: "lib/package-lock.json"
+          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build TypeScript
+        working-directory: lib
         run: npm run build
 
       - name: Run tests
+        working-directory: lib
         run: npm test
 
   publish:
     name: Publish to npmjs
     runs-on: ubuntu-latest
+    environment: npmjs
     needs: lint-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       id-token: write  # Required for OIDC
       contents: write
-
-    defaults:
-      run:
-        working-directory: lib
 
     steps:
       - name: Checkout code
@@ -68,16 +69,18 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          cache-dependency-path: "lib/package-lock.json"
+          cache-dependency-path: "${{ env.EXTENSION_DIR }}/package-lock.json"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build TypeScript
+        working-directory: lib
         run: npm run build
 
       - name: Check if version changed
+        working-directory: lib
         id: version-check
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
@@ -86,15 +89,10 @@ jobs:
           # Check if this version tag already exists
           if git tag -l "collection-scripts-v$PACKAGE_VERSION" | grep -q .; then
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version $PACKAGE_VERSION already published"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Publish package
-        if: steps.version-check.outputs.exists == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create version tag
         if: steps.version-check.outputs.exists == 'false'
         run: |
@@ -104,8 +102,7 @@ jobs:
           git push origin "collection-scripts-v${{ steps.version-check.outputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Skip publish (version exists)
-        if: steps.version-check.outputs.exists == 'true'
-        run: |
-          echo "Version ${{ steps.version-check.outputs.version }} already published, skipping."
+      - name: Publish package
+        working-directory: lib
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm publish --provenance --access public

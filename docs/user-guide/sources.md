@@ -14,14 +14,12 @@ If you select a hub during first-run setup, all sources defined in that hub are 
 |------|----------|--------|
 | `awesome-copilot` | Community collections (GitHub-hosted) | Active |
 | `local-awesome-copilot` | Local collection development/testing | Active |
-| `github` | GitHub repository releases | Active |
+| `github` | GitHub repository releases | Active ( Recommended ) |
 | `local` | File system directories | Active |
 | `apm` | APM package repositories | Active |
 | `local-apm` | Local APM packages | Active |
-| `gitlab` | GitLab repository releases | ⚠️ Deprecated |
-| `http` | HTTP/HTTPS bundle URLs | ⚠️ Deprecated |
-
-> **Deprecation Notice:** The `gitlab` and `http` source types are deprecated and will be removed in a future release. Migrate to `github` or `awesome-copilot` sources.
+| `skills` | GitHub repository with skills | Active |
+| `local-skills` | Local filesystem skills directory | Active |
 
 ## Adding a Source
 

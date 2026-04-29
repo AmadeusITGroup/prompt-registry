@@ -74,15 +74,6 @@ This is useful when bundle files have been manually deleted but the lockfile sti
 2. Shows a confirmation dialog with the count of stale entries
 3. Removes confirmed stale entries from the lockfile
 
-## Version Management
-
-| Command | Title | Description |
-|---------|-------|-------------|
-| `promptregistry.selectVersion` | Select Version to Install | Choose a specific version of a bundle to install |
-| `promptregistry.checkUpdates` | Check for Updates | Check for available updates |
-| `promptregistry.update` | Update to Latest Version | Update to the latest version |
-| `promptregistry.showVersion` | Show Version Information | Display version information |
-
 ## Source Management
 
 | Command | Title | Description |
@@ -167,7 +158,6 @@ This is useful when bundle files have been manually deleted but the lockfile sti
 
 | Command | Title | Description |
 |---------|-------|-------------|
-| `promptregistry.validateAccess` | Validate Repository Access | Validate access to a repository |
 | `promptregistry.forceGitHubAuth` | Force GitHub Authentication | Force re-authentication with GitHub |
 
 ## Engagement (Feedback)
@@ -193,7 +183,6 @@ Feedback is stored via the EngagementService and synced to GitHub Discussions wh
 
 | Command | Title | Description |
 |---------|-------|-------------|
-| `promptregistry.showHelp` | Show Help Documentation | Display help documentation |
 | `promptregistry.openItemRepository` | Open Repository | Open an item's repository in a browser |
 | `promptRegistry.resetFirstRun` | Reset First Run | Reset first-run state to re-trigger hub selection dialog |
 

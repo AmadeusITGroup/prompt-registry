@@ -169,13 +169,13 @@ Bundle installation involves file system operations:
 
 The extension makes network requests to registry sources:
 
-- **HTTPS Only**: All GitHub/GitLab APIs use HTTPS
+- **HTTPS Only**: All GitHub APIs use HTTPS
 - **Certificate Validation**: Standard Node.js certificate validation
 - **No Credential Storage**: Tokens retrieved from VS Code settings or GitHub CLI
 
 ### Authentication
 
-GitHub and GitLab tokens are handled securely:
+GitHub tokens are handled securely:
 
 - **No Hardcoding**: Tokens never hardcoded in source
 - **VS Code Settings**: Stored in user settings (encrypted by VS Code)

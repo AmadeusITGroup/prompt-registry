@@ -34,7 +34,24 @@ The extension automatically adds the Awesome Copilot source and syncs your selec
 - **🔌 Multi-Source Support** — Connect to GitHub, local directories, APM repositories, or Awesome Copilot collections ([details](./docs/user-guide/sources.md))
 - **📦 Version Management** — Track versions, detect updates, and enable automatic background updates ([details](./docs/user-guide/configuration.md))
 - **👥 Profiles & Hubs** — Organize bundles by project/team and share configurations across your organization ([details](./docs/user-guide/profiles-and-hubs.md))
+- **🤖 Built-in Copilot Skill** — Ask GitHub Copilot questions about Prompt Registry directly in chat — setup, authoring, troubleshooting, and more
 - **🌍 Cross-Platform** — Works on macOS, Linux, and Windows with all VS Code flavors
+
+---
+
+## 🤖 Ask Copilot About Prompt Registry
+
+Prompt Registry ships with a built-in **Copilot skill** that lets you ask GitHub Copilot questions about the extension directly in chat. No extra setup is required — the skill is available as soon as the extension is installed.
+
+**What you can ask:**
+- **Users** — "How do I add a local source?", "What scopes are available?", "Why isn't my hub showing?"
+- **Authors** — "How do I create a collection?", "What fields are required in a manifest?", "How do I publish to a hub?"
+
+The skill answers from the extension's own documentation, so responses are always grounded in the actual behavior of your installed version.
+
+> **Note:** The skill covers user and author topics only. For contributor questions (architecture, testing, internals), consult the [Contributor Guide](./docs/contributor-guide/development-setup.md) directly.
+
+> **Seeing incorrect or unexpected answers?** Please [open an issue](https://github.com/AmadeusITGroup/prompt-registry/issues) describing the question you asked and the response you received, or reach out to one of the project contributors directly.
 
 ---
 
