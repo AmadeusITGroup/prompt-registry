@@ -1,6 +1,6 @@
 /**
  * Tests for EngagementService
- * Unified facade for telemetry, ratings, and feedback
+ * Unified facade for ratings and feedback
  */
 
 import * as assert from 'node:assert';
@@ -98,81 +98,25 @@ suite('EngagementService', () => {
   });
 
   suite('Privacy Settings', () => {
-    test('should have telemetry disabled by default', () => {
+    test('should have sharing disabled by default', () => {
       const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.telemetryEnabled, false);
+      assert.strictEqual(settings.shareRatingsPublicly, false);
+      assert.strictEqual(settings.shareFeedbackPublicly, false);
     });
 
     test('should update privacy settings', () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
+      service.setPrivacySettings({ shareRatingsPublicly: true });
       const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.telemetryEnabled, true);
+      assert.strictEqual(settings.shareRatingsPublicly, true);
     });
 
     test('should preserve other settings when updating', () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
       service.setPrivacySettings({ shareRatingsPublicly: true });
+      service.setPrivacySettings({ shareFeedbackPublicly: true });
 
       const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.telemetryEnabled, true);
       assert.strictEqual(settings.shareRatingsPublicly, true);
-    });
-  });
-
-  suite('Telemetry Operations', () => {
-    test('should not record telemetry when disabled', async () => {
-      // Telemetry is disabled by default
-      await service.recordTelemetry('bundle_install', 'bundle', 'test-bundle');
-
-      const events = await service.getTelemetry();
-      assert.strictEqual(events.length, 0);
-    });
-
-    test('should record telemetry when enabled', async () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
-
-      await service.recordTelemetry('bundle_install', 'bundle', 'test-bundle', {
-        version: '1.0.0'
-      });
-
-      const events = await service.getTelemetry();
-      assert.strictEqual(events.length, 1);
-      assert.strictEqual(events[0].eventType, 'bundle_install');
-      assert.strictEqual(events[0].resourceId, 'test-bundle');
-    });
-
-    test('should fire event when telemetry recorded', async () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
-
-      let firedEvent: any = null;
-      service.onTelemetryRecorded((event) => {
-        firedEvent = event;
-      });
-
-      await service.recordTelemetry('bundle_install', 'bundle', 'test-bundle');
-
-      assert.ok(firedEvent);
-      assert.strictEqual(firedEvent.eventType, 'bundle_install');
-    });
-
-    test('should filter telemetry by event type', async () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
-
-      await service.recordTelemetry('bundle_install', 'bundle', 'b1');
-      await service.recordTelemetry('bundle_uninstall', 'bundle', 'b2');
-
-      const events = await service.getTelemetry({ eventTypes: ['bundle_install'] });
-      assert.strictEqual(events.length, 1);
-    });
-
-    test('should clear telemetry', async () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
-
-      await service.recordTelemetry('bundle_install', 'bundle', 'test-bundle');
-      await service.clearTelemetry();
-
-      const events = await service.getTelemetry();
-      assert.strictEqual(events.length, 0);
+      assert.strictEqual(settings.shareFeedbackPublicly, true);
     });
   });
 
@@ -296,18 +240,14 @@ suite('EngagementService', () => {
 
   suite('Resource Engagement', () => {
     test('should return combined engagement data', async () => {
-      service.setPrivacySettings({ telemetryEnabled: true });
-
       await service.submitRating('bundle', 'test-bundle', 4);
       await service.submitFeedback('bundle', 'test-bundle', 'Great!');
-      await service.recordTelemetry('bundle_install', 'bundle', 'test-bundle');
 
       const engagement = await service.getResourceEngagement('bundle', 'test-bundle');
 
       assert.strictEqual(engagement.resourceId, 'test-bundle');
       assert.ok(engagement.ratings);
       assert.ok(engagement.recentFeedback);
-      assert.ok(engagement.telemetry);
     });
 
     test('should handle resource with no engagement', async () => {

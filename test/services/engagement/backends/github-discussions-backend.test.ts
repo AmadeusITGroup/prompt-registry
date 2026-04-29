@@ -17,7 +17,6 @@ import {
   Feedback,
   GitHubDiscussionsBackendConfig,
   Rating,
-  TelemetryEvent,
 } from '../../../../src/types/engagement';
 
 suite('GitHubDiscussionsBackend', () => {
@@ -100,42 +99,6 @@ suite('GitHubDiscussionsBackend', () => {
     test('should set mapping with comment ID', async () => {
       await backend.initialize(mockConfig);
       backend.setDiscussionMapping('bundle-1', 42, 101);
-    });
-  });
-
-  suite('Telemetry Operations (delegated to local)', () => {
-    test('should record telemetry event', async () => {
-      await backend.initialize(mockConfig);
-
-      const event: TelemetryEvent = {
-        id: 'event-1',
-        timestamp: new Date().toISOString(),
-        eventType: 'bundle_install',
-        resourceType: 'bundle',
-        resourceId: 'test-bundle'
-      };
-
-      await backend.recordTelemetry(event);
-      const events = await backend.getTelemetry({ resourceId: 'test-bundle' });
-      assert.strictEqual(events.length, 1);
-      assert.strictEqual(events[0].id, 'event-1');
-    });
-
-    test('should clear telemetry', async () => {
-      await backend.initialize(mockConfig);
-
-      const event: TelemetryEvent = {
-        id: 'event-1',
-        timestamp: new Date().toISOString(),
-        eventType: 'bundle_view',
-        resourceType: 'bundle',
-        resourceId: 'test-bundle'
-      };
-
-      await backend.recordTelemetry(event);
-      await backend.clearTelemetry();
-      const events = await backend.getTelemetry();
-      assert.strictEqual(events.length, 0);
     });
   });
 
@@ -442,15 +405,6 @@ suite('GitHubDiscussionsBackend', () => {
     test('should aggregate engagement data', async () => {
       await backend.initialize(mockConfig);
 
-      // Add some data
-      await backend.recordTelemetry({
-        id: 'event-1',
-        timestamp: new Date().toISOString(),
-        eventType: 'bundle_install',
-        resourceType: 'bundle',
-        resourceId: 'test-bundle'
-      });
-
       await backend.submitFeedback({
         id: 'feedback-1',
         resourceType: 'bundle',
@@ -463,7 +417,6 @@ suite('GitHubDiscussionsBackend', () => {
 
       assert.strictEqual(engagement.resourceId, 'test-bundle');
       assert.strictEqual(engagement.resourceType, 'bundle');
-      assert.strictEqual(engagement.telemetry?.installCount, 1);
       assert.ok(engagement.recentFeedback);
       assert.strictEqual(engagement.recentFeedback.length, 1);
     });
@@ -663,13 +616,7 @@ collections:
   suite('Error Handling', () => {
     test('should throw when not initialized', async () => {
       await assert.rejects(
-        backend.recordTelemetry({
-          id: 'event-1',
-          timestamp: new Date().toISOString(),
-          eventType: 'bundle_view',
-          resourceType: 'bundle',
-          resourceId: 'test'
-        }),
+        backend.getRating('bundle', 'test'),
         /not initialized/
       );
     });

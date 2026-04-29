@@ -5,7 +5,6 @@
  * Storage structure:
  * globalStorage/
  * └── engagement/
- *     ├── telemetry.json      # Telemetry events
  *     ├── ratings.json        # User ratings
  *     └── feedback.json       # User feedback
  */
@@ -19,8 +18,6 @@ import {
   EngagementResourceType,
   Feedback,
   Rating,
-  TelemetryEvent,
-  TelemetryFilter,
 } from '../types/engagement';
 import {
   PendingFeedback,
@@ -35,18 +32,9 @@ const mkdir = promisify(fs.mkdir);
  */
 interface EngagementStoragePaths {
   root: string;
-  telemetry: string;
   ratings: string;
   feedback: string;
   pendingFeedback: string;
-}
-
-/**
- * Internal storage format for telemetry
- */
-interface TelemetryStore {
-  version: string;
-  events: TelemetryEvent[];
 }
 
 /**
@@ -78,13 +66,11 @@ interface PendingFeedbackStore {
  */
 export class EngagementStorage {
   private readonly paths: EngagementStoragePaths;
-  private telemetryCache?: TelemetryStore;
   private ratingsCache?: RatingsStore;
   private feedbackCache?: FeedbackStore;
   private pendingFeedbackCache?: PendingFeedbackStore;
 
   private static readonly STORAGE_VERSION = '1.0.0';
-  private static readonly MAX_TELEMETRY_EVENTS = 10_000;
   private static readonly MAX_FEEDBACK_ENTRIES = 1000;
 
   constructor(storagePath: string) {
@@ -95,7 +81,6 @@ export class EngagementStorage {
     const engagementDir = path.join(storagePath, 'engagement');
     this.paths = {
       root: engagementDir,
-      telemetry: path.join(engagementDir, 'telemetry.json'),
       ratings: path.join(engagementDir, 'ratings.json'),
       feedback: path.join(engagementDir, 'feedback.json'),
       pendingFeedback: path.join(engagementDir, 'pending-feedback.json')
@@ -116,116 +101,6 @@ export class EngagementStorage {
    */
   public getPaths(): EngagementStoragePaths {
     return { ...this.paths };
-  }
-
-  // ========================================================================
-  // Telemetry Operations
-  // ========================================================================
-
-  /**
-   * Save a telemetry event
-   * @param event
-   */
-  public async saveTelemetryEvent(event: TelemetryEvent): Promise<void> {
-    const store = await this.loadTelemetryStore();
-    store.events.push(event);
-
-    // Trim old events if exceeding max
-    if (store.events.length > EngagementStorage.MAX_TELEMETRY_EVENTS) {
-      store.events = store.events.slice(-EngagementStorage.MAX_TELEMETRY_EVENTS);
-    }
-
-    await this.saveTelemetryStore(store);
-  }
-
-  /**
-   * Get telemetry events with optional filtering
-   * @param filter
-   */
-  public async getTelemetryEvents(filter?: TelemetryFilter): Promise<TelemetryEvent[]> {
-    const store = await this.loadTelemetryStore();
-    let events = store.events;
-
-    if (filter) {
-      if (filter.eventTypes && filter.eventTypes.length > 0) {
-        events = events.filter((e) => filter.eventTypes!.includes(e.eventType));
-      }
-      if (filter.resourceTypes && filter.resourceTypes.length > 0) {
-        events = events.filter((e) => filter.resourceTypes!.includes(e.resourceType));
-      }
-      if (filter.resourceId) {
-        events = events.filter((e) => e.resourceId === filter.resourceId);
-      }
-      if (filter.startDate) {
-        events = events.filter((e) => e.timestamp >= filter.startDate!);
-      }
-      if (filter.endDate) {
-        events = events.filter((e) => e.timestamp <= filter.endDate!);
-      }
-      if (filter.limit && filter.limit > 0) {
-        events = events.slice(-filter.limit);
-      }
-    }
-
-    return events;
-  }
-
-  /**
-   * Clear telemetry data
-   * @param filter
-   */
-  public async clearTelemetry(filter?: TelemetryFilter): Promise<void> {
-    if (!filter) {
-      // Clear all
-      await this.saveTelemetryStore({
-        version: EngagementStorage.STORAGE_VERSION,
-        events: []
-      });
-      return;
-    }
-
-    // Selective clear - keep events that don't match filter
-    const store = await this.loadTelemetryStore();
-    store.events = store.events.filter((e) => {
-      if (filter.eventTypes && filter.eventTypes.includes(e.eventType)) {
-        return false;
-      }
-      if (filter.resourceTypes && filter.resourceTypes.includes(e.resourceType)) {
-        return false;
-      }
-      if (filter.resourceId && e.resourceId === filter.resourceId) {
-        return false;
-      }
-      if (filter.startDate && filter.endDate && e.timestamp >= filter.startDate && e.timestamp <= filter.endDate) {
-        return false;
-      }
-      return true;
-    });
-
-    await this.saveTelemetryStore(store);
-  }
-
-  private async loadTelemetryStore(): Promise<TelemetryStore> {
-    if (this.telemetryCache) {
-      return this.telemetryCache;
-    }
-
-    try {
-      const data = await readFile(this.paths.telemetry, 'utf8');
-      this.telemetryCache = JSON.parse(data) as TelemetryStore;
-      return this.telemetryCache;
-    } catch {
-      return {
-        version: EngagementStorage.STORAGE_VERSION,
-        events: []
-      };
-    }
-  }
-
-  private async saveTelemetryStore(store: TelemetryStore): Promise<void> {
-    await this.initialize();
-    await writeFile(this.paths.telemetry, JSON.stringify(store, null, 2), 'utf8');
-    this.telemetryCache = store;
   }
 
   // ========================================================================
@@ -471,7 +346,6 @@ export class EngagementStorage {
    * Clear all caches
    */
   public clearCache(): void {
-    this.telemetryCache = undefined;
     this.ratingsCache = undefined;
     this.feedbackCache = undefined;
     this.pendingFeedbackCache = undefined;
@@ -481,8 +355,6 @@ export class EngagementStorage {
    * Clear all engagement data
    */
   public async clearAll(): Promise<void> {
-    await this.clearTelemetry();
-
     const emptyRatings: RatingsStore = {
       version: EngagementStorage.STORAGE_VERSION,
       ratings: []

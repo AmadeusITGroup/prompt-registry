@@ -25,9 +25,6 @@ import {
   RatingScore,
   RatingStats,
   ResourceEngagement,
-  TelemetryEvent,
-  TelemetryEventType,
-  TelemetryFilter,
 } from '../../types/engagement';
 import {
   Logger,
@@ -43,7 +40,7 @@ import {
 } from './engagement-backend';
 
 /**
- * EngagementService provides a unified interface for telemetry, ratings, and feedback
+ * EngagementService provides a unified interface for ratings and feedback
  */
 export class EngagementService {
   private static instance: EngagementService;
@@ -56,11 +53,9 @@ export class EngagementService {
   // Events
   private readonly _onRatingSubmitted = new vscode.EventEmitter<Rating>();
   private readonly _onFeedbackSubmitted = new vscode.EventEmitter<Feedback>();
-  private readonly _onTelemetryRecorded = new vscode.EventEmitter<TelemetryEvent>();
 
   public readonly onRatingSubmitted = this._onRatingSubmitted.event;
   public readonly onFeedbackSubmitted = this._onFeedbackSubmitted.event;
-  public readonly onTelemetryRecorded = this._onTelemetryRecorded.event;
 
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.logger = Logger.getInstance();
@@ -115,7 +110,6 @@ export class EngagementService {
   public dispose(): void {
     this._onRatingSubmitted.dispose();
     this._onFeedbackSubmitted.dispose();
-    this._onTelemetryRecorded.dispose();
 
     if (this.defaultBackend) {
       this.defaultBackend.dispose();
@@ -262,73 +256,6 @@ export class EngagementService {
    */
   public getPrivacySettings(): EngagementPrivacySettings {
     return { ...this.privacySettings };
-  }
-
-  // ========================================================================
-  // Telemetry Operations
-  // ========================================================================
-
-  /**
-   * Record a telemetry event
-   * @param eventType
-   * @param resourceType
-   * @param resourceId
-   * @param options
-   * @param options.version
-   * @param options.metadata
-   * @param options.hubId
-   */
-  public async recordTelemetry(
-    eventType: TelemetryEventType,
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    options?: {
-      version?: string;
-      metadata?: Record<string, unknown>;
-      hubId?: string;
-    }
-  ): Promise<void> {
-    if (!this.privacySettings.telemetryEnabled) {
-      this.logger.debug('Telemetry disabled, skipping event');
-      return;
-    }
-
-    const event: TelemetryEvent = {
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      eventType,
-      resourceType,
-      resourceId,
-      version: options?.version,
-      metadata: options?.metadata
-    };
-
-    const backend = this.getBackend(options?.hubId);
-    await backend.recordTelemetry(event);
-
-    this._onTelemetryRecorded.fire(event);
-    this.logger.debug(`Telemetry recorded: ${eventType} for ${resourceType}/${resourceId}`);
-  }
-
-  /**
-   * Get telemetry events
-   * @param filter
-   * @param hubId
-   */
-  public async getTelemetry(filter?: TelemetryFilter, hubId?: string): Promise<TelemetryEvent[]> {
-    const backend = this.getBackend(hubId);
-    return backend.getTelemetry(filter);
-  }
-
-  /**
-   * Clear telemetry data
-   * @param filter
-   * @param hubId
-   */
-  public async clearTelemetry(filter?: TelemetryFilter, hubId?: string): Promise<void> {
-    const backend = this.getBackend(hubId);
-    await backend.clearTelemetry(filter);
-    this.logger.info('Telemetry data cleared');
   }
 
   // ========================================================================

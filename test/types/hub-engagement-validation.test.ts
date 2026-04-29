@@ -32,10 +32,6 @@ suite('Hub Engagement Configuration Validation', () => {
           type: 'github-discussions',
           repository: 'owner/repo'
         },
-        telemetry: {
-          enabled: false,
-          anonymize: true
-        },
         ratings: {
           enabled: true,
           ratingsUrl: 'https://example.com/ratings.json'

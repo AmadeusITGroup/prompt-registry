@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * Interface for engagement data backends
- * Implementations handle storage/retrieval of telemetry, ratings, and feedback
+ * Implementations handle storage/retrieval of ratings and feedback
  */
 
 import {
@@ -11,8 +11,6 @@ import {
   Rating,
   RatingStats,
   ResourceEngagement,
-  TelemetryEvent,
-  TelemetryFilter,
 } from '../../types/engagement';
 
 /**
@@ -39,29 +37,6 @@ export interface IEngagementBackend {
    * Clean up resources
    */
   dispose(): void;
-
-  // ========================================================================
-  // Telemetry Operations
-  // ========================================================================
-
-  /**
-   * Record a telemetry event
-   * @param event Telemetry event to record
-   */
-  recordTelemetry(event: TelemetryEvent): Promise<void>;
-
-  /**
-   * Retrieve telemetry events
-   * @param filter Optional filter criteria
-   * @returns Array of telemetry events
-   */
-  getTelemetry(filter?: TelemetryFilter): Promise<TelemetryEvent[]>;
-
-  /**
-   * Clear telemetry data
-   * @param filter Optional filter to clear specific data
-   */
-  clearTelemetry(filter?: TelemetryFilter): Promise<void>;
 
   // ========================================================================
   // Rating Operations
@@ -165,10 +140,6 @@ export abstract class BaseEngagementBackend implements IEngagementBackend {
   public abstract initialize(config: BackendConfig): Promise<void>;
   public abstract dispose(): void;
 
-  public abstract recordTelemetry(event: TelemetryEvent): Promise<void>;
-  public abstract getTelemetry(filter?: TelemetryFilter): Promise<TelemetryEvent[]>;
-  public abstract clearTelemetry(filter?: TelemetryFilter): Promise<void>;
-
   public abstract submitRating(rating: Rating): Promise<void>;
   public abstract getRating(
     resourceType: EngagementResourceType,
@@ -200,33 +171,16 @@ export abstract class BaseEngagementBackend implements IEngagementBackend {
     resourceType: EngagementResourceType,
     resourceId: string
   ): Promise<ResourceEngagement> {
-    const [ratings, feedback, telemetry] = await Promise.all([
+    const [ratings, feedback] = await Promise.all([
       this.getAggregatedRatings(resourceType, resourceId),
-      this.getFeedback(resourceType, resourceId, 5),
-      this.getTelemetry({
-        resourceId,
-        resourceTypes: [resourceType],
-        eventTypes: ['bundle_install', 'bundle_view']
-      })
+      this.getFeedback(resourceType, resourceId, 5)
     ]);
-
-    // Calculate telemetry summary
-    const installCount = telemetry.filter((e) => e.eventType === 'bundle_install').length;
-    const viewCount = telemetry.filter((e) => e.eventType === 'bundle_view').length;
-    const lastActivity = telemetry.length > 0
-      ? telemetry.toSorted((a, b) => b.timestamp.localeCompare(a.timestamp))[0].timestamp
-      : undefined;
 
     return {
       resourceId,
       resourceType,
       ratings: ratings || undefined,
-      recentFeedback: feedback.length > 0 ? feedback : undefined,
-      telemetry: {
-        installCount,
-        viewCount,
-        lastActivity
-      }
+      recentFeedback: feedback.length > 0 ? feedback : undefined
     };
   }
 

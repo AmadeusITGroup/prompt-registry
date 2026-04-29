@@ -1,63 +1,18 @@
 /**
  * Engagement system types for Prompt Registry
- * Handles telemetry, feedback, and rating functionality
+ * Handles feedback and rating functionality
+ *
+ * Telemetry is owned by `src/services/telemetry-service.ts`, not the engagement layer.
  */
 
 // ============================================================================
-// Telemetry Types
+// Resource Types
 // ============================================================================
-
-/**
- * Types of telemetry events that can be recorded
- */
-export type TelemetryEventType =
-  | 'bundle_install'
-  | 'bundle_uninstall'
-  | 'bundle_update'
-  | 'bundle_view'
-  | 'profile_activate'
-  | 'profile_deactivate'
-  | 'hub_import'
-  | 'hub_sync'
-  | 'search'
-  | 'error';
 
 /**
  * Resource types that can have engagement data
  */
 export type EngagementResourceType = 'bundle' | 'profile' | 'hub';
-
-/**
- * A telemetry event record
- */
-export interface TelemetryEvent {
-  /** Unique event ID */
-  id: string;
-  /** ISO timestamp */
-  timestamp: string;
-  /** Type of event */
-  eventType: TelemetryEventType;
-  /** Type of resource involved */
-  resourceType: EngagementResourceType;
-  /** Resource identifier */
-  resourceId: string;
-  /** Resource version (if applicable) */
-  version?: string;
-  /** Additional event metadata */
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Filter options for querying telemetry
- */
-export interface TelemetryFilter {
-  eventTypes?: TelemetryEventType[];
-  resourceTypes?: EngagementResourceType[];
-  resourceId?: string;
-  startDate?: string;
-  endDate?: string;
-  limit?: number;
-}
 
 // ============================================================================
 // Rating Types
@@ -220,16 +175,6 @@ export type BackendConfig =
 // ============================================================================
 
 /**
- * Telemetry configuration in hub
- */
-export interface TelemetryConfig {
-  /** Whether telemetry is enabled */
-  enabled: boolean;
-  /** Which events to track */
-  events?: TelemetryEventType[];
-}
-
-/**
  * Rating configuration in hub
  */
 export interface RatingConfig {
@@ -263,8 +208,6 @@ export interface HubEngagementConfig {
   enabled: boolean;
   /** Backend configuration */
   backend: BackendConfig;
-  /** Telemetry settings */
-  telemetry?: TelemetryConfig;
   /** Rating settings */
   ratings?: RatingConfig;
   /** Feedback settings */
@@ -285,12 +228,6 @@ export interface ResourceEngagement {
   ratings?: RatingStats;
   /** Recent feedback entries */
   recentFeedback?: Feedback[];
-  /** Telemetry summary */
-  telemetry?: {
-    installCount: number;
-    viewCount: number;
-    lastActivity?: string;
-  };
 }
 
 // ============================================================================
@@ -301,8 +238,6 @@ export interface ResourceEngagement {
  * User privacy preferences for engagement
  */
 export interface EngagementPrivacySettings {
-  /** Whether telemetry collection is enabled */
-  telemetryEnabled: boolean;
   /** Whether to share ratings publicly (for remote backends) */
   shareRatingsPublicly: boolean;
   /** Whether to share feedback publicly (for remote backends) */
@@ -313,7 +248,6 @@ export interface EngagementPrivacySettings {
  * Default privacy settings (privacy-preserving)
  */
 export const DEFAULT_PRIVACY_SETTINGS: EngagementPrivacySettings = {
-  telemetryEnabled: false,
   shareRatingsPublicly: false,
   shareFeedbackPublicly: false
 };
@@ -328,26 +262,6 @@ export const DEFAULT_PRIVACY_SETTINGS: EngagementPrivacySettings = {
  */
 export function isValidRatingScore(value: unknown): value is RatingScore {
   return typeof value === 'number' && [1, 2, 3, 4, 5].includes(value);
-}
-
-/**
- * Check if a value is a valid telemetry event type
- * @param value
- */
-export function isValidTelemetryEventType(value: unknown): value is TelemetryEventType {
-  const validTypes: TelemetryEventType[] = [
-    'bundle_install',
-    'bundle_uninstall',
-    'bundle_update',
-    'bundle_view',
-    'profile_activate',
-    'profile_deactivate',
-    'hub_import',
-    'hub_sync',
-    'search',
-    'error'
-  ];
-  return typeof value === 'string' && validTypes.includes(value as TelemetryEventType);
 }
 
 /**
@@ -406,21 +320,6 @@ export function validateHubEngagementConfig(config: unknown): { valid: boolean; 
       }
     } else {
       errors.push('engagement.backend must be an object');
-    }
-  }
-
-  // Validate telemetry config if present
-  if (cfg.telemetry) {
-    if (typeof cfg.telemetry === 'object') {
-      const telemetry = cfg.telemetry as Record<string, unknown>;
-      if (typeof telemetry.enabled !== 'boolean') {
-        errors.push('engagement.telemetry.enabled must be a boolean');
-      }
-      if (telemetry.events && !Array.isArray(telemetry.events)) {
-        errors.push('engagement.telemetry.events must be an array');
-      }
-    } else {
-      errors.push('engagement.telemetry must be an object');
     }
   }
 

@@ -84,65 +84,9 @@ suite('FileBackend', () => {
         const uninitializedBackend = new FileBackend();
 
         await assert.rejects(
-          async () => uninitializedBackend.getTelemetry(),
+          async () => uninitializedBackend.getRating('bundle', 'test-bundle'),
           /not initialized/
         );
-      });
-    });
-  });
-
-  suite('Telemetry Operations', () => {
-    suite('recordTelemetry()', () => {
-      test('should record a telemetry event', async () => {
-        const event = FileBackend.createTelemetryEvent(
-          'bundle_install',
-          'bundle',
-          'test-bundle',
-          '1.0.0'
-        );
-
-        await backend.recordTelemetry(event);
-
-        const events = await backend.getTelemetry();
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].eventType, 'bundle_install');
-        assert.strictEqual(events[0].resourceId, 'test-bundle');
-      });
-    });
-
-    suite('getTelemetry()', () => {
-      test('should return empty array when no events exist', async () => {
-        const events = await backend.getTelemetry();
-        assert.deepStrictEqual(events, []);
-      });
-
-      test('should filter events by type', async () => {
-        await backend.recordTelemetry(
-          FileBackend.createTelemetryEvent('bundle_install', 'bundle', 'b1')
-        );
-        await backend.recordTelemetry(
-          FileBackend.createTelemetryEvent('bundle_uninstall', 'bundle', 'b2')
-        );
-
-        const events = await backend.getTelemetry({
-          eventTypes: ['bundle_install']
-        });
-
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].eventType, 'bundle_install');
-      });
-    });
-
-    suite('clearTelemetry()', () => {
-      test('should clear all telemetry', async () => {
-        await backend.recordTelemetry(
-          FileBackend.createTelemetryEvent('bundle_install', 'bundle', 'b1')
-        );
-
-        await backend.clearTelemetry();
-
-        const events = await backend.getTelemetry();
-        assert.strictEqual(events.length, 0);
       });
     });
   });
@@ -270,14 +214,6 @@ suite('FileBackend', () => {
         FileBackend.createFeedback('bundle', 'test-bundle', 'Great!')
       );
 
-      // Add telemetry
-      await backend.recordTelemetry(
-        FileBackend.createTelemetryEvent('bundle_install', 'bundle', 'test-bundle')
-      );
-      await backend.recordTelemetry(
-        FileBackend.createTelemetryEvent('bundle_view', 'bundle', 'test-bundle')
-      );
-
       const engagement = await backend.getResourceEngagement('bundle', 'test-bundle');
 
       assert.strictEqual(engagement.resourceId, 'test-bundle');
@@ -286,9 +222,6 @@ suite('FileBackend', () => {
       assert.strictEqual(engagement.ratings.averageRating, 4);
       assert.ok(engagement.recentFeedback);
       assert.strictEqual(engagement.recentFeedback.length, 1);
-      assert.ok(engagement.telemetry);
-      assert.strictEqual(engagement.telemetry.installCount, 1);
-      assert.strictEqual(engagement.telemetry.viewCount, 1);
     });
 
     test('should handle resource with no engagement data', async () => {
@@ -297,40 +230,10 @@ suite('FileBackend', () => {
       assert.strictEqual(engagement.resourceId, 'empty-bundle');
       assert.strictEqual(engagement.ratings, undefined);
       assert.strictEqual(engagement.recentFeedback, undefined);
-      assert.strictEqual(engagement.telemetry?.installCount, 0);
     });
   });
 
   suite('Static Factory Methods', () => {
-    suite('createTelemetryEvent()', () => {
-      test('should create event with auto-generated ID and timestamp', () => {
-        const event = FileBackend.createTelemetryEvent(
-          'bundle_install',
-          'bundle',
-          'test-bundle'
-        );
-
-        assert.ok(event.id);
-        assert.ok(event.timestamp);
-        assert.strictEqual(event.eventType, 'bundle_install');
-        assert.strictEqual(event.resourceType, 'bundle');
-        assert.strictEqual(event.resourceId, 'test-bundle');
-      });
-
-      test('should include optional version and metadata', () => {
-        const event = FileBackend.createTelemetryEvent(
-          'bundle_install',
-          'bundle',
-          'test-bundle',
-          '1.0.0',
-          { source: 'github' }
-        );
-
-        assert.strictEqual(event.version, '1.0.0');
-        assert.deepStrictEqual(event.metadata, { source: 'github' });
-      });
-    });
-
     suite('createRating()', () => {
       test('should create rating with auto-generated ID and timestamp', () => {
         const rating = FileBackend.createRating('bundle', 'test-bundle', 5);

@@ -1,6 +1,6 @@
 /**
  * Tests for EngagementStorage
- * File-based persistence for engagement data (telemetry, ratings, feedback)
+ * File-based persistence for engagement data (ratings, feedback)
  */
 
 import * as assert from 'node:assert';
@@ -14,7 +14,6 @@ import {
   Feedback,
   Rating,
   RatingScore,
-  TelemetryEvent,
 } from '../../src/types/engagement';
 import {
   PendingFeedback,
@@ -25,18 +24,6 @@ suite('EngagementStorage', () => {
   let tempDir: string;
 
   // ===== Test Utilities =====
-  const createTelemetryEvent = (
-    id: string,
-    eventType: TelemetryEvent['eventType'] = 'bundle_install',
-    resourceId = 'test-bundle'
-  ): TelemetryEvent => ({
-    id,
-    timestamp: new Date().toISOString(),
-    eventType,
-    resourceType: 'bundle',
-    resourceId
-  });
-
   const createRating = (
     id: string,
     resourceId: string,
@@ -110,131 +97,8 @@ suite('EngagementStorage', () => {
       const paths = storage.getPaths();
 
       assert.ok(paths.root.includes('engagement'));
-      assert.ok(paths.telemetry.endsWith('telemetry.json'));
       assert.ok(paths.ratings.endsWith('ratings.json'));
       assert.ok(paths.feedback.endsWith('feedback.json'));
-    });
-  });
-
-  // ========================================================================
-  // Telemetry Tests
-  // ========================================================================
-
-  suite('Telemetry Operations', () => {
-    suite('saveTelemetryEvent()', () => {
-      test('should save a telemetry event', async () => {
-        const event = createTelemetryEvent('event-1');
-        await storage.saveTelemetryEvent(event);
-
-        const events = await storage.getTelemetryEvents();
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].id, 'event-1');
-      });
-
-      test('should save multiple telemetry events', async () => {
-        await storage.saveTelemetryEvent(createTelemetryEvent('event-1'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('event-2'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('event-3'));
-
-        const events = await storage.getTelemetryEvents();
-        assert.strictEqual(events.length, 3);
-      });
-    });
-
-    suite('getTelemetryEvents()', () => {
-      test('should return empty array when no events exist', async () => {
-        const events = await storage.getTelemetryEvents();
-        assert.deepStrictEqual(events, []);
-      });
-
-      test('should filter by event type', async () => {
-        await storage.saveTelemetryEvent(createTelemetryEvent('e1', 'bundle_install'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('e2', 'bundle_uninstall'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('e3', 'bundle_install'));
-
-        const events = await storage.getTelemetryEvents({
-          eventTypes: ['bundle_install']
-        });
-        assert.strictEqual(events.length, 2);
-      });
-
-      test('should filter by resource type', async () => {
-        const bundleEvent = createTelemetryEvent('e1');
-        bundleEvent.resourceType = 'bundle';
-
-        const profileEvent = createTelemetryEvent('e2');
-        profileEvent.resourceType = 'profile';
-
-        await storage.saveTelemetryEvent(bundleEvent);
-        await storage.saveTelemetryEvent(profileEvent);
-
-        const events = await storage.getTelemetryEvents({
-          resourceTypes: ['bundle']
-        });
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].id, 'e1');
-      });
-
-      test('should filter by resource ID', async () => {
-        await storage.saveTelemetryEvent(createTelemetryEvent('e1', 'bundle_install', 'bundle-a'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('e2', 'bundle_install', 'bundle-b'));
-
-        const events = await storage.getTelemetryEvents({
-          resourceId: 'bundle-a'
-        });
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].resourceId, 'bundle-a');
-      });
-
-      test('should filter by date range', async () => {
-        const oldEvent = createTelemetryEvent('e1');
-        oldEvent.timestamp = '2024-01-01T00:00:00.000Z';
-
-        const newEvent = createTelemetryEvent('e2');
-        newEvent.timestamp = '2024-06-15T00:00:00.000Z';
-
-        await storage.saveTelemetryEvent(oldEvent);
-        await storage.saveTelemetryEvent(newEvent);
-
-        const events = await storage.getTelemetryEvents({
-          startDate: '2024-06-01T00:00:00.000Z',
-          endDate: '2024-12-31T23:59:59.999Z'
-        });
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].id, 'e2');
-      });
-
-      test('should limit results', async () => {
-        for (let i = 0; i < 10; i++) {
-          await storage.saveTelemetryEvent(createTelemetryEvent(`e${i}`));
-        }
-
-        const events = await storage.getTelemetryEvents({ limit: 5 });
-        assert.strictEqual(events.length, 5);
-      });
-    });
-
-    suite('clearTelemetry()', () => {
-      test('should clear all telemetry when no filter provided', async () => {
-        await storage.saveTelemetryEvent(createTelemetryEvent('e1'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('e2'));
-
-        await storage.clearTelemetry();
-
-        const events = await storage.getTelemetryEvents();
-        assert.strictEqual(events.length, 0);
-      });
-
-      test('should clear telemetry matching filter', async () => {
-        await storage.saveTelemetryEvent(createTelemetryEvent('e1', 'bundle_install'));
-        await storage.saveTelemetryEvent(createTelemetryEvent('e2', 'bundle_uninstall'));
-
-        await storage.clearTelemetry({ eventTypes: ['bundle_install'] });
-
-        const events = await storage.getTelemetryEvents();
-        assert.strictEqual(events.length, 1);
-        assert.strictEqual(events[0].eventType, 'bundle_uninstall');
-      });
     });
   });
 
@@ -479,31 +343,25 @@ suite('EngagementStorage', () => {
 
   suite('Cache Management', () => {
     test('clearCache should not affect persisted data', async () => {
-      await storage.saveTelemetryEvent(createTelemetryEvent('e1'));
       await storage.saveRating(createRating('r1', 'bundle-1', 5));
 
       storage.clearCache();
 
       // Data should still be retrievable from disk
-      const events = await storage.getTelemetryEvents();
       const rating = await storage.getRating('bundle', 'bundle-1');
 
-      assert.strictEqual(events.length, 1);
       assert.ok(rating);
     });
 
     test('clearAll should remove all data', async () => {
-      await storage.saveTelemetryEvent(createTelemetryEvent('e1'));
       await storage.saveRating(createRating('r1', 'bundle-1', 5));
       await storage.saveFeedback(createFeedback('f1', 'bundle-1'));
 
       await storage.clearAll();
 
-      const events = await storage.getTelemetryEvents();
       const ratings = await storage.getAllRatings();
       const feedback = await storage.getAllFeedback();
 
-      assert.strictEqual(events.length, 0);
       assert.strictEqual(ratings.length, 0);
       assert.strictEqual(feedback.length, 0);
     });

@@ -10,7 +10,7 @@
  * This backend is read-heavy and write-light:
  * - Ratings are fetched from pre-computed ratings.json (via RatingService)
  * - Votes are submitted via GitHub REST API
- * - Telemetry and feedback are stored locally (not in GitHub)
+ * - Feedback is stored locally (not in GitHub)
  */
 
 import axios from 'axios';
@@ -23,8 +23,6 @@ import {
   GitHubDiscussionsBackendConfig,
   Rating,
   RatingStats,
-  TelemetryEvent,
-  TelemetryFilter,
 } from '../../../types/engagement';
 import {
   Logger,
@@ -57,7 +55,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   private repo = '';
   private readonly discussionMappings: Map<string, DiscussionMapping> = new Map();
 
-  // Use FileBackend for local storage of telemetry and feedback
+  // Use FileBackend for local storage of feedback
   private readonly localBackend: FileBackend;
 
   // Cache for user's votes
@@ -102,7 +100,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     this.owner = owner;
     this.repo = repo;
 
-    // Initialize local backend for telemetry/feedback storage
+    // Initialize local backend for feedback storage
     if (!this.storagePath) {
       throw new Error('Storage path is required. Call setStoragePath() before initialize().');
     }
@@ -215,25 +213,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       createIfNone: true
     });
     return session.accessToken;
-  }
-
-  // ========================================================================
-  // Telemetry Operations (delegated to local backend)
-  // ========================================================================
-
-  public async recordTelemetry(event: TelemetryEvent): Promise<void> {
-    this.ensureInitialized();
-    await this.localBackend.recordTelemetry(event);
-  }
-
-  public async getTelemetry(filter?: TelemetryFilter): Promise<TelemetryEvent[]> {
-    this.ensureInitialized();
-    return this.localBackend.getTelemetry(filter);
-  }
-
-  public async clearTelemetry(filter?: TelemetryFilter): Promise<void> {
-    this.ensureInitialized();
-    await this.localBackend.clearTelemetry(filter);
   }
 
   // ========================================================================

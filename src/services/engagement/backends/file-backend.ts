@@ -16,8 +16,6 @@ import {
   Rating,
   RatingScore,
   RatingStats,
-  TelemetryEvent,
-  TelemetryFilter,
 } from '../../../types/engagement';
 import {
   BaseEngagementBackend,
@@ -60,25 +58,6 @@ export class FileBackend extends BaseEngagementBackend {
       this.storage.clearCache();
     }
     this._initialized = false;
-  }
-
-  // ========================================================================
-  // Telemetry Operations
-  // ========================================================================
-
-  public async recordTelemetry(event: TelemetryEvent): Promise<void> {
-    this.ensureInitialized();
-    await this.storage!.saveTelemetryEvent(event);
-  }
-
-  public async getTelemetry(filter?: TelemetryFilter): Promise<TelemetryEvent[]> {
-    this.ensureInitialized();
-    return this.storage!.getTelemetryEvents(filter);
-  }
-
-  public async clearTelemetry(filter?: TelemetryFilter): Promise<void> {
-    this.ensureInitialized();
-    await this.storage!.clearTelemetry(filter);
   }
 
   // ========================================================================
@@ -157,32 +136,6 @@ export class FileBackend extends BaseEngagementBackend {
   // ========================================================================
   // Utility Methods
   // ========================================================================
-
-  /**
-   * Create a telemetry event with auto-generated ID and timestamp
-   * @param eventType
-   * @param resourceType
-   * @param resourceId
-   * @param version
-   * @param metadata
-   */
-  public static createTelemetryEvent(
-    eventType: TelemetryEvent['eventType'],
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    version?: string,
-    metadata?: Record<string, unknown>
-  ): TelemetryEvent {
-    return {
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      eventType,
-      resourceType,
-      resourceId,
-      version,
-      metadata
-    };
-  }
 
   /**
    * Create a rating with auto-generated ID and timestamp
