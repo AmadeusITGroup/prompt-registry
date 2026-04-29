@@ -4,7 +4,6 @@
  *
  * Responsibilities:
  * - Backend selection based on hub configuration
- * - Privacy settings enforcement
  * - Event coordination
  * - Singleton pattern for extension-wide access
  */
@@ -15,8 +14,6 @@ import {
   EngagementStorage,
 } from '../../storage/engagement-storage';
 import {
-  DEFAULT_PRIVACY_SETTINGS,
-  EngagementPrivacySettings,
   EngagementResourceType,
   Feedback,
   FileBackendConfig,
@@ -46,7 +43,6 @@ export class EngagementService {
   private static instance: EngagementService;
   private defaultBackend?: IEngagementBackend;
   private readonly hubBackends: Map<string, IEngagementBackend> = new Map();
-  private privacySettings: EngagementPrivacySettings = DEFAULT_PRIVACY_SETTINGS;
   private readonly logger: Logger;
   private storage?: EngagementStorage;
 
@@ -236,26 +232,6 @@ export class EngagementService {
 
     this.logger.info(`[EngagementService] Using default backend (type: ${this.defaultBackend.type})`);
     return this.defaultBackend;
-  }
-
-  // ========================================================================
-  // Privacy Settings
-  // ========================================================================
-
-  /**
-   * Update privacy settings
-   * @param settings
-   */
-  public setPrivacySettings(settings: Partial<EngagementPrivacySettings>): void {
-    this.privacySettings = { ...this.privacySettings, ...settings };
-    this.logger.debug('Privacy settings updated', this.privacySettings);
-  }
-
-  /**
-   * Get current privacy settings
-   */
-  public getPrivacySettings(): EngagementPrivacySettings {
-    return { ...this.privacySettings };
   }
 
   // ========================================================================

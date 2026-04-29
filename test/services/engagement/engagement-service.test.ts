@@ -97,29 +97,6 @@ suite('EngagementService', () => {
     });
   });
 
-  suite('Privacy Settings', () => {
-    test('should have sharing disabled by default', () => {
-      const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.shareRatingsPublicly, false);
-      assert.strictEqual(settings.shareFeedbackPublicly, false);
-    });
-
-    test('should update privacy settings', () => {
-      service.setPrivacySettings({ shareRatingsPublicly: true });
-      const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.shareRatingsPublicly, true);
-    });
-
-    test('should preserve other settings when updating', () => {
-      service.setPrivacySettings({ shareRatingsPublicly: true });
-      service.setPrivacySettings({ shareFeedbackPublicly: true });
-
-      const settings = service.getPrivacySettings();
-      assert.strictEqual(settings.shareRatingsPublicly, true);
-      assert.strictEqual(settings.shareFeedbackPublicly, true);
-    });
-  });
-
   suite('Rating Operations', () => {
     test('should submit a rating', async () => {
       const rating = await service.submitRating('bundle', 'test-bundle', 5);

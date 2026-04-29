@@ -231,28 +231,6 @@ export interface ResourceEngagement {
 }
 
 // ============================================================================
-// Privacy Types
-// ============================================================================
-
-/**
- * User privacy preferences for engagement
- */
-export interface EngagementPrivacySettings {
-  /** Whether to share ratings publicly (for remote backends) */
-  shareRatingsPublicly: boolean;
-  /** Whether to share feedback publicly (for remote backends) */
-  shareFeedbackPublicly: boolean;
-}
-
-/**
- * Default privacy settings (privacy-preserving)
- */
-export const DEFAULT_PRIVACY_SETTINGS: EngagementPrivacySettings = {
-  shareRatingsPublicly: false,
-  shareFeedbackPublicly: false
-};
-
-// ============================================================================
 // Validation Helpers
 // ============================================================================
 
