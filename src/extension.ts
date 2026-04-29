@@ -236,6 +236,11 @@ export class PromptRegistryExtension {
       this.feedbackCommands = new FeedbackCommands();
       this.feedbackCommands.setEngagementService(this.engagementService);
       this.feedbackCommands.registerCommands(this.context);
+
+      // Register engagement backends and warm caches for all imported hubs
+      if (this.hubManager) {
+        await this.hubManager.initializeEngagementBackends();
+      }
     } catch (error) {
       this.logger.warn('Failed to initialize engagement system (non-fatal)', error as Error);
     }

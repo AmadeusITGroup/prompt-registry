@@ -20,6 +20,9 @@ import {
   LoadHubResult,
 } from '../storage/hub-storage';
 import {
+  HubEngagementConfig,
+} from '../types/engagement';
+import {
   ConflictResolutionDialog,
   HubConfig,
   HubProfile,
@@ -43,6 +46,15 @@ import {
 import {
   generateHubSourceId,
 } from '../utils/source-id-utils';
+import {
+  EngagementService,
+} from './engagement/engagement-service';
+import {
+  FeedbackCache,
+} from './engagement/feedback-cache';
+import {
+  RatingCache,
+} from './engagement/rating-cache';
 import {
   SchemaValidator,
   ValidationResult,
@@ -539,9 +551,74 @@ export class HubManager {
       await this.loadHubSources(hubId);
     }
 
+    // Register engagement backend for the newly imported hub (non-fatal)
+    try {
+      await this.registerHubEngagement(hubId, config.engagement);
+    } catch (error) {
+      this.logger.warn(`Failed to register engagement for imported hub ${hubId}`, error as Error);
+    }
+
     this._onHubImported.fire(hubId);
 
     return hubId;
+  }
+
+  /**
+   * Register an engagement backend for a hub if the hub config includes engagement settings.
+   * Also warms rating and feedback caches from the hub's static URLs if configured.
+   * Idempotent: safe to call more than once per hub.
+   * @param hubId Hub identifier
+   * @param engagement Engagement configuration (from HubConfig.engagement)
+   */
+  public async registerHubEngagement(
+    hubId: string,
+    engagement: HubEngagementConfig | undefined
+  ): Promise<void> {
+    if (!engagement?.enabled) {
+      return;
+    }
+    try {
+      const engagementService = EngagementService.getInstance();
+      await engagementService.registerHubBackend(hubId, engagement);
+    } catch (error) {
+      this.logger.warn(`Failed to register engagement backend for hub ${hubId}`, error as Error);
+      return;
+    }
+
+    // Warm caches from static URLs (non-fatal — cache misses just fall back to backend calls)
+    const ratingsUrl = engagement.ratings?.ratingsUrl;
+    if (ratingsUrl) {
+      try {
+        await RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl);
+      } catch (error) {
+        this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error as Error);
+      }
+    }
+
+    const feedbackUrl = engagement.feedback?.feedbackUrl;
+    if (feedbackUrl) {
+      try {
+        await FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl);
+      } catch (error) {
+        this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error as Error);
+      }
+    }
+  }
+
+  /**
+   * Iterate all imported hubs and register their engagement backends.
+   * Called once during extension activation.
+   */
+  public async initializeEngagementBackends(): Promise<void> {
+    const hubs = await this.listHubs();
+    for (const hub of hubs) {
+      try {
+        const { config } = await this.loadHub(hub.id);
+        await this.registerHubEngagement(hub.id, config.engagement);
+      } catch (error) {
+        this.logger.warn(`Failed to initialize engagement for hub ${hub.id}`, error as Error);
+      }
+    }
   }
 
   /**

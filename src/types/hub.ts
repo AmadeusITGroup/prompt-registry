@@ -4,6 +4,9 @@
  */
 
 import {
+  HubEngagementConfig,
+} from './engagement';
+import {
   Profile,
   RegistrySource,
 } from './registry';
@@ -43,6 +46,9 @@ export interface HubConfig {
 
   /** Optional registry configuration */
   configuration?: RegistryConfiguration;
+
+  /** Optional engagement (ratings + feedback) configuration */
+  engagement?: HubEngagementConfig;
 }
 
 /**
