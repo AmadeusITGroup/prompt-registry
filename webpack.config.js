@@ -1,5 +1,4 @@
 const path = require('path');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 /**@type {import('webpack').Configuration}*/
 const config = {
@@ -33,17 +32,6 @@ const config = {
       }
     ]
   },
-  plugins: [
-    new CopyWebpackPlugin({
-      patterns: [
-        {
-          from: 'src/ui/webview',
-          to: 'webview',
-          noErrorOnMissing: false
-        }
-      ]
-    })
-  ],
   devtool: 'nosources-source-map',
   infrastructureLogging: {
     level: "log", // enables logging required for problem matchers
