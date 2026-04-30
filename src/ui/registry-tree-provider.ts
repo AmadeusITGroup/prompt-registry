@@ -5,6 +5,9 @@
 
 import * as vscode from 'vscode';
 import {
+  RatingCache,
+} from '../services/engagement/rating-cache';
+import {
   HubManager,
 } from '../services/hub-manager';
 import {
@@ -164,6 +167,19 @@ export class RegistryTreeItem extends vscode.TreeItem {
   }
 
   /**
+   * Look up the cached rating for a bundle and return a display suffix,
+   * or an empty string if no rating is cached.
+   * @param sourceId
+   * @param bundleId
+   */
+  private getRatingSuffix(sourceId: string | undefined, bundleId: string): string {
+    if (!sourceId) { return ''; }
+    const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
+    if (!rating || rating.voteCount === 0) { return ''; }
+    return ` ★ ${rating.starRating.toFixed(1)} (${rating.voteCount})`;
+  }
+
+  /**
    * Get description text (shown right-aligned)
    */
   private getDescription(): string | undefined {
@@ -176,7 +192,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
 
       case TreeItemType.INSTALLED_BUNDLE: {
         const installed = this.data as InstalledBundle;
-        return `v${installed.version}`;
+        return `v${installed.version}${this.getRatingSuffix(installed.sourceId, installed.bundleId)}`;
       }
 
       case TreeItemType.SOURCE: {
@@ -186,7 +202,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
 
       case TreeItemType.BUNDLE: {
         const bundle = this.data as Bundle;
-        return bundle.version;
+        return `${bundle.version}${this.getRatingSuffix(bundle.sourceId, bundle.id)}`;
       }
 
       default: {
