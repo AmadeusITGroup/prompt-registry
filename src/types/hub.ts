@@ -5,6 +5,7 @@
 
 import {
   HubEngagementConfig,
+  validateHubEngagementConfig,
 } from './engagement';
 import {
   Profile,
@@ -322,6 +323,11 @@ export function validateHubConfig(config: any): ValidationResult {
     } else {
       errors.push('profiles must be an array');
     }
+  }
+
+  if (config.engagement !== undefined) {
+    const engagementResult = validateHubEngagementConfig(config.engagement);
+    errors.push(...engagementResult.errors);
   }
 
   return {
