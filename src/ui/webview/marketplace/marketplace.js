@@ -9,6 +9,7 @@
   let selectedTags = [];
   let showInstalledOnly = false;
   let setupState = 'complete'; // Default to complete to avoid showing setup prompt unnecessarily
+  let pendingFeedbackContext = null; // { bundleId, sourceId, stars }
 
   // Handle messages from extension
   window.addEventListener('message', (event) => {
@@ -22,6 +23,8 @@
       renderBundles();
     } else if (message.type === 'updateRating') {
       updateRatingOnTile(message.bundleId, message.sourceId, message.bundleRating);
+    } else if (message.type === 'openFeedbackModal') {
+      openFeedbackCollectModal(message.bundleId, message.sourceId, message.stars, message.bundleName);
     }
   });
 
@@ -639,6 +642,36 @@
     vscode.postMessage({ type: 'rateBundle', bundleId: bundleId, sourceId: sourceId, stars: stars });
   };
 
+  const resolveBundleName = (bundleId) => {
+    if (!Array.isArray(allBundles)) {
+      return undefined;
+    }
+    const b = allBundles.find((x) => x && x.id === bundleId);
+    return b ? b.name : undefined;
+  };
+
+  const openFeedbackCollectModal = (bundleId, sourceId, stars, bundleName) => {
+    pendingFeedbackContext = { bundleId: bundleId, sourceId: sourceId, stars: stars };
+    const modal = document.getElementById('feedbackCollectModal');
+    const textarea = document.getElementById('feedbackCollectText');
+    const prompt = document.getElementById('feedbackCollectPrompt');
+    if (textarea) { textarea.value = ''; }
+    const resolvedName = bundleName || resolveBundleName(bundleId);
+    if (prompt && resolvedName) {
+      prompt.textContent = 'You rated "' + resolvedName + '" ' + stars + ' star' + (stars === 1 ? '' : 's') + '. Would you like to share any comments? (optional)';
+    } else if (prompt) {
+      prompt.textContent = 'You rated ' + stars + ' star' + (stars === 1 ? '' : 's') + '. Would you like to share any comments? (optional)';
+    }
+    if (modal) { modal.style.display = 'flex'; }
+    if (textarea) { textarea.focus(); }
+  };
+
+  const closeFeedbackCollectModal = () => {
+    const modal = document.getElementById('feedbackCollectModal');
+    if (modal) { modal.style.display = 'none'; }
+    pendingFeedbackContext = null;
+  };
+
   const completeSetup = () => {
     vscode.postMessage({ type: 'completeSetup' });
   };
@@ -759,6 +792,27 @@
           var sourceId = actionElement.dataset.sourceId;
           if (bundleId && sourceId && stars >= 1 && stars <= 5) {
             rateBundle(bundleId, sourceId, stars);
+          }
+          break;
+        }
+        case 'cancelFeedbackCollect': {
+          e.stopPropagation();
+          closeFeedbackCollectModal();
+          break;
+        }
+        case 'submitFeedbackCollect': {
+          e.stopPropagation();
+          if (pendingFeedbackContext) {
+            const textarea = document.getElementById('feedbackCollectText');
+            const comment = textarea ? textarea.value.trim() : '';
+            vscode.postMessage({
+              type: 'submitFeedback',
+              bundleId: pendingFeedbackContext.bundleId,
+              sourceId: pendingFeedbackContext.sourceId,
+              stars: pendingFeedbackContext.stars,
+              comment: comment
+            });
+            closeFeedbackCollectModal();
           }
           break;
         }

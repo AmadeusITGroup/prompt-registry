@@ -1125,4 +1125,154 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(applySpy.firstCall.args[2], 5);
     assert.strictEqual(rollbackSpy.callCount, 0, 'no rollback on success');
   });
+
+  test('posts openFeedbackModal message after a successful rating submit', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 4
+    });
+
+    const openModalMsgs = postedMessages.filter((m) => m.type === 'openFeedbackModal');
+    assert.strictEqual(openModalMsgs.length, 1, 'expected exactly one openFeedbackModal message');
+    assert.strictEqual(openModalMsgs[0].bundleId, 'rated-bundle');
+    assert.strictEqual(openModalMsgs[0].sourceId, 'source-with-ratings');
+    assert.strictEqual(openModalMsgs[0].stars, 4);
+  });
+
+  test('does NOT post openFeedbackModal when rating submit fails', async () => {
+    submitRatingStub.rejects(new Error('network down'));
+
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 4
+    });
+
+    const openModalMsgs = postedMessages.filter((m) => m.type === 'openFeedbackModal');
+    assert.strictEqual(openModalMsgs.length, 0, 'no openFeedbackModal on failure');
+  });
+});
+
+suite('MarketplaceViewProvider - submitFeedback message handling', () => {
+  let sandbox: sinon.SinonSandbox;
+  let marketplaceProvider: MarketplaceViewProvider;
+  let executeCommandStub: sinon.SinonStub;
+  let listSourcesStub: sinon.SinonStub;
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+
+    // Stub vscode.commands.executeCommand so we can verify the feedback command dispatch
+    // without actually invoking the FeedbackCommands handler.
+    executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined);
+
+    const mockContext = {
+      subscriptions: [],
+      extensionUri: vscode.Uri.file(process.cwd()),
+      extensionPath: process.cwd(),
+      storagePath: '/mock/storage',
+      globalStoragePath: '/mock/global-storage',
+      logPath: '/mock/logs',
+      extensionMode: 2
+    } as any;
+
+    listSourcesStub = sandbox.stub().resolves([
+      {
+        id: 'source-with-ratings',
+        name: 'src',
+        type: 'github',
+        url: '',
+        enabled: true,
+        priority: 1,
+        hubId: 'test-hub'
+      }
+    ]);
+
+    const mockRegistryManager = {
+      onBundleInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUpdated: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
+      onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
+      onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
+      listSources: listSourcesStub,
+      autoUpdateService: null
+    } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
+
+    const mockSetupStateManager = {
+      getState: sandbox.stub().resolves('complete')
+    } as unknown as sinon.SinonStubbedInstance<SetupStateManager>;
+
+    marketplaceProvider = new MarketplaceViewProvider(
+      mockContext,
+      mockRegistryManager as any,
+      mockSetupStateManager as any
+    );
+
+    const mockWebview = {
+      postMessage: () => Promise.resolve(true),
+      onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+      asWebviewUri: (uri: vscode.Uri) => uri,
+      cspSource: "'self'",
+      options: {},
+      html: ''
+    };
+    (marketplaceProvider as any)._view = { webview: mockWebview };
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+  });
+
+  test('dispatches promptRegistry.feedback with prefilledRating, prefilledComment, hubId and resourceType=bundle', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'submitFeedback',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 4,
+      comment: 'Very helpful!'
+    });
+
+    // Filter to the promptRegistry.feedback call (other executeCommand calls may be unrelated).
+    const feedbackCalls = executeCommandStub.getCalls().filter(
+      (c) => c.args[0] === 'promptRegistry.feedback'
+    );
+    assert.strictEqual(feedbackCalls.length, 1, 'expected exactly one promptRegistry.feedback dispatch');
+
+    const item = feedbackCalls[0].args[1];
+    assert.strictEqual(item.resourceId, 'rated-bundle');
+    assert.strictEqual(item.resourceType, 'bundle');
+    assert.strictEqual(item.sourceId, 'source-with-ratings');
+    assert.strictEqual(item.hubId, 'test-hub');
+    assert.strictEqual(item.prefilledRating, 4);
+    assert.strictEqual(item.prefilledComment, 'Very helpful!');
+  });
+
+  test('omits prefilledComment when comment is empty string', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'submitFeedback',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 5,
+      comment: ''
+    });
+
+    const feedbackCalls = executeCommandStub.getCalls().filter(
+      (c) => c.args[0] === 'promptRegistry.feedback'
+    );
+    assert.strictEqual(feedbackCalls.length, 1);
+    const item = feedbackCalls[0].args[1];
+    assert.strictEqual(item.prefilledComment, undefined, 'empty comment should be normalized to undefined');
+    assert.strictEqual(item.prefilledRating, 5);
+  });
 });

@@ -1092,3 +1092,23 @@ body {
   transform: scale(1.1);
   outline: none;
 }
+
+#feedbackCollectModal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+#feedbackCollectModal textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 3px;
+  resize: vertical;
+  box-sizing: border-box;
+}

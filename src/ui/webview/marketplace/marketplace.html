@@ -100,6 +100,25 @@
         </div>
     </div>
 
+    <!-- Feedback Collection Modal (opens after a rating is submitted) -->
+    <div id="feedbackCollectModal" class="modal" style="display: none;">
+        <div class="modal-overlay" data-action="cancelFeedbackCollect"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Thanks for rating!</h2>
+                <button class="modal-close" data-action="cancelFeedbackCollect" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <p id="feedbackCollectPrompt">Would you like to share any comments? (optional)</p>
+                <textarea id="feedbackCollectText" rows="4" maxlength="1000" placeholder="What did you like or what could be improved?"></textarea>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" data-action="cancelFeedbackCollect">Skip</button>
+                    <button class="btn btn-primary" data-action="submitFeedbackCollect">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
 </body>
 </html>

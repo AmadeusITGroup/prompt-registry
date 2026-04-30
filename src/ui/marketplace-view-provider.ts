@@ -51,7 +51,7 @@ import {
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'rateBundle';
+  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'rateBundle' | 'submitFeedback';
   bundleId?: string;
   installPath?: string;
   filePath?: string;
@@ -59,6 +59,7 @@ interface WebviewMessage {
   enabled?: boolean;
   sourceId?: string;
   stars?: number;
+  comment?: string;
 }
 
 /**
@@ -551,6 +552,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
         break;
       }
+      case 'submitFeedback': {
+        if (message.bundleId && message.sourceId && typeof message.stars === 'number') {
+          await this.handleSubmitFeedback(
+            message.bundleId,
+            message.sourceId,
+            message.stars,
+            message.comment ?? ''
+          );
+        }
+        break;
+      }
       default: {
         // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         this.logger.warn(`Unknown message type: ${message.type}`);
@@ -591,12 +603,62 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       const engagementService = EngagementService.getInstance();
       await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
       this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
+
+      // After a successful rating, invite the user to add an optional comment.
+      // The webview opens an in-webview modal (bypassing VS Code native dialogs).
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: 'openFeedbackModal',
+          bundleId: bundleId,
+          sourceId: sourceId,
+          stars: newRating
+        });
+      }
     } catch (error) {
       this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
       // Roll back the optimistic update and notify the webview so the UI reverts.
       ratingCache.rollbackOptimisticRating(sourceId, bundleId, newRating, previousUserRating);
       this.postRatingUpdate(sourceId, bundleId);
       vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle a submitFeedback message from the webview.
+   * Collects the rating + comment from the feedback-collection modal and forwards
+   * to the FeedbackCommands command handler via the public promptRegistry.feedback
+   * command. FeedbackCommands' fast path (prefilledRating) bypasses all VS Code
+   * native dialogs and persists the feedback directly.
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   * @param comment
+   */
+  private async handleSubmitFeedback(
+    bundleId: string,
+    sourceId: string,
+    stars: number,
+    comment: string
+  ): Promise<void> {
+    try {
+      const sources = await this.registryManager.listSources();
+      const source = sources.find((s) => s.id === sourceId);
+      const hubId = source?.hubId;
+
+      const feedbackItem = {
+        resourceId: bundleId,
+        resourceType: 'bundle' as const,
+        sourceId: sourceId,
+        hubId: hubId,
+        prefilledRating: stars as RatingScore,
+        prefilledComment: comment || undefined
+      };
+
+      await vscode.commands.executeCommand('promptRegistry.feedback', feedbackItem);
+      this.logger.debug(`Submitted feedback for bundle ${bundleId}`);
+    } catch (error) {
+      this.logger.error(`Failed to submit feedback for bundle ${bundleId}`, error as Error);
+      vscode.window.showErrorMessage(`Failed to submit feedback: ${(error as Error).message}`);
     }
   }
 
