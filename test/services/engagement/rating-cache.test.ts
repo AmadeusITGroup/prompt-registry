@@ -409,4 +409,125 @@ suite('RatingCache', () => {
       assert.strictEqual(rating?.confidence, 'very_high');
     });
   });
+
+  suite('user ratings and rollback', () => {
+    test('getUserRating returns undefined for a bundle the user hasn\'t rated', () => {
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), undefined);
+    });
+
+    test('applyOptimisticRating records the user\'s rating for later lookup', () => {
+      cache.applyOptimisticRating('src-1', 'bundle-1', 4);
+
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), 4);
+    });
+
+    test('applyOptimisticRating with an existing cached aggregate adds a new vote when the user hasn\'t rated yet (voteCount increments)', () => {
+      cache.setRating({
+        sourceId: 'src-1', bundleId: 'bundle-1',
+        starRating: 4, wilsonScore: 0.8, voteCount: 10,
+        confidence: 'medium', cachedAt: Date.now()
+      });
+
+      cache.applyOptimisticRating('src-1', 'bundle-1', 5);
+
+      const rating = cache.getRating('src-1', 'bundle-1');
+      assert.ok(rating);
+      assert.strictEqual(rating.voteCount, 11);
+      // (4.0 * 10 + 5) / 11 ≈ 4.09 → rounded to 4.1
+      assert.ok(Math.abs(rating.starRating - 4.1) < 0.05);
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), 5);
+    });
+
+    test('applyOptimisticRating with an existing user rating swaps the vote instead of double-counting (voteCount unchanged)', () => {
+      cache.setRating({
+        sourceId: 'src-1', bundleId: 'bundle-1',
+        starRating: 4, wilsonScore: 0.8, voteCount: 10,
+        confidence: 'medium', cachedAt: Date.now()
+      });
+
+      // First rating from user (increments voteCount to 11).
+      cache.applyOptimisticRating('src-1', 'bundle-1', 5);
+      const afterFirst = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterFirst);
+      assert.strictEqual(afterFirst.voteCount, 11);
+
+      // Same user rates again — voteCount must NOT change.
+      cache.applyOptimisticRating('src-1', 'bundle-1', 2);
+
+      const afterSecond = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterSecond);
+      assert.strictEqual(afterSecond.voteCount, 11);
+      // Total score before: 4.1 * 11 = 45.1, minus old rating 5, plus new rating 2 = 42.1 → 42.1 / 11 ≈ 3.83
+      // Allow some rounding tolerance.
+      assert.ok(afterSecond.starRating < afterFirst.starRating);
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), 2);
+    });
+
+    test('rollbackOptimisticRating undoes a first-time rating correctly (voteCount decrements, userRatings cleared)', () => {
+      cache.setRating({
+        sourceId: 'src-1', bundleId: 'bundle-1',
+        starRating: 4, wilsonScore: 0.8, voteCount: 10,
+        confidence: 'medium', cachedAt: Date.now()
+      });
+
+      cache.applyOptimisticRating('src-1', 'bundle-1', 5);
+      const afterApply = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterApply);
+      assert.strictEqual(afterApply.voteCount, 11);
+
+      cache.rollbackOptimisticRating('src-1', 'bundle-1', 5, undefined);
+
+      const afterRollback = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterRollback);
+      assert.strictEqual(afterRollback.voteCount, 10);
+      // Restored star rating should be back at ~4.0.
+      assert.ok(Math.abs(afterRollback.starRating - 4.0) < 0.05);
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), undefined);
+    });
+
+    test('rollbackOptimisticRating undoes a re-rating correctly (voteCount unchanged, userRatings restored to previous)', () => {
+      cache.setRating({
+        sourceId: 'src-1', bundleId: 'bundle-1',
+        starRating: 4, wilsonScore: 0.8, voteCount: 10,
+        confidence: 'medium', cachedAt: Date.now()
+      });
+
+      // User's first vote of 5.
+      cache.applyOptimisticRating('src-1', 'bundle-1', 5);
+      const afterFirst = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterFirst);
+      const starAfterFirst = afterFirst.starRating;
+      assert.strictEqual(afterFirst.voteCount, 11);
+
+      // User re-rates to 2 (previous was 5).
+      cache.applyOptimisticRating('src-1', 'bundle-1', 2);
+      const afterSecond = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterSecond);
+      assert.strictEqual(afterSecond.voteCount, 11);
+
+      // Rollback the re-rating: applied=2, previous=5.
+      cache.rollbackOptimisticRating('src-1', 'bundle-1', 2, 5);
+
+      const afterRollback = cache.getRating('src-1', 'bundle-1');
+      assert.ok(afterRollback);
+      assert.strictEqual(afterRollback.voteCount, 11);
+      // Star rating should be restored to what it was after the first vote.
+      assert.ok(Math.abs(afterRollback.starRating - starAfterFirst) < 0.05);
+      assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), 5);
+    });
+
+    test('rollbackOptimisticRating when the user was the only voter removes the entry from the aggregate cache entirely', () => {
+      cache.applyOptimisticRating('src-1', 'new-bundle', 4);
+
+      const afterApply = cache.getRating('src-1', 'new-bundle');
+      assert.ok(afterApply);
+      assert.strictEqual(afterApply.voteCount, 1);
+
+      cache.rollbackOptimisticRating('src-1', 'new-bundle', 4, undefined);
+
+      assert.strictEqual(cache.getRating('src-1', 'new-bundle'), undefined);
+      assert.strictEqual(cache.hasRating('src-1', 'new-bundle'), false);
+      assert.strictEqual(cache.getUserRating('src-1', 'new-bundle'), undefined);
+    });
+  });
 });
