@@ -1060,3 +1060,25 @@ body {
 .rating-count {
   color: var(--vscode-descriptionForeground);
 }
+.rating-badge .star {
+  display: inline-block;
+  line-height: 1;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+.rating-badge .star-filled {
+  color: var(--vscode-charts-yellow, #d4a526);
+}
+.rating-badge .star-empty {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.35;
+}
+.rating-badge .rating-stars {
+  display: inline-flex;
+  gap: 1px;
+}
+.rating-badge .rating-count {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}

@@ -404,6 +404,7 @@
         + '<div class="bundle-header">'
         + '<div class="bundle-title">' + bundle.name + '</div>'
         + '<div class="bundle-author">by ' + (bundle.author || 'Unknown') + ' • ' + formatVersionLabel(bundle.version) + '</div>'
+        + renderRatingBadge(bundle.bundleRating)
         + '</div>'
 
         + '<div class="bundle-description">'
@@ -519,6 +520,21 @@
         + '</div>';
     }
     return '<button class="btn btn-primary" data-action="installBundle" data-bundle-id="' + bundle.id + '">Install</button>';
+  };
+
+  const renderRatingBadge = (rating) => {
+    if (!rating || !rating.voteCount) {
+      return '';
+    }
+    const stars = Math.round(rating.starRating || 0);
+    const glyphs = [1, 2, 3, 4, 5].map((n) => {
+      const cls = n <= stars ? 'star-filled' : 'star-empty';
+      return '<span class="star ' + cls + '" data-star="' + n + '">★</span>';
+    }).join('');
+    return '<div class="rating-badge">'
+      + '<span class="rating-stars">' + glyphs + '</span>'
+      + '<span class="rating-count">(' + rating.voteCount + ')</span>'
+      + '</div>';
   };
 
   const renderContentItem = (icon, label, count) => {
