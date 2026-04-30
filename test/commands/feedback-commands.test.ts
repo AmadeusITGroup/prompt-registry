@@ -302,6 +302,92 @@ suite('FeedbackCommands', () => {
     });
   });
 
+  suite('drainUnsyncedFeedback()', () => {
+    test('returns 0 and does not submit when storage is empty', async () => {
+      const mockStorage = {
+        savePendingFeedback: sandbox.stub().resolves(),
+        getUnsyncedFeedback: sandbox.stub().resolves([]),
+        markFeedbackSynced: sandbox.stub().resolves()
+      };
+      (mockEngagementService.getStorage as sinon.SinonStub).returns(mockStorage);
+
+      const result = await commands.drainUnsyncedFeedback();
+
+      assert.strictEqual(result, 0);
+      assert.strictEqual(mockEngagementService.submitFeedback.callCount, 0);
+      assert.strictEqual(mockStorage.markFeedbackSynced.callCount, 0);
+    });
+
+    test('submits and marks all entries synced when all succeed', async () => {
+      const entries = [
+        { id: 'e1', bundleId: 'b1', sourceId: 'b1', hubId: 'h1', resourceType: 'bundle', rating: 5, comment: 'one', timestamp: 't1', synced: false },
+        { id: 'e2', bundleId: 'b2', sourceId: 'b2', hubId: 'h2', resourceType: 'bundle', rating: 4, comment: undefined, timestamp: 't2', synced: false },
+        { id: 'e3', bundleId: 'b3', sourceId: 'b3', hubId: '', resourceType: 'bundle', rating: 3, comment: 'three', timestamp: 't3', synced: false }
+      ];
+      const mockStorage = {
+        savePendingFeedback: sandbox.stub().resolves(),
+        getUnsyncedFeedback: sandbox.stub().resolves(entries),
+        markFeedbackSynced: sandbox.stub().resolves()
+      };
+      (mockEngagementService.getStorage as sinon.SinonStub).returns(mockStorage);
+      mockEngagementService.submitFeedback.resolves(createMockFeedback('ok', 5));
+
+      const result = await commands.drainUnsyncedFeedback();
+
+      assert.strictEqual(result, 3);
+      assert.strictEqual(mockEngagementService.submitFeedback.callCount, 3);
+
+      const firstArgs = mockEngagementService.submitFeedback.firstCall.args;
+      assert.strictEqual(firstArgs[0], 'bundle');
+      assert.strictEqual(firstArgs[1], 'b1');
+      assert.strictEqual(firstArgs[2], 'one');
+      assert.deepStrictEqual(firstArgs[3], { rating: 5, hubId: 'h1' });
+
+      // Entry 2 has no comment → fallback string
+      const secondArgs = mockEngagementService.submitFeedback.secondCall.args;
+      assert.strictEqual(secondArgs[2], 'Rated 4 stars');
+
+      // Entry 3 has empty hubId → undefined
+      const thirdArgs = mockEngagementService.submitFeedback.thirdCall.args;
+      assert.deepStrictEqual(thirdArgs[3], { rating: 3, hubId: undefined });
+
+      assert.strictEqual(mockStorage.markFeedbackSynced.callCount, 3);
+      assert.ok(mockStorage.markFeedbackSynced.calledWith('e1'));
+      assert.ok(mockStorage.markFeedbackSynced.calledWith('e2'));
+      assert.ok(mockStorage.markFeedbackSynced.calledWith('e3'));
+    });
+
+    test('returns success count and leaves failed entries unsynced on partial failure', async () => {
+      const entries = [
+        { id: 'e1', bundleId: 'b1', sourceId: 'b1', hubId: 'h1', resourceType: 'bundle', rating: 5, comment: 'one', timestamp: 't1', synced: false },
+        { id: 'e2', bundleId: 'b2', sourceId: 'b2', hubId: 'h2', resourceType: 'bundle', rating: 4, comment: 'two', timestamp: 't2', synced: false },
+        { id: 'e3', bundleId: 'b3', sourceId: 'b3', hubId: 'h3', resourceType: 'bundle', rating: 3, comment: 'three', timestamp: 't3', synced: false }
+      ];
+      const mockStorage = {
+        savePendingFeedback: sandbox.stub().resolves(),
+        getUnsyncedFeedback: sandbox.stub().resolves(entries),
+        markFeedbackSynced: sandbox.stub().resolves()
+      };
+      (mockEngagementService.getStorage as sinon.SinonStub).returns(mockStorage);
+
+      // Fail only entry 2 (by bundleId b2)
+      mockEngagementService.submitFeedback.callsFake(async (_rt: any, resourceId: string) => {
+        if (resourceId === 'b2') {
+          throw new Error('Network error');
+        }
+        return createMockFeedback('ok', 5);
+      });
+
+      const result = await commands.drainUnsyncedFeedback();
+
+      assert.strictEqual(result, 2);
+      assert.strictEqual(mockStorage.markFeedbackSynced.callCount, 2);
+      assert.ok(mockStorage.markFeedbackSynced.calledWith('e1'));
+      assert.ok(!mockStorage.markFeedbackSynced.calledWith('e2'));
+      assert.ok(mockStorage.markFeedbackSynced.calledWith('e3'));
+    });
+  });
+
   suite('setEngagementService()', () => {
     test('should allow setting engagement service after construction', async () => {
       const commandsWithoutService = new FeedbackCommands();

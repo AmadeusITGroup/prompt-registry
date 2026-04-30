@@ -398,6 +398,49 @@ export class FeedbackCommands {
   }
 
   /**
+   * Attempt to resubmit ALL unsynced pending feedback entries across all bundles.
+   * Called once during extension activation so feedback saved offline is eventually delivered.
+   * Non-fatal: individual failures are logged and the entry stays pending for the next activation.
+   *
+   * @returns Number of entries successfully synced during this drain pass.
+   */
+  public async drainUnsyncedFeedback(): Promise<number> {
+    const storage = this.engagementService?.getStorage?.();
+    if (!storage || !this.engagementService) {
+      return 0;
+    }
+
+    const unsynced = await storage.getUnsyncedFeedback();
+    if (unsynced.length === 0) {
+      return 0;
+    }
+
+    this.logger.info(`Draining ${unsynced.length} unsynced feedback entr${unsynced.length === 1 ? 'y' : 'ies'}`);
+
+    let successCount = 0;
+    for (const entry of unsynced) {
+      try {
+        await this.engagementService.submitFeedback(
+          entry.resourceType,
+          entry.bundleId,
+          entry.comment || `Rated ${entry.rating} stars`,
+          { rating: entry.rating, hubId: entry.hubId || undefined }
+        );
+        await storage.markFeedbackSynced(entry.id);
+        successCount++;
+      } catch (error) {
+        // Leave as unsynced; next activation will try again
+        this.logger.debug(`Drain failed for feedback ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (successCount > 0) {
+      this.logger.info(`Drained ${successCount} of ${unsynced.length} unsynced feedback entries`);
+    }
+    return successCount;
+  }
+
+  /**
    * Retry submitting unsynced feedback for a bundle
    * @param item
    */

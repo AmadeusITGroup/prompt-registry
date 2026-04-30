@@ -241,6 +241,15 @@ export class PromptRegistryExtension {
       if (this.hubManager) {
         await this.hubManager.initializeEngagementBackends();
       }
+
+      // Drain any unsynced pending feedback saved during a previous offline session (non-fatal)
+      if (this.feedbackCommands) {
+        try {
+          await this.feedbackCommands.drainUnsyncedFeedback();
+        } catch (error) {
+          this.logger.debug('Drain unsynced feedback failed (non-fatal)', error as Error);
+        }
+      }
     } catch (error) {
       this.logger.warn('Failed to initialize engagement system (non-fatal)', error as Error);
     }
