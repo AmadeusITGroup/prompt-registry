@@ -96,11 +96,6 @@ export class FeedbackCommands {
         'promptRegistry.feedback',
         (item: unknown) => this.submitFeedback(this.normalizeFeedbackItem(item))
       ),
-      // Alias for backward compatibility
-      vscode.commands.registerCommand(
-        'promptRegistry.submitFeedback',
-        (item: unknown) => this.submitFeedback(this.normalizeFeedbackItem(item))
-      ),
       vscode.commands.registerCommand(
         'promptRegistry.reportIssue',
         (item: any) => this.reportIssue(this.normalizeFeedbackItem(item))
