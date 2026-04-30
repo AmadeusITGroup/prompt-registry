@@ -879,6 +879,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
   let marketplaceProvider: MarketplaceViewProvider;
   let submitRatingStub: sinon.SinonStub;
   let ratingCacheSpy: sinon.SinonSpy;
+  let listSourcesStub: sinon.SinonStub;
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
@@ -905,6 +906,29 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
       extensionMode: 2
     } as any;
 
+    // listSources returns a hub-provided source by default so tests exercise the
+    // source → hub resolution path inside handleRateBundle.
+    listSourcesStub = sandbox.stub().resolves([
+      {
+        id: 'source-with-ratings',
+        name: 'src',
+        type: 'github',
+        url: '',
+        enabled: true,
+        priority: 1,
+        hubId: 'test-hub'
+      },
+      {
+        id: 's1',
+        name: 's1',
+        type: 'github',
+        url: '',
+        enabled: true,
+        priority: 2,
+        hubId: 'test-hub'
+      }
+    ]);
+
     const mockRegistryManager = {
       onBundleInstalled: sandbox.stub().returns({ dispose: () => {} }),
       onBundleUninstalled: sandbox.stub().returns({ dispose: () => {} }),
@@ -914,6 +938,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
       onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
       onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
       onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
+      listSources: listSourcesStub,
       autoUpdateService: null
     } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
 
@@ -934,7 +959,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     RatingCache.resetInstance();
   });
 
-  test('submits the rating to EngagementService when stars is in range', async () => {
+  test('submits the rating to EngagementService with hubId resolved from the source', async () => {
     await (marketplaceProvider as any).handleMessage({
       type: 'rateBundle',
       bundleId: 'rated-bundle',
@@ -947,7 +972,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(resourceType, 'bundle');
     assert.strictEqual(resourceId, 'rated-bundle');
     assert.strictEqual(score, 4);
-    assert.deepStrictEqual(options, { hubId: 'source-with-ratings' });
+    assert.deepStrictEqual(options, { hubId: 'test-hub' });
   });
 
   test('accepts the boundary values 1 and 5', async () => {
@@ -1001,5 +1026,31 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
 
     assert.strictEqual(submitRatingStub.callCount, 1);
     assert.strictEqual(ratingCacheSpy.callCount, 0);
+  });
+
+  test('submits with hubId undefined when the source has no hubId (falls back to default backend)', async () => {
+    // Local source with no hubId — rating should route to the default (local file) backend.
+    listSourcesStub.resolves([
+      {
+        id: 'local-source',
+        name: 'Local',
+        type: 'local',
+        url: '/path/to/local',
+        enabled: true,
+        priority: 1
+        // no hubId
+      }
+    ]);
+
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'local-bundle',
+      sourceId: 'local-source',
+      stars: 3
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 1);
+    const options = submitRatingStub.firstCall.args[3];
+    assert.deepStrictEqual(options, { hubId: undefined });
   });
 });

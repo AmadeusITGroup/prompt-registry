@@ -570,10 +570,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       this.logger.warn(`Invalid star rating ${stars} for bundle ${bundleId}`);
       return;
     }
+
+    // Resolve the hub that owns this source so the rating is routed to the right backend.
+    // Falls back to the default (local file) backend if the source is not hub-provided.
+    const sources = await this.registryManager.listSources();
+    const source = sources.find((s) => s.id === sourceId);
+    const hubId = source?.hubId;
+
     try {
       const engagementService = EngagementService.getInstance();
-      await engagementService.submitRating('bundle', bundleId, stars as RatingScore, { hubId: sourceId });
-      this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId}`);
+      await engagementService.submitRating('bundle', bundleId, stars as RatingScore, { hubId });
+      this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
     } catch (error) {
       this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
       vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
