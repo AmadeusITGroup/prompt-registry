@@ -522,16 +522,26 @@
     return '<button class="btn btn-primary" data-action="installBundle" data-bundle-id="' + bundle.id + '">Install</button>';
   };
 
+  const escapeAttr = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
   const renderRatingBadge = (rating) => {
     if (!rating || !rating.voteCount) {
       return '';
     }
     const stars = Math.round(rating.starRating || 0);
+    const bundleId = rating.bundleId || '';
+    const sourceId = rating.sourceId || '';
     const glyphs = [1, 2, 3, 4, 5].map((n) => {
       const cls = n <= stars ? 'star-filled' : 'star-empty';
-      return '<span class="star ' + cls + '" data-star="' + n + '">★</span>';
+      return '<span class="star ' + cls + '" '
+        + 'data-action="rateBundle" '
+        + 'data-bundle-id="' + escapeAttr(bundleId) + '" '
+        + 'data-source-id="' + escapeAttr(sourceId) + '" '
+        + 'data-star="' + n + '" '
+        + 'role="button" '
+        + 'title="Rate ' + n + ' star' + (n === 1 ? '' : 's') + '">★</span>';
     }).join('');
-    return '<div class="rating-badge">'
+    return '<div class="rating-badge" data-stop-propagation="true">'
       + '<span class="rating-stars">' + glyphs + '</span>'
       + '<span class="rating-count">(' + rating.voteCount + ')</span>'
       + '</div>';
@@ -566,6 +576,10 @@
 
   const openSourceRepo = (bundleId) => {
     vscode.postMessage({ type: 'openSourceRepository', bundleId: bundleId });
+  };
+
+  const rateBundle = (bundleId, sourceId, stars) => {
+    vscode.postMessage({ type: 'rateBundle', bundleId: bundleId, sourceId: sourceId, stars: stars });
   };
 
   const completeSetup = () => {
@@ -680,6 +694,15 @@
         case 'completeSetup': {
           e.stopPropagation();
           completeSetup();
+          break;
+        }
+        case 'rateBundle': {
+          e.stopPropagation();
+          var stars = parseInt(actionElement.dataset.star, 10);
+          var sourceId = actionElement.dataset.sourceId;
+          if (bundleId && sourceId && stars >= 1 && stars <= 5) {
+            rateBundle(bundleId, sourceId, stars);
+          }
           break;
         }
       }

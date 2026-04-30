@@ -1082,3 +1082,13 @@ body {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+.rating-badge .star[data-action="rateBundle"] {
+  cursor: pointer;
+  transition: color 0.1s ease, transform 0.1s ease;
+}
+.rating-badge .star[data-action="rateBundle"]:hover,
+.rating-badge .star[data-action="rateBundle"]:focus {
+  color: var(--vscode-charts-yellow, #d4a526);
+  transform: scale(1.1);
+  outline: none;
+}

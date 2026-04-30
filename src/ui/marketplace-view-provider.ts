@@ -7,6 +7,9 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import {
+  EngagementService,
+} from '../services/engagement/engagement-service';
+import {
   RatingCache,
 } from '../services/engagement/rating-cache';
 import {
@@ -15,6 +18,9 @@ import {
 import {
   SetupStateManager,
 } from '../services/setup-state-manager';
+import {
+  RatingScore,
+} from '../types/engagement';
 import {
   isRemoteServerConfig,
   isStdioServerConfig,
@@ -45,13 +51,14 @@ import {
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup';
+  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'rateBundle';
   bundleId?: string;
   installPath?: string;
   filePath?: string;
   version?: string;
   enabled?: boolean;
   sourceId?: string;
+  stars?: number;
 }
 
 /**
@@ -538,10 +545,38 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         await this.handleCompleteSetup();
         break;
       }
+      case 'rateBundle': {
+        if (message.bundleId && message.sourceId && typeof message.stars === 'number') {
+          await this.handleRateBundle(message.bundleId, message.sourceId, message.stars);
+        }
+        break;
+      }
       default: {
         // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         this.logger.warn(`Unknown message type: ${message.type}`);
       }
+    }
+  }
+
+  /**
+   * Handle a rate-bundle message from the webview.
+   * Persists the rating via EngagementService. Optimistic UI updates land in Task 7.3.
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   */
+  private async handleRateBundle(bundleId: string, sourceId: string, stars: number): Promise<void> {
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      this.logger.warn(`Invalid star rating ${stars} for bundle ${bundleId}`);
+      return;
+    }
+    try {
+      const engagementService = EngagementService.getInstance();
+      await engagementService.submitRating('bundle', bundleId, stars as RatingScore, { hubId: sourceId });
+      this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId}`);
+    } catch (error) {
+      this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
+      vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
     }
   }
 

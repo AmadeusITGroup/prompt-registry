@@ -13,6 +13,9 @@ import {
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
+  EngagementService,
+} from '../../src/services/engagement/engagement-service';
+import {
   CachedRating,
   RatingCache,
 } from '../../src/services/engagement/rating-cache';
@@ -868,5 +871,135 @@ suite('MarketplaceViewProvider - bundleRating hydration', () => {
   afterEach(() => {
     sandbox.restore();
     RatingCache.resetInstance();
+  });
+});
+
+suite('MarketplaceViewProvider - rateBundle message handling', () => {
+  let sandbox: sinon.SinonSandbox;
+  let marketplaceProvider: MarketplaceViewProvider;
+  let submitRatingStub: sinon.SinonStub;
+  let ratingCacheSpy: sinon.SinonSpy;
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+
+    // Reset engagement & rating-cache singletons
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+
+    // Stub EngagementService.getInstance() to return a fake with a submitRating stub
+    submitRatingStub = sandbox.stub().resolves({});
+    const fakeEngagementService = { submitRating: submitRatingStub } as unknown as EngagementService;
+    sandbox.stub(EngagementService, 'getInstance').returns(fakeEngagementService);
+
+    // Spy on RatingCache to confirm the provider does NOT touch it in Task 7.2
+    ratingCacheSpy = sandbox.spy(RatingCache.getInstance(), 'setRating');
+
+    const mockContext = {
+      subscriptions: [],
+      extensionUri: vscode.Uri.file(process.cwd()),
+      extensionPath: process.cwd(),
+      storagePath: '/mock/storage',
+      globalStoragePath: '/mock/global-storage',
+      logPath: '/mock/logs',
+      extensionMode: 2
+    } as any;
+
+    const mockRegistryManager = {
+      onBundleInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUpdated: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
+      onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
+      onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
+      autoUpdateService: null
+    } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
+
+    const mockSetupStateManager = {
+      getState: sandbox.stub().resolves('complete')
+    } as unknown as sinon.SinonStubbedInstance<SetupStateManager>;
+
+    marketplaceProvider = new MarketplaceViewProvider(
+      mockContext,
+      mockRegistryManager as any,
+      mockSetupStateManager as any
+    );
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+  });
+
+  test('submits the rating to EngagementService when stars is in range', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 4
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 1);
+    const [resourceType, resourceId, score, options] = submitRatingStub.firstCall.args;
+    assert.strictEqual(resourceType, 'bundle');
+    assert.strictEqual(resourceId, 'rated-bundle');
+    assert.strictEqual(score, 4);
+    assert.deepStrictEqual(options, { hubId: 'source-with-ratings' });
+  });
+
+  test('accepts the boundary values 1 and 5', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'b1',
+      sourceId: 's1',
+      stars: 1
+    });
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'b2',
+      sourceId: 's1',
+      stars: 5
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 2);
+    assert.strictEqual(submitRatingStub.firstCall.args[2], 1);
+    assert.strictEqual(submitRatingStub.secondCall.args[2], 5);
+  });
+
+  test('does NOT submit when stars is below range (0)', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 0
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 0);
+  });
+
+  test('does NOT submit when stars is above range (6)', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 6
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 0);
+  });
+
+  test('does NOT touch RatingCache (optimistic update is Task 7.3)', async () => {
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 3
+    });
+
+    assert.strictEqual(submitRatingStub.callCount, 1);
+    assert.strictEqual(ratingCacheSpy.callCount, 0);
   });
 });
