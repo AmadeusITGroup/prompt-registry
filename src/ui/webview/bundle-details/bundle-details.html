@@ -26,26 +26,27 @@
         </div>
         <div class="rating-action">
             <div class="interactive-stars" id="detailStars">
-                <span class="star" data-star="1" title="1 star">★</span>
-                <span class="star" data-star="2" title="2 stars">★</span>
-                <span class="star" data-star="3" title="3 stars">★</span>
-                <span class="star" data-star="4" title="4 stars">★</span>
-                <span class="star" data-star="5" title="5 stars">★</span>
+                <span class="star" data-action="rateBundle" data-star="1" title="1 star">★</span>
+                <span class="star" data-action="rateBundle" data-star="2" title="2 stars">★</span>
+                <span class="star" data-action="rateBundle" data-star="3" title="3 stars">★</span>
+                <span class="star" data-action="rateBundle" data-star="4" title="4 stars">★</span>
+                <span class="star" data-action="rateBundle" data-star="5" title="5 stars">★</span>
                 <span class="star-label">Rate this bundle</span>
             </div>
         </div>
         <div class="inline-feedback-form" id="detailFeedbackForm">
-            <textarea placeholder="Optional: share your experience..." maxlength="1000"></textarea>
+            <textarea id="detailFeedbackText" placeholder="Optional: share your experience..." maxlength="1000"></textarea>
             <div class="form-actions">
-                <button class="btn btn-secondary btn-small" id="cancelFeedbackBtn">Cancel</button>
-                <button class="btn btn-primary btn-small" id="submitFeedbackBtn">Submit</button>
+                <button class="btn btn-secondary btn-small" id="cancelFeedbackBtn" data-action="cancelFeedbackForm">Cancel</button>
+                <button class="btn btn-primary btn-small" id="submitFeedbackBtn" data-action="submitFeedbackForm">Submit</button>
             </div>
         </div>
     </div>
 
     <div class="issue-links">
-        <button class="btn btn-link" id="reportIssueBtn">Report Issue</button>
-        <button class="btn btn-link" id="requestFeatureBtn">Request Feature</button>
+        <button class="btn btn-link" id="reportIssueBtn" data-action="reportIssue">Report Issue</button>
+        <button class="btn btn-link" id="requestFeatureBtn" data-action="requestFeature">Request Feature</button>
+        <button class="btn btn-link" id="retryFeedbackBtn" data-action="retryFeedback">Retry Sending Feedback</button>
     </div>
 
     <div class="section">
@@ -91,7 +92,10 @@
         // Initialize bundle details data for the external JS
         window.bundleDetailsData = {
             autoUpdateEnabled: {{autoUpdateEnabled}},
-            bundleId: '{{bundleId}}'
+            bundleId: '{{bundleId}}',
+            sourceId: '{{sourceId}}',
+            hubId: '{{hubId}}',
+            sourceUrl: '{{sourceUrl}}'
         };
     </script>
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>

@@ -7,6 +7,9 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import {
+  FeedbackableItem,
+} from '../commands/feedback-commands';
+import {
   EngagementService,
 } from '../services/engagement/engagement-service';
 import {
@@ -663,6 +666,117 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Build a FeedbackableItem for the bundle-details panel so the provider can
+   * delegate to the existing promptRegistry.reportIssue / requestFeature /
+   * retryFeedback commands.
+   * @param bundle
+   * @param source
+   */
+  private buildFeedbackItem(bundle: Bundle, source: RegistrySource | undefined): FeedbackableItem {
+    return {
+      resourceId: bundle.id,
+      resourceType: 'bundle',
+      name: bundle.name,
+      version: bundle.version,
+      sourceId: bundle.sourceId,
+      sourceUrl: bundle.repository ?? source?.url,
+      sourceType: source?.type,
+      hubId: source?.hubId
+    };
+  }
+
+  /**
+   * Handle a rateBundle message from the bundle-details panel.
+   * Mirrors handleRateBundle but posts updates back to the given panel so the
+   * details view (which is a separate WebviewPanel, not the marketplace view)
+   * refreshes its own rating display and reveals the inline feedback form.
+   * @param panel
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   */
+  private async handleBundleDetailRateBundle(
+    panel: vscode.WebviewPanel,
+    bundleId: string,
+    sourceId: string,
+    stars: number
+  ): Promise<void> {
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      this.logger.warn(`Invalid star rating ${stars} for bundle ${bundleId}`);
+      return;
+    }
+
+    const sources = await this.registryManager.listSources();
+    const source = sources.find((s) => s.id === sourceId);
+    const hubId = source?.hubId;
+
+    const ratingCache = RatingCache.getInstance();
+    const previousUserRating = ratingCache.getUserRating(sourceId, bundleId);
+    const newRating = stars as RatingScore;
+
+    ratingCache.applyOptimisticRating(sourceId, bundleId, newRating);
+    panel.webview.postMessage({
+      type: 'ratingUpdated',
+      bundleRating: ratingCache.getRating(sourceId, bundleId)
+    });
+
+    try {
+      const engagementService = EngagementService.getInstance();
+      await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
+      panel.webview.postMessage({ type: 'ratingSubmitted', stars: newRating });
+    } catch (error) {
+      this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
+      ratingCache.rollbackOptimisticRating(sourceId, bundleId, newRating, previousUserRating);
+      panel.webview.postMessage({
+        type: 'ratingUpdated',
+        bundleRating: ratingCache.getRating(sourceId, bundleId)
+      });
+      panel.webview.postMessage({ type: 'ratingFailed', error: (error as Error).message });
+      vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle a submitFeedback message from the bundle-details panel.
+   * Delegates to the existing promptRegistry.feedback command (fast-path with
+   * prefilledRating + prefilledComment) and notifies the panel on success/failure.
+   * @param panel
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   * @param comment
+   */
+  private async handleBundleDetailSubmitFeedback(
+    panel: vscode.WebviewPanel,
+    bundleId: string,
+    sourceId: string,
+    stars: number,
+    comment: string
+  ): Promise<void> {
+    try {
+      const sources = await this.registryManager.listSources();
+      const source = sources.find((s) => s.id === sourceId);
+      const hubId = source?.hubId;
+
+      const feedbackItem: FeedbackableItem = {
+        resourceId: bundleId,
+        resourceType: 'bundle',
+        sourceId: sourceId,
+        hubId: hubId,
+        prefilledRating: stars as RatingScore,
+        prefilledComment: comment || undefined
+      };
+
+      await vscode.commands.executeCommand('promptRegistry.feedback', feedbackItem);
+      panel.webview.postMessage({ type: 'feedbackSubmitted' });
+    } catch (error) {
+      this.logger.error(`Failed to submit feedback for bundle ${bundleId}`, error as Error);
+      panel.webview.postMessage({ type: 'feedbackFailed', error: (error as Error).message });
+      vscode.window.showErrorMessage(`Failed to submit feedback: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Post the current cached rating for a bundle to the webview so the tile
    * can re-render in place without a full bundle reload.
    * @param sourceId
@@ -994,19 +1108,35 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Escape a string for safe embedding inside a single-quoted JavaScript literal.
+   * Protects against XSS through user-supplied values (e.g. source URLs).
+   * @param s
+   */
+  private escapeJs(s: string): string {
+    return s
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/</g, '\\u003c');
+  }
+
+  /**
    * Get HTML for bundle details panel
    * @param webview
    * @param bundle
    * @param installed
    * @param breakdown
    * @param autoUpdateEnabled
+   * @param source
    */
   private getBundleDetailsHtml(
     webview: vscode.Webview,
     bundle: Bundle,
     installed: InstalledBundle | undefined,
     breakdown: ContentBreakdown,
-    autoUpdateEnabled = false
+    autoUpdateEnabled = false,
+    source?: RegistrySource
   ): string {
     const isInstalled = !!installed;
     const installPath = installed?.installPath || 'Not installed';
@@ -1112,6 +1242,19 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     const mcpServersSection = this.generateMcpServersSection(installed);
     const promptsSection = this.generatePromptsSection(installed, escapedInstallPath);
 
+    // Server-rendered snapshot of the current CachedRating so the details panel
+    // displays a rating line immediately on open (before any webview messages).
+    const ratingDisplayData = RatingCache.getInstance().getRatingDisplay(bundle.sourceId, bundle.id);
+    const ratingDisplay = ratingDisplayData
+      ? `<div class="rating-text" title="${this.escapeHtml(ratingDisplayData.tooltip)}">${this.escapeHtml(ratingDisplayData.text)}</div>`
+      : '<div class="rating-text rating-text-empty">No ratings yet</div>';
+
+    // Values needed by the webview JS (postMessage payloads + report-issue URL).
+    // Escaped for safe embedding inside single-quoted JS string literals.
+    const sourceIdForJs = this.escapeJs(bundle.sourceId || '');
+    const hubIdForJs = this.escapeJs(source?.hubId ?? '');
+    const sourceUrlForJs = this.escapeJs(source?.url ?? '');
+
     // Replace all placeholders
     html = html
       .replace('{{cspSource}}', cspSource)
@@ -1123,6 +1266,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{author}}', this.escapeHtml(bundle.author || 'Unknown'))
       .replace('{{version}}', bundle.version)
       .replace('{{autoUpdateSection}}', autoUpdateSection)
+      .replace('{{ratingDisplay}}', ratingDisplay)
       .replace('{{description}}', bundle.description || 'No description available')
       .replace('{{breakdownContent}}', breakdownContent)
       .replace('{{displayBundleId}}', isInstalled ? installed.bundleId : bundle.id)
@@ -1133,7 +1277,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{mcpServersSection}}', mcpServersSection)
       .replace('{{promptsSection}}', promptsSection)
       .replace('{{autoUpdateEnabled}}', String(autoUpdateEnabled))
-      .replace('{{bundleId}}', bundleId)
+      .replace('{{bundleId}}', this.escapeJs(bundleId))
+      .replace('{{sourceId}}', sourceIdForJs)
+      .replace('{{hubId}}', hubIdForJs)
+      .replace('{{sourceUrl}}', sourceUrlForJs)
       .replace(/\{\{nonce\}\}/g, nonce)
       .replace('{{scriptUri}}', scriptUri.toString());
 
@@ -1383,7 +1530,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       );
 
       // Set HTML content
-      panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
+      panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled, source);
 
       // Handle messages from the details panel
       panel.webview.onDidReceiveMessage(
@@ -1397,6 +1544,16 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
               const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
               panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
             }
+          } else if (message.type === 'rateBundle' && typeof message.stars === 'number') {
+            await this.handleBundleDetailRateBundle(panel, bundle.id, bundle.sourceId, message.stars);
+          } else if (message.type === 'submitFeedback' && typeof message.stars === 'number') {
+            await this.handleBundleDetailSubmitFeedback(panel, bundle.id, bundle.sourceId, message.stars, message.comment ?? '');
+          } else if (message.type === 'reportIssue') {
+            await vscode.commands.executeCommand('promptRegistry.reportIssue', this.buildFeedbackItem(bundle, source));
+          } else if (message.type === 'requestFeature') {
+            await vscode.commands.executeCommand('promptRegistry.requestFeature', this.buildFeedbackItem(bundle, source));
+          } else if (message.type === 'retryFeedback') {
+            await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
           }
         },
         undefined,

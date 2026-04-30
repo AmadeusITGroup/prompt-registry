@@ -1276,3 +1276,283 @@ suite('MarketplaceViewProvider - submitFeedback message handling', () => {
     assert.strictEqual(item.prefilledRating, 5);
   });
 });
+
+suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
+  let sandbox: sinon.SinonSandbox;
+  let marketplaceProvider: MarketplaceViewProvider;
+  let panel: { webview: { postMessage: sinon.SinonStub } };
+  let postedPanelMessages: any[];
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+
+    const submitRatingStub = sandbox.stub().resolves({});
+    const fakeEngagementService = { submitRating: submitRatingStub } as unknown as EngagementService;
+    sandbox.stub(EngagementService, 'getInstance').returns(fakeEngagementService);
+
+    const mockContext = {
+      subscriptions: [],
+      extensionUri: vscode.Uri.file(process.cwd()),
+      extensionPath: process.cwd(),
+      storagePath: '/mock/storage',
+      globalStoragePath: '/mock/global-storage',
+      logPath: '/mock/logs',
+      extensionMode: 2
+    } as any;
+
+    const listSourcesStub = sandbox.stub().resolves([
+      {
+        id: 'source-a',
+        name: 'src',
+        type: 'github',
+        url: 'https://github.com/owner/repo',
+        enabled: true,
+        priority: 1,
+        hubId: 'hub-a'
+      }
+    ]);
+
+    const mockRegistryManager = {
+      onBundleInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundleUpdated: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesInstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onBundlesUninstalled: sandbox.stub().returns({ dispose: () => {} }),
+      onSourceSynced: sandbox.stub().returns({ dispose: () => {} }),
+      onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
+      onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
+      listSources: listSourcesStub,
+      autoUpdateService: null
+    } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
+
+    const mockSetupStateManager = {
+      getState: sandbox.stub().resolves('complete')
+    } as unknown as sinon.SinonStubbedInstance<SetupStateManager>;
+
+    marketplaceProvider = new MarketplaceViewProvider(
+      mockContext,
+      mockRegistryManager as any,
+      mockSetupStateManager as any
+    );
+
+    postedPanelMessages = [];
+    panel = {
+      webview: {
+        postMessage: sandbox.stub().callsFake((m: any) => {
+          postedPanelMessages.push(m);
+          return Promise.resolve(true);
+        })
+      }
+    };
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+    EngagementService.resetInstance();
+    RatingCache.resetInstance();
+  });
+
+  suite('buildFeedbackItem()', () => {
+    test('populates FeedbackableItem fields from bundle + source', () => {
+      const bundle: Bundle = {
+        id: 'b1',
+        name: 'Bundle One',
+        version: '1.2.3',
+        description: '',
+        author: 'me',
+        sourceId: 'source-a',
+        environments: ['vscode'],
+        tags: [],
+        lastUpdated: '',
+        size: '',
+        dependencies: [],
+        license: '',
+        manifestUrl: '',
+        downloadUrl: '',
+        repository: 'https://github.com/owner/repo'
+      };
+      const source: RegistrySource = {
+        id: 'source-a',
+        name: 'src',
+        type: 'github',
+        url: 'https://github.com/owner/repo',
+        enabled: true,
+        priority: 1,
+        hubId: 'hub-a'
+      };
+
+      const item = (marketplaceProvider as any).buildFeedbackItem(bundle, source);
+
+      assert.strictEqual(item.resourceId, 'b1');
+      assert.strictEqual(item.resourceType, 'bundle');
+      assert.strictEqual(item.name, 'Bundle One');
+      assert.strictEqual(item.version, '1.2.3');
+      assert.strictEqual(item.sourceId, 'source-a');
+      assert.strictEqual(item.sourceUrl, 'https://github.com/owner/repo');
+      assert.strictEqual(item.sourceType, 'github');
+      assert.strictEqual(item.hubId, 'hub-a');
+    });
+
+    test('falls back to source.url when bundle.repository is missing', () => {
+      const bundle: Bundle = {
+        id: 'b2',
+        name: 'Bundle Two',
+        version: '0.1.0',
+        description: '',
+        author: '',
+        sourceId: 'source-a',
+        environments: [],
+        tags: [],
+        lastUpdated: '',
+        size: '',
+        dependencies: [],
+        license: '',
+        manifestUrl: '',
+        downloadUrl: ''
+      };
+      const source: RegistrySource = {
+        id: 'source-a',
+        name: 'src',
+        type: 'github',
+        url: 'https://example.com/src',
+        enabled: true,
+        priority: 1,
+        hubId: 'hub-a'
+      };
+
+      const item = (marketplaceProvider as any).buildFeedbackItem(bundle, source);
+      assert.strictEqual(item.sourceUrl, 'https://example.com/src');
+    });
+
+    test('tolerates undefined source', () => {
+      const bundle: Bundle = {
+        id: 'b3',
+        name: 'Bundle Three',
+        version: '1.0.0',
+        description: '',
+        author: '',
+        sourceId: 'source-a',
+        environments: [],
+        tags: [],
+        lastUpdated: '',
+        size: '',
+        dependencies: [],
+        license: '',
+        manifestUrl: '',
+        downloadUrl: ''
+      };
+
+      const item = (marketplaceProvider as any).buildFeedbackItem(bundle, undefined);
+      assert.strictEqual(item.resourceId, 'b3');
+      assert.strictEqual(item.hubId, undefined);
+      assert.strictEqual(item.sourceType, undefined);
+      assert.strictEqual(item.sourceUrl, undefined);
+    });
+  });
+
+  suite('handleBundleDetailRateBundle()', () => {
+    test('posts ratingUpdated + ratingSubmitted to the panel on success', async () => {
+      await (marketplaceProvider as any).handleBundleDetailRateBundle(
+        panel,
+        'b1',
+        'source-a',
+        4
+      );
+
+      const types = postedPanelMessages.map((m) => m.type);
+      assert.ok(types.includes('ratingUpdated'), 'expected ratingUpdated');
+      assert.ok(types.includes('ratingSubmitted'), 'expected ratingSubmitted');
+
+      const submitted = postedPanelMessages.find((m) => m.type === 'ratingSubmitted');
+      assert.strictEqual(submitted.stars, 4);
+    });
+
+    test('rolls back and posts ratingFailed on submit failure', async () => {
+      (EngagementService.getInstance as sinon.SinonStub).restore();
+      const failingService = {
+        submitRating: sandbox.stub().rejects(new Error('boom'))
+      } as unknown as EngagementService;
+      sandbox.stub(EngagementService, 'getInstance').returns(failingService);
+      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined as any);
+
+      await (marketplaceProvider as any).handleBundleDetailRateBundle(
+        panel,
+        'b1',
+        'source-a',
+        5
+      );
+
+      const failed = postedPanelMessages.find((m) => m.type === 'ratingFailed');
+      assert.ok(failed, 'expected ratingFailed message on failure');
+      assert.strictEqual(failed.error, 'boom');
+
+      // no ratingSubmitted on failure
+      const submitted = postedPanelMessages.find((m) => m.type === 'ratingSubmitted');
+      assert.strictEqual(submitted, undefined);
+    });
+
+    test('ignores invalid star values', async () => {
+      await (marketplaceProvider as any).handleBundleDetailRateBundle(
+        panel,
+        'b1',
+        'source-a',
+        0
+      );
+      await (marketplaceProvider as any).handleBundleDetailRateBundle(
+        panel,
+        'b1',
+        'source-a',
+        6
+      );
+      assert.strictEqual(postedPanelMessages.length, 0);
+    });
+  });
+
+  suite('handleBundleDetailSubmitFeedback()', () => {
+    test('delegates to promptRegistry.feedback with hubId resolved from source', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined);
+
+      await (marketplaceProvider as any).handleBundleDetailSubmitFeedback(
+        panel,
+        'b1',
+        'source-a',
+        4,
+        'Nice bundle'
+      );
+
+      const feedbackCalls = executeCommandStub.getCalls().filter(
+        (c) => c.args[0] === 'promptRegistry.feedback'
+      );
+      assert.strictEqual(feedbackCalls.length, 1);
+      const item = feedbackCalls[0].args[1];
+      assert.strictEqual(item.resourceId, 'b1');
+      assert.strictEqual(item.resourceType, 'bundle');
+      assert.strictEqual(item.hubId, 'hub-a');
+      assert.strictEqual(item.prefilledRating, 4);
+      assert.strictEqual(item.prefilledComment, 'Nice bundle');
+
+      const notified = postedPanelMessages.find((m) => m.type === 'feedbackSubmitted');
+      assert.ok(notified, 'expected feedbackSubmitted message on success');
+    });
+
+    test('posts feedbackFailed when the feedback command throws', async () => {
+      sandbox.stub(vscode.commands, 'executeCommand').rejects(new Error('nope'));
+      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined as any);
+
+      await (marketplaceProvider as any).handleBundleDetailSubmitFeedback(
+        panel,
+        'b1',
+        'source-a',
+        3,
+        ''
+      );
+
+      const failed = postedPanelMessages.find((m) => m.type === 'feedbackFailed');
+      assert.ok(failed, 'expected feedbackFailed on error');
+      assert.strictEqual(failed.error, 'nope');
+    });
+  });
+});

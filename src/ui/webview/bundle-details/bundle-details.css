@@ -417,3 +417,13 @@ code {
     color: var(--vscode-textLink-activeForeground);
     text-decoration: underline;
 }
+
+.rating-text {
+    font-size: 14px;
+    color: var(--vscode-foreground);
+}
+
+.rating-text-empty {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}

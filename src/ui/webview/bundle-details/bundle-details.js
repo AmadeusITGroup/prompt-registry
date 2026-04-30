@@ -7,6 +7,11 @@
   // Get initial data from window object (set by TypeScript)
   var autoUpdateEnabled = window.bundleDetailsData ? window.bundleDetailsData.autoUpdateEnabled : false;
   var bundleId = window.bundleDetailsData ? window.bundleDetailsData.bundleId : '';
+  var sourceId = window.bundleDetailsData ? window.bundleDetailsData.sourceId : '';
+
+  // The rating the user has committed to; used as the rating value when the
+  // inline feedback form is submitted. null means "no rating pending yet".
+  var pendingStars = null;
 
   /**
    * Update the toggle UI to reflect current state
@@ -16,6 +21,55 @@
     if (toggle) {
       toggle.classList.toggle('enabled', autoUpdateEnabled);
     }
+  };
+
+  /**
+   * Visually mark the first N stars as filled.
+   * @param {number} upTo
+   */
+  const updateStarsFilled = (upTo) => {
+    var stars = document.querySelectorAll('#detailStars .star');
+    stars.forEach((el) => {
+      var n = parseInt(el.dataset.star, 10);
+      el.classList.toggle('filled', n <= upTo);
+    });
+  };
+
+  /**
+   * Show the inline feedback form so the user can add an optional comment.
+   */
+  const showFeedbackForm = () => {
+    var form = document.getElementById('detailFeedbackForm');
+    if (form) { form.classList.add('visible'); }
+  };
+
+  /**
+   * Hide the inline feedback form and clear the textarea.
+   */
+  const hideFeedbackForm = () => {
+    var form = document.getElementById('detailFeedbackForm');
+    var textarea = document.getElementById('detailFeedbackText');
+    if (form) { form.classList.remove('visible'); }
+    if (textarea) { textarea.value = ''; }
+  };
+
+  /**
+   * Re-render the rating display snapshot using a CachedRating pushed by the extension.
+   * @param {{ starRating: number, voteCount: number } | undefined} bundleRating
+   */
+  const renderRatingDisplay = (bundleRating) => {
+    var container = document.querySelector('.rating-display');
+    if (!container) { return; }
+    if (!bundleRating || !bundleRating.voteCount) {
+      container.innerHTML = '<div class="rating-text rating-text-empty">No ratings yet</div>';
+      return;
+    }
+    var txt = '★ ' + (bundleRating.starRating || 0).toFixed(1) + '  (' + bundleRating.voteCount + ')';
+    var div = document.createElement('div');
+    div.className = 'rating-text';
+    div.textContent = txt;
+    container.innerHTML = '';
+    container.appendChild(div);
   };
 
   /**
@@ -50,7 +104,20 @@
     if (message.type === 'autoUpdateStatusChanged') {
       autoUpdateEnabled = message.enabled;
       updateToggleUI();
+    } else if (message.type === 'ratingUpdated') {
+      renderRatingDisplay(message.bundleRating);
+    } else if (message.type === 'ratingSubmitted') {
+      updateStarsFilled(message.stars);
+      pendingStars = message.stars;
+      showFeedbackForm();
+    } else if (message.type === 'ratingFailed') {
+      pendingStars = null;
+      updateStarsFilled(0);
+    } else if (message.type === 'feedbackSubmitted') {
+      hideFeedbackForm();
+      pendingStars = null;
     }
+    // feedbackFailed: keep form open so the user can edit and retry.
   });
 
   // Event delegation for all click handlers (CSP compliant)
@@ -72,6 +139,55 @@
         }
         case 'toggleAutoUpdate': {
           toggleAutoUpdate();
+          break;
+        }
+        case 'rateBundle': {
+          e.stopPropagation();
+          var stars = parseInt(actionElement.dataset.star, 10);
+          if (stars >= 1 && stars <= 5) {
+            vscode.postMessage({
+              type: 'rateBundle',
+              bundleId: bundleId,
+              sourceId: sourceId,
+              stars: stars
+            });
+          }
+          break;
+        }
+        case 'cancelFeedbackForm': {
+          e.stopPropagation();
+          hideFeedbackForm();
+          pendingStars = null;
+          break;
+        }
+        case 'submitFeedbackForm': {
+          e.stopPropagation();
+          if (pendingStars !== null) {
+            var textarea = document.getElementById('detailFeedbackText');
+            var comment = textarea ? textarea.value.trim() : '';
+            vscode.postMessage({
+              type: 'submitFeedback',
+              bundleId: bundleId,
+              sourceId: sourceId,
+              stars: pendingStars,
+              comment: comment
+            });
+          }
+          break;
+        }
+        case 'reportIssue': {
+          e.stopPropagation();
+          vscode.postMessage({ type: 'reportIssue' });
+          break;
+        }
+        case 'requestFeature': {
+          e.stopPropagation();
+          vscode.postMessage({ type: 'requestFeature' });
+          break;
+        }
+        case 'retryFeedback': {
+          e.stopPropagation();
+          vscode.postMessage({ type: 'retryFeedback' });
           break;
         }
       }
