@@ -20,6 +20,8 @@
       setupState = message.setupState || 'complete';
       updateFilterUI();
       renderBundles();
+    } else if (message.type === 'updateRating') {
+      updateRatingOnTile(message.bundleId, message.sourceId, message.bundleRating);
     }
   });
 
@@ -545,6 +547,61 @@
       + '<span class="rating-stars">' + glyphs + '</span>'
       + '<span class="rating-count">(' + rating.voteCount + ')</span>'
       + '</div>';
+  };
+
+  // Minimal CSS attribute-value escape for use in querySelector attribute selectors.
+  // Uses the platform CSS.escape when available; otherwise a safe fallback that
+  // escapes backslashes and double quotes (the only characters we embed inside "...").
+  const cssEscapeAttr = (value) => {
+    var str = String(value == null ? '' : value);
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(str);
+    }
+    return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  };
+
+  // Update a bundle tile's rating badge in place, without a full re-render.
+  // Also syncs the cached rating back into allBundles so subsequent filter/search
+  // re-renders don't revert to a stale value.
+  const updateRatingOnTile = (bundleId, sourceId, bundleRating) => {
+    var tiles = document.querySelectorAll('.bundle-card[data-bundle-id="' + cssEscapeAttr(bundleId) + '"]');
+    tiles.forEach((tile) => {
+      var existingBadge = tile.querySelector('.rating-badge');
+      var newBadgeHtml = renderRatingBadge(bundleRating);
+
+      if (existingBadge) {
+        if (newBadgeHtml) {
+          var tempReplace = document.createElement('div');
+          tempReplace.innerHTML = newBadgeHtml;
+          var newBadge = tempReplace.firstChild;
+          if (newBadge) {
+            existingBadge.replaceWith(newBadge);
+          }
+        } else {
+          existingBadge.remove();
+        }
+      } else if (newBadgeHtml) {
+        var header = tile.querySelector('.bundle-header');
+        if (header) {
+          var tempAppend = document.createElement('div');
+          tempAppend.innerHTML = newBadgeHtml;
+          var addedBadge = tempAppend.firstChild;
+          if (addedBadge) {
+            header.append(addedBadge);
+          }
+        }
+      }
+    });
+
+    // Keep the in-memory bundle list in sync so re-renders pick up the new rating.
+    if (Array.isArray(allBundles)) {
+      var match = allBundles.find((b) => {
+        return b && b.id === bundleId && (!sourceId || b.sourceId === sourceId);
+      });
+      if (match) {
+        match.bundleRating = bundleRating;
+      }
+    }
   };
 
   const renderContentItem = (icon, label, count) => {

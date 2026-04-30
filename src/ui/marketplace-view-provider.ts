@@ -560,7 +560,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
   /**
    * Handle a rate-bundle message from the webview.
-   * Persists the rating via EngagementService. Optimistic UI updates land in Task 7.3.
+   * Applies an optimistic cache update so the webview tile refreshes immediately,
+   * submits the rating via EngagementService, and rolls back on failure.
    * @param bundleId
    * @param sourceId
    * @param stars
@@ -577,14 +578,45 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     const source = sources.find((s) => s.id === sourceId);
     const hubId = source?.hubId;
 
+    const ratingCache = RatingCache.getInstance();
+    const previousUserRating = ratingCache.getUserRating(sourceId, bundleId);
+    const newRating = stars as RatingScore;
+
+    // Optimistic update: update cache + notify webview before the network call so
+    // the user sees their vote reflected immediately.
+    ratingCache.applyOptimisticRating(sourceId, bundleId, newRating);
+    this.postRatingUpdate(sourceId, bundleId);
+
     try {
       const engagementService = EngagementService.getInstance();
-      await engagementService.submitRating('bundle', bundleId, stars as RatingScore, { hubId });
+      await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
       this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
     } catch (error) {
       this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
+      // Roll back the optimistic update and notify the webview so the UI reverts.
+      ratingCache.rollbackOptimisticRating(sourceId, bundleId, newRating, previousUserRating);
+      this.postRatingUpdate(sourceId, bundleId);
       vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Post the current cached rating for a bundle to the webview so the tile
+   * can re-render in place without a full bundle reload.
+   * @param sourceId
+   * @param bundleId
+   */
+  private postRatingUpdate(sourceId: string, bundleId: string): void {
+    if (!this._view) {
+      return;
+    }
+    const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
+    this._view.webview.postMessage({
+      type: 'updateRating',
+      bundleId,
+      sourceId,
+      bundleRating: rating
+    });
   }
 
   /**

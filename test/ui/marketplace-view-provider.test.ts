@@ -878,8 +878,8 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
   let sandbox: sinon.SinonSandbox;
   let marketplaceProvider: MarketplaceViewProvider;
   let submitRatingStub: sinon.SinonStub;
-  let ratingCacheSpy: sinon.SinonSpy;
   let listSourcesStub: sinon.SinonStub;
+  let postedMessages: any[];
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
@@ -892,9 +892,6 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     submitRatingStub = sandbox.stub().resolves({});
     const fakeEngagementService = { submitRating: submitRatingStub } as unknown as EngagementService;
     sandbox.stub(EngagementService, 'getInstance').returns(fakeEngagementService);
-
-    // Spy on RatingCache to confirm the provider does NOT touch it in Task 7.2
-    ratingCacheSpy = sandbox.spy(RatingCache.getInstance(), 'setRating');
 
     const mockContext = {
       subscriptions: [],
@@ -951,6 +948,21 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
       mockRegistryManager as any,
       mockSetupStateManager as any
     );
+
+    // Attach a mock webview so postRatingUpdate can push 'updateRating' messages.
+    postedMessages = [];
+    const mockWebview = {
+      postMessage: (message: any) => {
+        postedMessages.push(message);
+        return Promise.resolve(true);
+      },
+      onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+      asWebviewUri: (uri: vscode.Uri) => uri,
+      cspSource: "'self'",
+      options: {},
+      html: ''
+    };
+    (marketplaceProvider as any)._view = { webview: mockWebview };
   });
 
   afterEach(() => {
@@ -1016,18 +1028,6 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(submitRatingStub.callCount, 0);
   });
 
-  test('does NOT touch RatingCache (optimistic update is Task 7.3)', async () => {
-    await (marketplaceProvider as any).handleMessage({
-      type: 'rateBundle',
-      bundleId: 'rated-bundle',
-      sourceId: 'source-with-ratings',
-      stars: 3
-    });
-
-    assert.strictEqual(submitRatingStub.callCount, 1);
-    assert.strictEqual(ratingCacheSpy.callCount, 0);
-  });
-
   test('submits with hubId undefined when the source has no hubId (falls back to default backend)', async () => {
     // Local source with no hubId — rating should route to the default (local file) backend.
     listSourcesStub.resolves([
@@ -1052,5 +1052,77 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(submitRatingStub.callCount, 1);
     const options = submitRatingStub.firstCall.args[3];
     assert.deepStrictEqual(options, { hubId: undefined });
+  });
+
+  test('applies the optimistic rating BEFORE submitting and posts an updateRating message', async () => {
+    // sandbox.spy wraps the method while still calling through, so apply ordering
+    // can be compared against submitRating via sinon's calledBefore().
+    const applySpy = sandbox.spy(RatingCache.getInstance(), 'applyOptimisticRating');
+
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 4
+    });
+
+    assert.strictEqual(applySpy.callCount, 1, 'applyOptimisticRating should be called once');
+    assert.strictEqual(submitRatingStub.callCount, 1, 'submitRating should be called once');
+    assert.ok(applySpy.calledBefore(submitRatingStub), 'apply must fire before submit');
+
+    // At least one updateRating message should have been posted to the webview.
+    const updates = postedMessages.filter((m) => m.type === 'updateRating');
+    assert.ok(updates.length >= 1, 'expected at least one updateRating message');
+    assert.strictEqual(updates[0].bundleId, 'rated-bundle');
+    assert.strictEqual(updates[0].sourceId, 'source-with-ratings');
+  });
+
+  test('rolls back the optimistic update and posts a second updateRating on submit failure', async () => {
+    // Seed a previous user rating so rollback has something to restore.
+    RatingCache.getInstance().applyOptimisticRating('source-with-ratings', 'rated-bundle', 3);
+
+    const applySpy = sandbox.spy(RatingCache.getInstance(), 'applyOptimisticRating');
+    const rollbackSpy = sandbox.spy(RatingCache.getInstance(), 'rollbackOptimisticRating');
+
+    submitRatingStub.rejects(new Error('network down'));
+
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 5
+    });
+
+    // applyOptimisticRating called with the new rating (5)
+    assert.strictEqual(applySpy.callCount, 1);
+    assert.deepStrictEqual(applySpy.firstCall.args, ['source-with-ratings', 'rated-bundle', 5]);
+
+    // rollbackOptimisticRating called with the new rating (5) AND the captured previousUserRating (3)
+    assert.strictEqual(rollbackSpy.callCount, 1);
+    assert.deepStrictEqual(rollbackSpy.firstCall.args, ['source-with-ratings', 'rated-bundle', 5, 3]);
+
+    // Two updateRating messages: one after apply, one after rollback.
+    const updates = postedMessages.filter((m) => m.type === 'updateRating');
+    assert.strictEqual(updates.length, 2, 'expected exactly two updateRating messages (apply + rollback)');
+  });
+
+  test('re-rating case: apply with the new rating, no rollback on successful submit', async () => {
+    // Simulate re-rating: user had 3 stars previously; they now click 5.
+    RatingCache.getInstance().applyOptimisticRating('source-with-ratings', 'rated-bundle', 3);
+
+    const applySpy = sandbox.spy(RatingCache.getInstance(), 'applyOptimisticRating');
+    const rollbackSpy = sandbox.spy(RatingCache.getInstance(), 'rollbackOptimisticRating');
+
+    await (marketplaceProvider as any).handleMessage({
+      type: 'rateBundle',
+      bundleId: 'rated-bundle',
+      sourceId: 'source-with-ratings',
+      stars: 5
+    });
+
+    // apply called with 5, no rollback on success
+    assert.strictEqual(applySpy.callCount, 1);
+    assert.strictEqual(applySpy.firstCall.args[2], 5);
+    assert.strictEqual(rollbackSpy.callCount, 0, 'no rollback on success');
   });
 });
