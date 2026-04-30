@@ -1328,4 +1328,50 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
 
     assert.strictEqual(item.description, '1.0.0');
   });
+
+  test('getInstalledBundleItems preserves rating suffix after setVersionDisplay overwrite', async () => {
+    // Regression: setVersionDisplay used to flat-overwrite treeItem.description with a
+    // version-only string, dropping the star suffix produced by RegistryTreeItem's constructor.
+    sandbox.stub(RatingCache.getInstance(), 'getRating').returns(
+      makeCachedRating({ starRating: 4.2, voteCount: 10 })
+    );
+
+    const registryManagerStub = sandbox.createStubInstance(RegistryManager);
+    const hubManagerStub = sandbox.createStubInstance(HubManager);
+    setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
+
+    const installed = makeInstalledBundle();
+    registryManagerStub.listInstalledBundles.resolves([installed]);
+    registryManagerStub.getBundleDetails.withArgs(installed.bundleId).resolves({
+      id: installed.bundleId,
+      name: 'Bundle One',
+      version: '1.0.0',
+      description: 'desc',
+      author: 'author',
+      sourceId: 'source1',
+      environments: [],
+      tags: [],
+      lastUpdated: new Date().toISOString(),
+      size: '1MB',
+      dependencies: [],
+      license: 'MIT',
+      manifestUrl: 'https://example.com/manifest',
+      downloadUrl: 'https://example.com/download'
+    });
+
+    const provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+
+    const installedRoot = new RegistryTreeItem(
+      'Installed Bundles',
+      TreeItemType.INSTALLED_ROOT,
+      undefined,
+      vscode.TreeItemCollapsibleState.Expanded
+    );
+
+    const items = await provider.getChildren(installedRoot);
+
+    assert.strictEqual(items.length, 1);
+    const desc = items[0].description as string;
+    assert.strictEqual(desc, 'v1.0.0 ★ 4.2 (10)');
+  });
 });
