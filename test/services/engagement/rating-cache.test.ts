@@ -481,7 +481,7 @@ suite('RatingCache', () => {
       assert.ok(afterRollback);
       assert.strictEqual(afterRollback.voteCount, 10);
       // Restored star rating should be back at ~4.0.
-      assert.ok(Math.abs(afterRollback.starRating - 4.0) < 0.05);
+      assert.ok(Math.abs(afterRollback.starRating - 4) < 0.05);
       assert.strictEqual(cache.getUserRating('src-1', 'bundle-1'), undefined);
     });
 

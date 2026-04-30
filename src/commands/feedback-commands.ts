@@ -396,7 +396,6 @@ export class FeedbackCommands {
    * Attempt to resubmit ALL unsynced pending feedback entries across all bundles.
    * Called once during extension activation so feedback saved offline is eventually delivered.
    * Non-fatal: individual failures are logged and the entry stays pending for the next activation.
-   *
    * @returns Number of entries successfully synced during this drain pass.
    */
   public async drainUnsyncedFeedback(): Promise<number> {

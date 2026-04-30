@@ -173,9 +173,13 @@ export class RegistryTreeItem extends vscode.TreeItem {
    * @param bundleId
    */
   private getRatingSuffix(sourceId: string | undefined, bundleId: string): string {
-    if (!sourceId) { return ''; }
+    if (!sourceId) {
+      return '';
+    }
     const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
-    if (!rating || rating.voteCount === 0) { return ''; }
+    if (!rating || rating.voteCount === 0) {
+      return '';
+    }
     return ` ★ ${rating.starRating.toFixed(1)} (${rating.voteCount})`;
   }
 
@@ -421,7 +425,9 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    */
   private getRatingSuffix(sourceId: string, bundleId: string): string {
     const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
-    if (!rating || rating.voteCount === 0) { return ''; }
+    if (!rating || rating.voteCount === 0) {
+      return '';
+    }
     return ` ★ ${rating.starRating.toFixed(1)} (${rating.voteCount})`;
   }
 

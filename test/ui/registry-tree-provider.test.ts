@@ -1182,7 +1182,7 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
     RatingCache.resetInstance();
   });
 
-  function makeCachedRating(overrides: Partial<CachedRating> = {}): CachedRating {
+  const makeCachedRating = (overrides: Partial<CachedRating> = {}): CachedRating => {
     return {
       sourceId: 'source1',
       bundleId: 'bundle-1',
@@ -1193,9 +1193,9 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
       cachedAt: Date.now(),
       ...overrides
     };
-  }
+  };
 
-  function makeInstalledBundle(overrides: Partial<InstalledBundle> = {}): InstalledBundle {
+  const makeInstalledBundle = (overrides: Partial<InstalledBundle> = {}): InstalledBundle => {
     return {
       bundleId: 'bundle-1',
       version: '1.0.0',
@@ -1206,9 +1206,9 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
       sourceId: 'source1',
       ...overrides
     };
-  }
+  };
 
-  function makeBundle(overrides: Partial<Bundle> = {}): Bundle {
+  const makeBundle = (overrides: Partial<Bundle> = {}): Bundle => {
     return {
       id: 'bundle-1',
       name: 'Bundle One',
@@ -1226,7 +1226,7 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
       downloadUrl: 'https://example.com/download',
       ...overrides
     };
-  }
+  };
 
   test('INSTALLED_BUNDLE description includes star suffix when rating is cached', () => {
     sandbox.stub(RatingCache.getInstance(), 'getRating').returns(
@@ -1242,7 +1242,7 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
     );
 
     assert.ok(typeof item.description === 'string', 'description should be a string');
-    const desc = item.description as string;
+    const desc = item.description;
     assert.ok(desc.startsWith('v1.0.0'), `description should start with version, got: ${desc}`);
     assert.ok(desc.includes('★ 4.2'), `description should include star rating, got: ${desc}`);
     assert.ok(desc.includes('(10)'), `description should include vote count, got: ${desc}`);
@@ -1309,7 +1309,7 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
     );
 
     assert.ok(typeof item.description === 'string', 'description should be a string');
-    const desc = item.description as string;
+    const desc = item.description;
     assert.ok(desc.startsWith('1.0.0'), `description should start with version, got: ${desc}`);
     assert.ok(desc.includes('★ 4.2'), `description should include star rating, got: ${desc}`);
     assert.ok(desc.includes('(10)'), `description should include vote count, got: ${desc}`);

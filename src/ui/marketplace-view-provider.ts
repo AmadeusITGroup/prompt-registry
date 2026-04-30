@@ -54,7 +54,20 @@ import {
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'rateBundle' | 'submitFeedback';
+  type:
+    | 'refresh'
+    | 'install'
+    | 'update'
+    | 'uninstall'
+    | 'openDetails'
+    | 'openPromptFile'
+    | 'installVersion'
+    | 'getVersions'
+    | 'toggleAutoUpdate'
+    | 'openSourceRepository'
+    | 'completeSetup'
+    | 'rateBundle'
+    | 'submitFeedback';
   bundleId?: string;
   installPath?: string;
   filePath?: string;
@@ -1548,12 +1561,25 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             await this.handleBundleDetailRateBundle(panel, bundle.id, bundle.sourceId, message.stars);
           } else if (message.type === 'submitFeedback' && typeof message.stars === 'number') {
             await this.handleBundleDetailSubmitFeedback(panel, bundle.id, bundle.sourceId, message.stars, message.comment ?? '');
-          } else if (message.type === 'reportIssue') {
-            await vscode.commands.executeCommand('promptRegistry.reportIssue', this.buildFeedbackItem(bundle, source));
-          } else if (message.type === 'requestFeature') {
-            await vscode.commands.executeCommand('promptRegistry.requestFeature', this.buildFeedbackItem(bundle, source));
-          } else if (message.type === 'retryFeedback') {
-            await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
+          } else {
+            switch (message.type) {
+              case 'reportIssue': {
+                await vscode.commands.executeCommand('promptRegistry.reportIssue', this.buildFeedbackItem(bundle, source));
+
+                break;
+              }
+              case 'requestFeature': {
+                await vscode.commands.executeCommand('promptRegistry.requestFeature', this.buildFeedbackItem(bundle, source));
+
+                break;
+              }
+              case 'retryFeedback': {
+                await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
+
+                break;
+              }
+ // No default
+            }
           }
         },
         undefined,

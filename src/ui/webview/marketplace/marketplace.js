@@ -15,16 +15,27 @@
   window.addEventListener('message', (event) => {
     const message = event.data;
 
-    if (message.type === 'bundlesLoaded') {
-      allBundles = message.bundles;
-      filterOptions = message.filterOptions || { tags: [], sources: [] };
-      setupState = message.setupState || 'complete';
-      updateFilterUI();
-      renderBundles();
-    } else if (message.type === 'updateRating') {
-      updateRatingOnTile(message.bundleId, message.sourceId, message.bundleRating);
-    } else if (message.type === 'openFeedbackModal') {
-      openFeedbackCollectModal(message.bundleId, message.sourceId, message.stars, message.bundleName);
+    switch (message.type) {
+      case 'bundlesLoaded': {
+        allBundles = message.bundles;
+        filterOptions = message.filterOptions || { tags: [], sources: [] };
+        setupState = message.setupState || 'complete';
+        updateFilterUI();
+        renderBundles();
+
+        break;
+      }
+      case 'updateRating': {
+        updateRatingOnTile(message.bundleId, message.sourceId, message.bundleRating);
+
+        break;
+      }
+      case 'openFeedbackModal': {
+        openFeedbackCollectModal(message.bundleId, message.sourceId, message.stars, message.bundleName);
+
+        break;
+      }
+    // No default
     }
   });
 
@@ -652,23 +663,31 @@
 
   const openFeedbackCollectModal = (bundleId, sourceId, stars, bundleName) => {
     pendingFeedbackContext = { bundleId: bundleId, sourceId: sourceId, stars: stars };
-    const modal = document.getElementById('feedbackCollectModal');
-    const textarea = document.getElementById('feedbackCollectText');
-    const prompt = document.getElementById('feedbackCollectPrompt');
-    if (textarea) { textarea.value = ''; }
+    const modal = document.querySelector('#feedbackCollectModal');
+    const textarea = document.querySelector('#feedbackCollectText');
+    const prompt = document.querySelector('#feedbackCollectPrompt');
+    if (textarea) {
+      textarea.value = '';
+    }
     const resolvedName = bundleName || resolveBundleName(bundleId);
     if (prompt && resolvedName) {
       prompt.textContent = 'You rated "' + resolvedName + '" ' + stars + ' star' + (stars === 1 ? '' : 's') + '. Would you like to share any comments? (optional)';
     } else if (prompt) {
       prompt.textContent = 'You rated ' + stars + ' star' + (stars === 1 ? '' : 's') + '. Would you like to share any comments? (optional)';
     }
-    if (modal) { modal.style.display = 'flex'; }
-    if (textarea) { textarea.focus(); }
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+    if (textarea) {
+      textarea.focus();
+    }
   };
 
   const closeFeedbackCollectModal = () => {
-    const modal = document.getElementById('feedbackCollectModal');
-    if (modal) { modal.style.display = 'none'; }
+    const modal = document.querySelector('#feedbackCollectModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
     pendingFeedbackContext = null;
   };
 
@@ -788,7 +807,7 @@
         }
         case 'rateBundle': {
           e.stopPropagation();
-          var stars = parseInt(actionElement.dataset.star, 10);
+          var stars = Number.parseInt(actionElement.dataset.star, 10);
           var sourceId = actionElement.dataset.sourceId;
           if (bundleId && sourceId && stars >= 1 && stars <= 5) {
             rateBundle(bundleId, sourceId, stars);
@@ -803,7 +822,7 @@
         case 'submitFeedbackCollect': {
           e.stopPropagation();
           if (pendingFeedbackContext) {
-            const textarea = document.getElementById('feedbackCollectText');
+            const textarea = document.querySelector('#feedbackCollectText');
             const comment = textarea ? textarea.value.trim() : '';
             vscode.postMessage({
               type: 'submitFeedback',

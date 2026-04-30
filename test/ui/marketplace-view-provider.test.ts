@@ -1072,7 +1072,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
 
     // At least one updateRating message should have been posted to the webview.
     const updates = postedMessages.filter((m) => m.type === 'updateRating');
-    assert.ok(updates.length >= 1, 'expected at least one updateRating message');
+    assert.ok(updates.length > 0, 'expected at least one updateRating message');
     assert.strictEqual(updates[0].bundleId, 'rated-bundle');
     assert.strictEqual(updates[0].sourceId, 'source-with-ratings');
   });

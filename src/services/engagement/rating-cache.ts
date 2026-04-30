@@ -300,17 +300,7 @@ export class RatingCache {
     const previousUserRating = this.userRatings.get(key);
 
     if (existing) {
-      if (previousUserRating !== undefined) {
-        // Re-rating: swap the user's previous vote for the new one, voteCount stays the same.
-        const totalScore = existing.starRating * existing.voteCount;
-        const newTotal = totalScore - previousUserRating + userRating;
-        const newStarRating = newTotal / existing.voteCount;
-        this.cache.set(key, {
-          ...existing,
-          starRating: Math.round(newStarRating * 10) / 10,
-          cachedAt: Date.now()
-        });
-      } else {
+      if (previousUserRating === undefined) {
         // First vote from this user on an already-rated bundle.
         const newVoteCount = existing.voteCount + 1;
         const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
@@ -318,6 +308,16 @@ export class RatingCache {
           ...existing,
           starRating: Math.round(newStarRating * 10) / 10,
           voteCount: newVoteCount,
+          cachedAt: Date.now()
+        });
+      } else {
+        // Re-rating: swap the user's previous vote for the new one, voteCount stays the same.
+        const totalScore = existing.starRating * existing.voteCount;
+        const newTotal = totalScore - previousUserRating + userRating;
+        const newStarRating = newTotal / existing.voteCount;
+        this.cache.set(key, {
+          ...existing,
+          starRating: Math.round(newStarRating * 10) / 10,
           cachedAt: Date.now()
         });
       }
@@ -361,18 +361,7 @@ export class RatingCache {
       return;
     }
 
-    if (previousUserRating !== undefined) {
-      // Rollback a re-rating: swap the newly-applied rating back to the previous one. voteCount unchanged.
-      const totalScore = existing.starRating * existing.voteCount;
-      const restored = totalScore - appliedRating + previousUserRating;
-      const restoredStarRating = restored / existing.voteCount;
-      this.cache.set(key, {
-        ...existing,
-        starRating: Math.round(restoredStarRating * 10) / 10,
-        cachedAt: Date.now()
-      });
-      this.userRatings.set(key, previousUserRating);
-    } else {
+    if (previousUserRating === undefined) {
       // Rollback a first-time rating on a bundle: decrement voteCount, remove the user's rating.
       if (existing.voteCount <= 1) {
         // This was the only vote; drop the entry entirely.
@@ -390,6 +379,17 @@ export class RatingCache {
         });
       }
       this.userRatings.delete(key);
+    } else {
+      // Rollback a re-rating: swap the newly-applied rating back to the previous one. voteCount unchanged.
+      const totalScore = existing.starRating * existing.voteCount;
+      const restored = totalScore - appliedRating + previousUserRating;
+      const restoredStarRating = restored / existing.voteCount;
+      this.cache.set(key, {
+        ...existing,
+        starRating: Math.round(restoredStarRating * 10) / 10,
+        cachedAt: Date.now()
+      });
+      this.userRatings.set(key, previousUserRating);
     }
 
     this._onCacheUpdated.fire();

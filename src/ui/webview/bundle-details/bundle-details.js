@@ -30,7 +30,7 @@
   const updateStarsFilled = (upTo) => {
     var stars = document.querySelectorAll('#detailStars .star');
     stars.forEach((el) => {
-      var n = parseInt(el.dataset.star, 10);
+      var n = Number.parseInt(el.dataset.star, 10);
       el.classList.toggle('filled', n <= upTo);
     });
   };
@@ -39,18 +39,24 @@
    * Show the inline feedback form so the user can add an optional comment.
    */
   const showFeedbackForm = () => {
-    var form = document.getElementById('detailFeedbackForm');
-    if (form) { form.classList.add('visible'); }
+    var form = document.querySelector('#detailFeedbackForm');
+    if (form) {
+      form.classList.add('visible');
+    }
   };
 
   /**
    * Hide the inline feedback form and clear the textarea.
    */
   const hideFeedbackForm = () => {
-    var form = document.getElementById('detailFeedbackForm');
-    var textarea = document.getElementById('detailFeedbackText');
-    if (form) { form.classList.remove('visible'); }
-    if (textarea) { textarea.value = ''; }
+    var form = document.querySelector('#detailFeedbackForm');
+    var textarea = document.querySelector('#detailFeedbackText');
+    if (form) {
+      form.classList.remove('visible');
+    }
+    if (textarea) {
+      textarea.value = '';
+    }
   };
 
   /**
@@ -59,7 +65,9 @@
    */
   const renderRatingDisplay = (bundleRating) => {
     var container = document.querySelector('.rating-display');
-    if (!container) { return; }
+    if (!container) {
+      return;
+    }
     if (!bundleRating || !bundleRating.voteCount) {
       container.innerHTML = '<div class="rating-text rating-text-empty">No ratings yet</div>';
       return;
@@ -69,7 +77,7 @@
     div.className = 'rating-text';
     div.textContent = txt;
     container.innerHTML = '';
-    container.appendChild(div);
+    container.append(div);
   };
 
   /**
@@ -101,21 +109,38 @@
   // Listen for status updates from extension
   window.addEventListener('message', (event) => {
     var message = event.data;
-    if (message.type === 'autoUpdateStatusChanged') {
-      autoUpdateEnabled = message.enabled;
-      updateToggleUI();
-    } else if (message.type === 'ratingUpdated') {
-      renderRatingDisplay(message.bundleRating);
-    } else if (message.type === 'ratingSubmitted') {
-      updateStarsFilled(message.stars);
-      pendingStars = message.stars;
-      showFeedbackForm();
-    } else if (message.type === 'ratingFailed') {
-      pendingStars = null;
-      updateStarsFilled(0);
-    } else if (message.type === 'feedbackSubmitted') {
-      hideFeedbackForm();
-      pendingStars = null;
+    switch (message.type) {
+      case 'autoUpdateStatusChanged': {
+        autoUpdateEnabled = message.enabled;
+        updateToggleUI();
+
+        break;
+      }
+      case 'ratingUpdated': {
+        renderRatingDisplay(message.bundleRating);
+
+        break;
+      }
+      case 'ratingSubmitted': {
+        updateStarsFilled(message.stars);
+        pendingStars = message.stars;
+        showFeedbackForm();
+
+        break;
+      }
+      case 'ratingFailed': {
+        pendingStars = null;
+        updateStarsFilled(0);
+
+        break;
+      }
+      case 'feedbackSubmitted': {
+        hideFeedbackForm();
+        pendingStars = null;
+
+        break;
+      }
+    // No default
     }
     // feedbackFailed: keep form open so the user can edit and retry.
   });
@@ -143,7 +168,7 @@
         }
         case 'rateBundle': {
           e.stopPropagation();
-          var stars = parseInt(actionElement.dataset.star, 10);
+          var stars = Number.parseInt(actionElement.dataset.star, 10);
           if (stars >= 1 && stars <= 5) {
             vscode.postMessage({
               type: 'rateBundle',
@@ -163,7 +188,7 @@
         case 'submitFeedbackForm': {
           e.stopPropagation();
           if (pendingStars !== null) {
-            var textarea = document.getElementById('detailFeedbackText');
+            var textarea = document.querySelector('#detailFeedbackText');
             var comment = textarea ? textarea.value.trim() : '';
             vscode.postMessage({
               type: 'submitFeedback',
