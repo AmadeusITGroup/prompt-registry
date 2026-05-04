@@ -214,23 +214,20 @@ export class EngagementService {
    * @param hubId
    */
   private getBackend(hubId?: string): IEngagementBackend {
-    this.logger.info(`[EngagementService] getBackend called with hubId: "${hubId || 'none'}"`);
-    this.logger.info(`[EngagementService] Available hub backends: ${Array.from(this.hubBackends.keys()).join(', ') || 'none'}`);
+    this.logger.debug(`getBackend called with hubId: "${hubId || 'none'}"`);
 
     if (hubId) {
       const hubBackend = this.hubBackends.get(hubId);
       if (hubBackend) {
-        this.logger.info(`[EngagementService] Using hub backend for: ${hubId}`);
+        this.logger.debug(`Using hub backend for: ${hubId}`);
         return hubBackend;
       }
-      this.logger.warn(`[EngagementService] No hub backend found for: ${hubId}, falling back to default`);
+      this.logger.warn(`No hub backend found for: ${hubId}, falling back to default`);
     }
 
     if (!this.defaultBackend) {
       throw new Error('EngagementService not initialized');
     }
-
-    this.logger.info(`[EngagementService] Using default backend (type: ${this.defaultBackend.type})`);
     return this.defaultBackend;
   }
 

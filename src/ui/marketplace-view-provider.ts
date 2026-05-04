@@ -1166,7 +1166,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     );
 
     // Generate CSP
-    const cspSource = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';`;
+    const cspSource = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';`;
 
     // Load HTML template
     const htmlPath = vscode.Uri.joinPath(
@@ -1247,7 +1247,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     <div class="section">
         <h2>🏷️ Tags</h2>
         <div class="tags">
-            ${bundle.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
+            ${bundle.tags.map((tag) => `<span class="tag">${this.escapeHtml(tag)}</span>`).join('')}
         </div>
     </div>`
       : '';
@@ -1277,15 +1277,15 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{installedBadge}}', installedBadge)
       .replace('{{author}}', this.escapeHtml(bundle.author || 'Unknown'))
       .replace('{{author}}', this.escapeHtml(bundle.author || 'Unknown'))
-      .replace('{{version}}', bundle.version)
+      .replace('{{version}}', this.escapeHtml(bundle.version))
       .replace('{{autoUpdateSection}}', autoUpdateSection)
       .replace('{{ratingDisplay}}', ratingDisplay)
-      .replace('{{description}}', bundle.description || 'No description available')
+      .replace('{{description}}', this.escapeHtml(bundle.description || 'No description available'))
       .replace('{{breakdownContent}}', breakdownContent)
-      .replace('{{displayBundleId}}', isInstalled ? installed.bundleId : bundle.id)
-      .replace('{{displayVersion}}', isInstalled ? installed.version : bundle.version)
+      .replace('{{displayBundleId}}', this.escapeHtml(isInstalled ? installed.bundleId : bundle.id))
+      .replace('{{displayVersion}}', this.escapeHtml(isInstalled ? installed.version : bundle.version))
       .replace('{{installedInfoRows}}', installedInfoRows)
-      .replace('{{environments}}', (bundle.environments || ['any']).join(', '))
+      .replace('{{environments}}', this.escapeHtml((bundle.environments || ['any']).join(', ')))
       .replace('{{tagsSection}}', tagsSection)
       .replace('{{mcpServersSection}}', mcpServersSection)
       .replace('{{promptsSection}}', promptsSection)

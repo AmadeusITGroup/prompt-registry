@@ -251,8 +251,7 @@ export class FeedbackCommands {
    */
   private async openIssueTracker(item: FeedbackableItem): Promise<void> {
     try {
-      this.logger.info(`[openIssueTracker] Starting for ${item.resourceId}`);
-      this.logger.info(`[openIssueTracker] sourceUrl: ${item.sourceUrl}`);
+      this.logger.debug(`Opening issue tracker for ${item.resourceId}`);
 
       if (item.sourceUrl) {
         // Construct issues URL from source URL
@@ -276,7 +275,7 @@ export class FeedbackCommands {
           const skillsMatch = issueUrl.match(/\/skills\/([^/]+)/);
           if (skillsMatch) {
             skillPath = `skills/${skillsMatch[1]}`;
-            this.logger.info(`[openIssueTracker] Extracted skill path: ${skillPath}`);
+            this.logger.debug(`Extracted skill path: ${skillPath}`);
           }
 
           // Always use base repo URL for issues
@@ -286,7 +285,7 @@ export class FeedbackCommands {
           issueUrl = `${issueUrl}/issues/new`;
         }
 
-        this.logger.info(`[openIssueTracker] Final issue URL: ${issueUrl}`);
+        this.logger.debug(`Issue URL: ${issueUrl}`);
 
         // Use correct terminology based on source type
         // awesome-copilot sources ARE collections, others are bundles
@@ -344,8 +343,6 @@ export class FeedbackCommands {
 
         const body = bodyParts.join('\n');
 
-        this.logger.info(`[openIssueTracker] Raw body (first 200 chars): ${body.substring(0, 200)}`);
-
         const params = new URLSearchParams({
           title,
           body
@@ -355,13 +352,7 @@ export class FeedbackCommands {
           `${issueUrl}?${params.toString()}`, true
         );
 
-        const fullUrl = `${issueUrl}?${params.toString()}`;
-        this.logger.debug(`[openIssueTracker] Full URL (first 200 chars): ${fullUrl.substring(0, 200)}`);
-
-        this.logger.debug(`[openIssueTracker] Parsed URI (first 200 chars): ${uri.toString().substring(0, 200)}`);
-
-        const opened = await vscode.env.openExternal(uri);
-        this.logger.debug(`[openIssueTracker] Browser opened: ${opened}`);
+        await vscode.env.openExternal(uri);
       } else {
         // Fallback: try to open via the existing command
         await vscode.commands.executeCommand('promptregistry.openItemRepository', {
@@ -567,6 +558,11 @@ export class FeedbackCommands {
     comment: string,
     rating?: RatingScore
   ): Promise<FeedbackResult> {
+    if (!rating) {
+      this.logger.debug(`No rating provided for ${item.resourceId}, skipping feedback save`);
+      return { success: false, error: 'No rating provided' };
+    }
+
     const feedback: Feedback = {
       id: crypto.randomUUID(),
       resourceType: item.resourceType,
@@ -580,10 +576,10 @@ export class FeedbackCommands {
     const pendingEntry: PendingFeedback = {
       id: feedback.id,
       bundleId: item.resourceId,
-      sourceId: item.resourceId,
+      sourceId: item.sourceId || item.resourceId,
       hubId: item.hubId || '',
       resourceType: item.resourceType,
-      rating: rating || 3,
+      rating,
       comment: comment || undefined,
       timestamp: feedback.timestamp,
       synced: false
@@ -591,7 +587,7 @@ export class FeedbackCommands {
 
     try {
       if (this.engagementService) {
-        this.logger.info(`[FeedbackCommands] Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
+        this.logger.debug(`Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
         await this.engagementService.submitFeedback(
           item.resourceType,
           item.resourceId,
@@ -619,14 +615,12 @@ export class FeedbackCommands {
     }
 
     // Apply optimistic rating update to cache
-    if (rating) {
-      try {
-        const ratingCache = RatingCache.getInstance();
-        const cacheSourceId = item.sourceId || item.resourceId;
-        ratingCache.applyOptimisticRating(cacheSourceId, item.resourceId, rating);
-      } catch {
-        this.logger.debug('Failed to apply optimistic rating update');
-      }
+    try {
+      const ratingCache = RatingCache.getInstance();
+      const cacheSourceId = item.sourceId || item.resourceId;
+      ratingCache.applyOptimisticRating(cacheSourceId, item.resourceId, rating);
+    } catch {
+      this.logger.debug('Failed to apply optimistic rating update');
     }
 
     if (pendingEntry.synced) {

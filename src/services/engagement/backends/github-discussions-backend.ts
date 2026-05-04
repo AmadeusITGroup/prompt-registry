@@ -233,7 +233,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     if (!mapping) {
       for (const [key, value] of this.discussionMappings.entries()) {
         if (key.endsWith(`:${rating.resourceId}`)) {
-          this.logger.debug(`[GitHubDiscussionsBackend] Found rating mapping via suffix match: ${key}`);
+          this.logger.debug(`Found rating mapping via suffix match: ${key}`);
           mapping = value;
           break;
         }
@@ -426,9 +426,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   public async submitFeedback(feedback: Feedback): Promise<void> {
     this.ensureInitialized();
 
-    this.logger.info(`[GitHubDiscussionsBackend] Feedback received for ${feedback.resourceType}/${feedback.resourceId}`);
-    this.logger.info(`[GitHubDiscussionsBackend] Comment: "${feedback.comment}", Rating: ${feedback.rating}`);
-    this.logger.debug(`[GitHubDiscussionsBackend] Available mappings: ${Array.from(this.discussionMappings.keys()).join(', ')}`);
+    this.logger.debug(`Feedback received for ${feedback.resourceType}/${feedback.resourceId}`);
 
     // Try exact match first
     let mapping = this.discussionMappings.get(feedback.resourceId);
@@ -438,7 +436,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     if (!mapping) {
       for (const [key, value] of this.discussionMappings.entries()) {
         if (key.endsWith(`:${feedback.resourceId}`)) {
-          this.logger.debug(`[GitHubDiscussionsBackend] Found mapping via suffix match: ${key}`);
+          this.logger.debug(`Found mapping via suffix match: ${key}`);
           mapping = value;
           break;
         }
@@ -449,17 +447,17 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       // Try to post to GitHub Discussions
       try {
         await this.postFeedbackToDiscussion(feedback, mapping);
-        this.logger.info(`[GitHubDiscussionsBackend] Feedback posted to GitHub Discussion #${mapping.discussionNumber}`);
+        this.logger.debug(`Feedback posted to GitHub Discussion #${mapping.discussionNumber}`);
       } catch (error: any) {
-        this.logger.warn(`[GitHubDiscussionsBackend] Failed to post to GitHub, storing locally: ${error.message}`);
+        this.logger.warn(`Failed to post feedback to GitHub, storing locally: ${error.message}`);
       }
     } else {
-      this.logger.debug('[GitHubDiscussionsBackend] No discussion mapping found, storing locally only');
+      this.logger.debug('No discussion mapping found, storing locally only');
     }
 
     // Always store locally as backup
     await this.localBackend.submitFeedback(feedback);
-    this.logger.info('[GitHubDiscussionsBackend] Feedback saved to local file backend');
+    this.logger.debug('Feedback saved to local file backend');
   }
 
   /**
@@ -548,8 +546,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
             }
         `;
 
-    this.logger.debug(`[GitHubDiscussionsBackend] Adding comment to discussion ${discussionId}`);
-    this.logger.debug(`[GitHubDiscussionsBackend] Comment body: ${body.substring(0, 100)}...`);
+    this.logger.debug(`Adding comment to discussion ${discussionId}`);
 
     const response = await axios.post<{
       data?: {
@@ -581,18 +578,18 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     // Check for GraphQL errors
     if (response.data.errors && response.data.errors.length > 0) {
       const errorMessages = response.data.errors.map((e) => e.message).join(', ');
-      this.logger.error(`[GitHubDiscussionsBackend] GraphQL errors: ${errorMessages}`);
+      this.logger.error(`GraphQL errors: ${errorMessages}`);
       throw new Error(`GraphQL error: ${errorMessages}`);
     }
 
     // Verify comment was created
     const commentId = response.data.data?.addDiscussionComment?.comment?.id;
     if (!commentId) {
-      this.logger.error(`[GitHubDiscussionsBackend] No comment ID returned. Response: ${JSON.stringify(response.data)}`);
+      this.logger.error('No comment ID returned from GitHub Discussions');
       throw new Error('Comment was not created - no comment ID returned');
     }
 
-    this.logger.info(`[GitHubDiscussionsBackend] Comment created with ID: ${commentId}`);
+    this.logger.debug(`Comment created with ID: ${commentId}`);
   }
 
   /**

@@ -418,13 +418,13 @@
         + (bundle.installed && bundle.autoUpdateEnabled ? '<div class="installed-badge">🔄 Auto-Update</div>' : (bundle.installed ? '<div class="installed-badge">✓ Installed</div>' : ''))
 
         + '<div class="bundle-header">'
-        + '<div class="bundle-title">' + bundle.name + '</div>'
-        + '<div class="bundle-author">by ' + (bundle.author || 'Unknown') + ' • ' + formatVersionLabel(bundle.version) + '</div>'
+        + '<div class="bundle-title">' + escapeHtml(bundle.name) + '</div>'
+        + '<div class="bundle-author">by ' + escapeHtml(bundle.author || 'Unknown') + ' • ' + formatVersionLabel(bundle.version) + '</div>'
         + renderRatingBadge(bundle.bundleRating)
         + '</div>'
 
         + '<div class="bundle-description">'
-        + (bundle.description || 'No description available')
+        + escapeHtml(bundle.description || 'No description available')
         + '</div>'
 
         + '<div class="content-breakdown">'
@@ -437,7 +437,7 @@
 
         + '<div class="bundle-tags">'
         + (bundle.tags || []).slice(0, 4).map((tag) => {
-          return '<span class="tag">' + tag + '</span>';
+          return '<span class="tag">' + escapeHtml(tag) + '</span>';
         }).join('')
         + '</div>'
 
@@ -538,6 +538,7 @@
     return '<button class="btn btn-primary" data-action="installBundle" data-bundle-id="' + bundle.id + '">Install</button>';
   };
 
+  const escapeHtml = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   const escapeAttr = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
   const renderRatingBadge = (rating) => {

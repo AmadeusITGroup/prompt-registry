@@ -285,7 +285,9 @@ export class EngagementStorage {
 
   public async savePendingFeedback(entry: PendingFeedback): Promise<void> {
     const store = await this.loadPendingFeedbackStore();
-    const existingIndex = store.entries.findIndex((e) => e.id === entry.id);
+    const existingIndex = store.entries.findIndex(
+      (e) => e.bundleId === entry.bundleId && e.resourceType === entry.resourceType
+    );
     if (existingIndex === -1) {
       store.entries.push(entry);
     } else {

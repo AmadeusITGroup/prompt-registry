@@ -19,6 +19,9 @@ import {
   Logger,
 } from '../../utils/logger';
 import {
+  getConfidenceLevel,
+} from '../../utils/rating-algorithms';
+import {
   RatingService,
 } from './rating-service';
 
@@ -236,7 +239,7 @@ export class RatingCache {
           starRating: rating.starRating,
           wilsonScore: rating.wilsonScore,
           voteCount: rating.totalVotes,
-          confidence: this.getConfidenceLevel(rating.totalVotes),
+          confidence: getConfidenceLevel(rating.totalVotes),
           cachedAt: now
         });
       }
@@ -246,22 +249,6 @@ export class RatingCache {
     } catch (error) {
       this.logger.warn(`Failed to refresh rating cache from ${hubId}: ${error}`);
       // Don't clear cache on error - keep stale data
-    }
-  }
-
-  /**
-   * Calculate confidence level based on vote count
-   * @param voteCount
-   */
-  private getConfidenceLevel(voteCount: number): CachedRating['confidence'] {
-    if (voteCount < 5) {
-      return 'low';
-    } else if (voteCount < 20) {
-      return 'medium';
-    } else if (voteCount < 100) {
-      return 'high';
-    } else {
-      return 'very_high';
     }
   }
 
