@@ -5,6 +5,9 @@
 
 import * as vscode from 'vscode';
 import {
+  RatingCache,
+} from '../services/engagement/rating-cache';
+import {
   HubManager,
 } from '../services/hub-manager';
 import {
@@ -164,6 +167,23 @@ export class RegistryTreeItem extends vscode.TreeItem {
   }
 
   /**
+   * Look up the cached rating for a bundle and return a display suffix,
+   * or an empty string if no rating is cached.
+   * @param sourceId
+   * @param bundleId
+   */
+  private getRatingSuffix(sourceId: string | undefined, bundleId: string): string {
+    if (!sourceId) {
+      return '';
+    }
+    const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
+    if (!rating || rating.voteCount === 0) {
+      return '';
+    }
+    return ` ★ ${rating.starRating.toFixed(1)} (${rating.voteCount})`;
+  }
+
+  /**
    * Get description text (shown right-aligned)
    */
   private getDescription(): string | undefined {
@@ -176,7 +196,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
 
       case TreeItemType.INSTALLED_BUNDLE: {
         const installed = this.data as InstalledBundle;
-        return `v${installed.version}`;
+        return `v${installed.version}${this.getRatingSuffix(installed.sourceId, installed.bundleId)}`;
       }
 
       case TreeItemType.SOURCE: {
@@ -186,7 +206,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
 
       case TreeItemType.BUNDLE: {
         const bundle = this.data as Bundle;
-        return bundle.version;
+        return `${bundle.version}${this.getRatingSuffix(bundle.sourceId, bundle.id)}`;
       }
 
       default: {
@@ -397,6 +417,21 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   }
 
   /**
+   * Compute a rating suffix (" ★ 4.2 (10)") for a bundle, or empty string if no cached rating.
+   * Duplicated in RegistryTreeItem.getRatingSuffix because both the item's constructor and
+   * the provider's setVersionDisplay path need to produce the same suffix.
+   * @param sourceId
+   * @param bundleId
+   */
+  private getRatingSuffix(sourceId: string, bundleId: string): string {
+    const rating = RatingCache.getInstance().getRating(sourceId, bundleId);
+    if (!rating || rating.voteCount === 0) {
+      return '';
+    }
+    return ` ★ ${rating.starRating.toFixed(1)} (${rating.voteCount})`;
+  }
+
+  /**
    * Set version display for tree item with update information
    * Shows both installed and available versions when update exists
    * @param treeItem
@@ -405,10 +440,17 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    */
   private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string): void {
     const updateInfo = this.getUpdateInfo(bundleId);
-
-    treeItem.description = updateInfo
+    const versionText = updateInfo
       ? `v${currentVersion} → v${updateInfo.latestVersion}`
       : `v${currentVersion}`;
+
+    // Preserve the rating suffix that RegistryTreeItem.getDescription would have produced.
+    const installed = treeItem.data as InstalledBundle | undefined;
+    const suffix = installed?.sourceId
+      ? this.getRatingSuffix(installed.sourceId, installed.bundleId)
+      : '';
+
+    treeItem.description = `${versionText}${suffix}`;
   }
 
   /**
