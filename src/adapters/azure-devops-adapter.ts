@@ -85,6 +85,7 @@
  */
 
 import * as https from 'node:https';
+import archiver from 'archiver';
 import * as yaml from 'js-yaml';
 import {
   AzureDevOpsAuthMethod,
@@ -108,6 +109,31 @@ const MAX_REDIRECTS = 10;
 
 /** ADO REST API version used for all requests */
 const ADO_API_VERSION = '7.0';
+
+// ---------------------------------------------------------------------------
+// Collection manifest schema (shared with awesome-copilot-adapter)
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema for a `.collection.yml` file — a lightweight manifest that lists
+ * the individual prompt/instruction/chat-mode files that make up a bundle.
+ * The adapter reads this file from the ADO repository and synthesises a
+ * standard `deployment-manifest.yml` on the fly during download.
+ */
+interface CollectionManifest {
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  author?: string;
+  tags?: string[];
+  items: CollectionItem[];
+}
+
+interface CollectionItem {
+  path: string;
+  kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent' | 'skill';
+}
 
 /**
  * ADO Items API response for a single item
@@ -482,11 +508,10 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    * Azure DevOps Items API returns HTTP 400 when it receives `path=%2Fskills`
    * instead of `path=/skills`.  This helper percent-encodes each path segment
    * individually so that slashes remain literal in the query string.
-   *
    * @param path - Repository path, e.g. `/my-bundle/deployment-manifest.yml`
    */
   private encodePath(path: string): string {
-    return path.split('/').map(encodeURIComponent).join('/');
+    return path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
   }
 
   /**
@@ -527,38 +552,30 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Filter a flat item list for **manifest blobs** that are exactly one
+   * Filter a flat item list for **collection blobs** that are exactly one
    * directory level beneath `collectionsPath`.
    *
-   * **Why blobs?**  `gitObjectType === 'blob'` means the item is a file,
-   * not a directory.  We only want to look at files named like a deployment
-   * manifest; directories can be ignored here.
+   * A `.collection.yml` file sitting at `<collectionsPath>/<bundleDir>/<file>.collection.yml`
+   * is treated as the collection descriptor for that bundle.
    *
-   * **Why depth-1?**  We treat only *immediate* children of `collectionsPath`
-   * as bundle roots.  Manifests nested deeper (e.g. inside a sub-directory of
-   * a bundle) are intentionally skipped to avoid false positives.
+   * **Why depth-1?**  Only *immediate* children of `collectionsPath` are
+   * treated as bundle roots.  Files nested deeper are skipped.
    *
    * A path is "depth-1" when, after stripping the `collectionsPath` prefix,
    * it contains exactly two non-empty segments:
    * ```
-   * <bundleDirectoryName>/<manifest-filename>
+   * <bundleDirectoryName>/<collection-filename>
    * ```
    *
    * Examples (collectionsPath = '/prompts'):
    * ```
-   * /prompts/my-bundle/deployment-manifest.yml  → depth 1 ✓
-   * /prompts/nested/inner/deployment-manifest.yml → depth 2 ✗ (skipped)
+   * /prompts/my-bundle/my-bundle.collection.yml  → depth 1 ✓
+   * /prompts/nested/inner/other.collection.yml   → depth 2 ✗ (skipped)
    * ```
    * @param items - All items returned by {@link fetchFullTree}
-   * @returns Items that are manifest blobs at depth-1 under `collectionsPath`
+   * @returns Items that are `.collection.yml` blobs at depth-1 under `collectionsPath`
    */
-  private findManifestBlobs(items: AdoItem[]): AdoItem[] {
-    const MANIFEST_NAMES = new Set([
-      'deployment-manifest.yml',
-      'deployment-manifest.yaml',
-      'deployment-manifest.json'
-    ]);
-
+  private findCollectionBlobs(items: AdoItem[]): AdoItem[] {
     // Strip trailing slash from the base so the depth calculation is consistent
     // for both '/' (which becomes '') and '/bundles' (which stays '/bundles').
     const base = this.collectionsPath.replace(/\/$/, '');
@@ -569,14 +586,14 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
         return false;
       }
 
-      // File must be named like a deployment manifest
+      // File must be a .collection.yml file
       const filename = item.path.split('/').pop() ?? '';
-      if (!MANIFEST_NAMES.has(filename)) {
+      if (!filename.endsWith('.collection.yml')) {
         return false;
       }
 
       // Compute the path relative to collectionsPath.  We then split on '/'
-      // and count non-empty segments; exactly 2 means <bundleDir>/<manifest>.
+      // and count non-empty segments; exactly 2 means <bundleDir>/<collection-file>.
       const relative = item.path.startsWith(base)
         ? item.path.substring(base.length).replace(/^\//, '')
         : item.path.replace(/^\//, '');
@@ -584,7 +601,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       const segments = relative.split('/').filter(Boolean);
 
       // segments[0] = bundle directory name
-      // segments[1] = manifest file name
+      // segments[1] = collection file name
       // length > 2  = nested too deep, skip
       return segments.length === 2;
     });
@@ -638,51 +655,171 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Attempt to parse a deployment manifest from YAML or JSON text.
+   * Parse the raw YAML text of a `.collection.yml` file.
    * Returns `null` if the text cannot be parsed (malformed file).
-   * @param text - Raw file content
-   * @param filename - Filename used to determine parse format (`.json` vs YAML)
+   * @param text - Raw YAML content of the collection file
+   * @param collectionPath - Repository path (used in log messages)
    */
-  private parseManifest(text: string, filename: string): Record<string, unknown> | null {
+  private parseCollectionManifest(text: string, collectionPath: string): CollectionManifest | null {
     try {
-      if (filename.endsWith('.json')) {
-        return JSON.parse(text) as Record<string, unknown>;
-      }
-      return yaml.load(text) as Record<string, unknown>;
+      return yaml.load(text) as CollectionManifest;
     } catch (err) {
-      this.logger.warn(`[AzureDevOpsAdapter] Failed to parse manifest "${filename}": ${err}`);
+      this.logger.warn(`[AzureDevOpsAdapter] Failed to parse collection "${collectionPath}": ${err}`);
       return null;
     }
   }
 
   /**
-   * Build a `Bundle` object from a discovered manifest and directory path.
-   * @param manifest - Parsed deployment manifest
-   * @param dirPath - Repository path of the bundle directory
+   * Build a `Bundle` object from a parsed `CollectionManifest` and bundle directory path.
+   * @param collection - Parsed collection manifest
+   * @param dirPath - Repository path of the bundle directory (contains the `.collection.yml`)
    * @param dirName - Basename of the bundle directory
+   * @param collectionPath - Full path to the `.collection.yml` file (used for manifestUrl)
    */
-  private buildBundle(manifest: Record<string, unknown>, dirPath: string, dirName: string): Bundle {
+  private buildBundleFromCollection(
+    collection: CollectionManifest,
+    dirPath: string,
+    dirName: string,
+    collectionPath: string
+  ): Bundle {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
     // dirPath already starts with '/', so concatenate directly to avoid double slashes
     const bundleId = `${projectBaseUrl}/${repository}${dirPath}`.replace(/^https?:\/\//, '');
 
     return {
       id: bundleId,
-      name: (manifest.name as string | undefined) ?? dirName,
-      version: (manifest.version as string | undefined) ?? '1.0.0',
-      description: (manifest.description as string | undefined) ?? '',
-      author: (manifest.author as string | undefined) ?? '',
+      name: collection.name ?? dirName,
+      version: collection.version ?? '1.0.0',
+      description: collection.description ?? '',
+      author: collection.author ?? '',
       sourceId: this.source.id,
-      environments: (manifest.environments as string[] | undefined) ?? ['vscode'],
-      tags: (manifest.tags as string[] | undefined) ?? [],
+      environments: ['vscode'],
+      tags: collection.tags ?? [],
       lastUpdated: new Date().toISOString(),
-      size: 'Unknown',
-      dependencies: (manifest.dependencies as Bundle['dependencies'] | undefined) ?? [],
-      license: (manifest.license as string | undefined) ?? 'Unknown',
-      manifestUrl: this.getManifestUrl(bundleId),
-      downloadUrl: this.getDownloadUrl(bundleId),
+      size: `${collection.items.length} items`,
+      dependencies: [],
+      license: 'Unknown',
+      manifestUrl: this.getCollectionFileUrl(collectionPath),
+      downloadUrl: this.getCollectionFileUrl(collectionPath),
       repository: this.source.url
     };
+  }
+
+  /**
+   * Map a `.collection.yml` item kind to the deployment-manifest prompt type.
+   * @param kind - Item kind from the collection manifest
+   */
+  private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+    const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
+      prompt: 'prompt',
+      instruction: 'instructions',
+      'chat-mode': 'chatmode',
+      agent: 'agent',
+      skill: 'skill'
+    };
+    return kindMap[kind] ?? 'prompt';
+  }
+
+  /**
+   * Convert kebab-case or space-separated words to Title Case.
+   * @param str - Input string
+   */
+  private titleCase(str: string): string {
+    return str
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  /**
+   * Synthesise a `deployment-manifest.yml` payload from a parsed collection.
+   * This manifest is embedded into the downloaded ZIP so the bundle installer
+   * can process it without any changes to the installation pipeline.
+   * @param collection - Parsed collection manifest
+   * @param dirName - Bundle directory name (used as fallback ID)
+   */
+  private createDeploymentManifest(collection: CollectionManifest, dirName: string): Record<string, unknown> {
+    const prompts = collection.items.map((item) => {
+      const filename = item.path.split('/').pop() ?? 'unknown';
+      const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
+      return {
+        id,
+        name: this.titleCase(id.replace(/-/g, ' ')),
+        description: `From ${collection.name}`,
+        file: `prompts/${filename}`,
+        type: this.mapKindToType(item.kind),
+        tags: collection.tags ?? []
+      };
+    });
+
+    return {
+      id: collection.id ?? dirName,
+      name: collection.name,
+      version: collection.version ?? '1.0.0',
+      description: collection.description ?? '',
+      author: collection.author ?? '',
+      repository: this.source.url,
+      license: 'Unknown',
+      tags: collection.tags ?? [],
+      prompts
+    };
+  }
+
+  /**
+   * Fetch each file listed in a collection manifest from the ADO repository and
+   * package them — together with a synthesised `deployment-manifest.yml` — into
+   * an in-memory ZIP archive.
+   *
+   * This is the ADO equivalent of `AwesomeCopilotAdapter.createBundleArchive()`.
+   * Rather than using the ADO `$format=zip` endpoint (which requires a
+   * pre-existing directory), this method assembles the archive from individual
+   * file fetches so that repos using the `.collection.yml` convention do not need
+   * to maintain any `deployment-manifest.yml` files at all.
+   * @param collection - Parsed collection manifest
+   * @param dirName - Bundle directory basename (used as fallback in the manifest)
+   */
+  private async createBundleArchive(collection: CollectionManifest, dirName: string): Promise<Buffer> {
+    this.logger.debug(`[AzureDevOpsAdapter] Creating archive for collection: ${collection.name}`);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      void (async () => {
+        try {
+          const archive = archiver('zip', { zlib: { level: 9 } });
+          const chunks: Buffer[] = [];
+
+          archive.on('data', (chunk: Buffer) => {
+            chunks.push(chunk);
+          });
+          archive.on('finish', () => {
+            resolve(Buffer.concat(chunks));
+          });
+          archive.on('error', (err: Error) => {
+            reject(err);
+          });
+
+          // Embed the synthesised deployment manifest
+          const manifest = this.createDeploymentManifest(collection, dirName);
+          archive.append(yaml.dump(manifest), { name: 'deployment-manifest.yml' });
+
+          // Fetch and add each item file
+          for (const item of collection.items) {
+            try {
+              const fileContent = await this.fetchFileContent(item.path);
+              const filename = item.path.split('/').pop() ?? 'unknown';
+              archive.append(fileContent, { name: `prompts/${filename}` });
+              this.logger.debug(`[AzureDevOpsAdapter] Added ${filename} to archive`);
+            } catch (err) {
+              this.logger.warn(`[AzureDevOpsAdapter] Skipping item "${item.path}": ${err}`);
+            }
+          }
+
+          void archive.finalize();
+        } catch (error) {
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
+          reject(error);
+        }
+      })();
+    });
   }
 
   /**
@@ -702,21 +839,18 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Extract the bundle directory path from a download URL.
-   * Used by `downloadBundle()` to recover the path from the stored URL.
-   * @param downloadUrl - Download URL produced by `getDownloadUrl()`
+   * Build the ADO Items API URL for a specific file in the repository.
+   * Used as the manifestUrl and downloadUrl for collection-based bundles — the
+   * `.collection.yml` file itself is the canonical descriptor.
+   * @param filePath - Repository path of the collection file
    */
-  private getBundlePathFromUrl(downloadUrl: string): string {
-    try {
-      const parsed = new URL(downloadUrl);
-      const pathParam = parsed.searchParams.get('path');
-      if (pathParam) {
-        return pathParam;
-      }
-    } catch {
-      // Fall through to default
-    }
-    return this.collectionsPath;
+  private getCollectionFileUrl(filePath: string): string {
+    const apiBase = this.buildApiBase();
+    const params = new URLSearchParams({
+      'versionDescriptor.version': this.branch,
+      'api-version': ADO_API_VERSION
+    });
+    return `${apiBase}/items?${params.toString()}&path=${this.encodePath(filePath)}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -740,19 +874,17 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    * Uses the **full-tree blob-scan** strategy for efficient discovery:
    *
    * 1. **Fetch the full tree** — one `GET /items?recursionLevel=Full` call
-   *    retrieves every file and directory in `collectionsPath` at once.
+   *    retrieves every file and directory in the repository at once.
    *
-   * 2. **Filter manifest blobs** — scan the returned item list in memory for
-   *    file entries whose name is `deployment-manifest.{yml,yaml,json}` and
-   *    that sit exactly one level beneath `collectionsPath`.  This avoids
-   *    probing every subdirectory individually (no wasted HTTP calls).
+   * 2. **Filter collection blobs** — scan the returned item list in memory for
+   *    `.collection.yml` files that sit exactly one level beneath
+   *    `collectionsPath`.  This avoids probing every subdirectory individually.
    *
-   * 3. **Fetch manifest content** — for each manifest blob found, one
-   *    `GET /items?path=…` call retrieves the file content, which is then
+   * 3. **Fetch collection content** — for each `.collection.yml` blob found,
+   *    one `GET /items?path=…` call retrieves the file content, which is then
    *    parsed and converted to a `Bundle`.
    *
-   * Total API calls: **1** (full tree) + **N** (one per discovered bundle),
-   * compared with the old N+1-per-directory probing approach.
+   * Total API calls: **1** (full tree) + **N** (one per discovered bundle).
    * @returns Array of discovered bundles
    */
   public async fetchBundles(): Promise<Bundle[]> {
@@ -765,31 +897,27 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       // ── Step 1: Retrieve the full repository tree in a single API call ──────
       const allItems = await this.fetchFullTree();
 
-      // ── Step 2: Filter for manifest blobs exactly one level deep ────────────
-      // "Blob" = ADO term for a regular file (gitObjectType === 'blob' / isFolder === false).
-      // We only pick up manifests that are direct children of a bundle directory,
-      // which itself is a direct child of collectionsPath.
-      const manifestBlobs = this.findManifestBlobs(allItems);
+      // ── Step 2: Filter for .collection.yml blobs exactly one level deep ─────
+      const collectionBlobs = this.findCollectionBlobs(allItems);
 
       this.logger.debug(
         `[AzureDevOpsAdapter] Full tree: ${allItems.length} item(s), `
-        + `${manifestBlobs.length} manifest blob(s) found`
+        + `${collectionBlobs.length} collection blob(s) found`
       );
 
-      // ── Step 3: Fetch and parse each manifest ───────────────────────────────
+      // ── Step 3: Fetch and parse each collection file ─────────────────────────
       const bundles: Bundle[] = [];
 
-      for (const blob of manifestBlobs) {
+      for (const blob of collectionBlobs) {
         try {
-          const content = await this.fetchFileContent(blob.path);
-          const filename = blob.path.split('/').pop() ?? 'deployment-manifest.yml';
-          const manifest = this.parseManifest(content, filename);
+          const fileContent = await this.fetchFileContent(blob.path);
+          const collection = this.parseCollectionManifest(fileContent, blob.path);
 
-          if (manifest) {
-            // The bundle directory is the parent of the manifest file
+          if (collection) {
+            // The bundle directory is the parent of the .collection.yml file
             const dirPath = blob.path.substring(0, blob.path.lastIndexOf('/'));
             const dirName = dirPath.split('/').pop() ?? dirPath;
-            const bundle = this.buildBundle(manifest, dirPath, dirName);
+            const bundle = this.buildBundleFromCollection(collection, dirPath, dirName, blob.path);
             bundles.push(bundle);
             this.logger.debug(
               `[AzureDevOpsAdapter] Found bundle: ${bundle.id} `
@@ -797,9 +925,9 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
             );
           }
         } catch (err) {
-          // Log and continue — a single bad manifest should not block others
+          // Log and continue — a single bad collection file should not block others
           this.logger.warn(
-            `[AzureDevOpsAdapter] Failed to load manifest at "${blob.path}": ${err}`
+            `[AzureDevOpsAdapter] Failed to load collection at "${blob.path}": ${err}`
           );
         }
       }
@@ -812,15 +940,45 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Download a bundle from Azure DevOps as a ZIP archive.
+   * Download a bundle from Azure DevOps as an in-memory ZIP archive.
+   *
+   * Rather than using the ADO `$format=zip` endpoint (which requires a
+   * pre-existing directory with a `deployment-manifest.yml`), this method
+   * re-fetches the `.collection.yml` for the bundle, then individually
+   * downloads each listed item and packages them — together with a synthesised
+   * `deployment-manifest.yml` — into an archive that the standard bundle
+   * installer can process without modification.
    * @param bundle - Bundle to download
    * @returns Buffer containing the ZIP archive
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.info(`[AzureDevOpsAdapter] Downloading bundle: ${bundle.id}`);
     try {
-      const bundlePath = this.getBundlePathFromUrl(bundle.downloadUrl);
-      return await this.downloadDirectoryAsZip(bundlePath);
+      // Recover the bundle directory path from the bundle ID
+      const dirPath = this.decodeBundleId(bundle.id);
+      const dirName = dirPath.split('/').pop() ?? dirPath;
+
+      // Re-fetch the .collection.yml to get the item list
+      // Find the collection file by scanning the full tree for this bundle's directory
+      const allItems = await this.fetchFullTree();
+      const collectionBlob = allItems.find(
+        (item) => !item.isFolder
+          && item.path.startsWith(dirPath + '/')
+          && item.path.endsWith('.collection.yml')
+      );
+
+      if (!collectionBlob) {
+        throw new Error(`No .collection.yml found for bundle at "${dirPath}"`);
+      }
+
+      const fileContent = await this.fetchFileContent(collectionBlob.path);
+      const collection = this.parseCollectionManifest(fileContent, collectionBlob.path);
+
+      if (!collection) {
+        throw new Error(`Failed to parse collection file at "${collectionBlob.path}"`);
+      }
+
+      return await this.createBundleArchive(collection, dirName);
     } catch (error) {
       throw new Error(`Failed to download bundle "${bundle.id}" from Azure DevOps: ${error}`);
     }
@@ -899,41 +1057,34 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Get the deployment manifest URL for a bundle.
+   * Get the collection manifest URL for a bundle.
+   * Returns the ADO Items API URL for the `.collection.yml` file.
    * @param bundleId - Bundle identifier (encodes the repository path)
    * @param _version - Not used; ADO uses branch-based versioning
-   * @returns URL string for the manifest item
+   * @returns URL string for the collection file
    */
   public getManifestUrl(bundleId: string, _version?: string): string {
-    const apiBase = this.buildApiBase();
     const bundlePath = this.decodeBundleId(bundleId);
+    // bundlePath is the directory; the collection file sits inside it
+    // We return the directory URL as a reference since the exact filename
+    // varies. The actual file is resolved dynamically in downloadBundle().
+    const apiBase = this.buildApiBase();
     const params = new URLSearchParams({
-      path: `${bundlePath}/deployment-manifest.yml`,
       'versionDescriptor.version': this.branch,
       'api-version': ADO_API_VERSION
     });
-    return `${apiBase}/items?${params.toString()}`;
+    return `${apiBase}/items?${params.toString()}&path=${this.encodePath(bundlePath)}`;
   }
 
   /**
    * Get the download URL for a bundle.
-   *
-   * The download URL encodes the bundle directory path so that `downloadBundle()`
-   * can reconstruct the path when fetching the ZIP.
+   * For collection-based bundles the download is assembled on-the-fly, so this
+   * returns the bundle directory URL as a stable reference identifier.
    * @param bundleId - Bundle identifier (encodes the repository path)
    * @param _version - Not used; ADO uses branch-based versioning
-   * @returns Download URL string
+   * @returns URL string referencing the bundle directory
    */
   public getDownloadUrl(bundleId: string, _version?: string): string {
-    const apiBase = this.buildApiBase();
-    const bundlePath = this.decodeBundleId(bundleId);
-    const params = new URLSearchParams({
-      path: bundlePath,
-      download: 'true',
-      recursionLevel: 'Full',
-      'versionDescriptor.version': this.branch,
-      'api-version': ADO_API_VERSION
-    });
-    return `${apiBase}/items?${params.toString()}&$format=zip`;
+    return this.getManifestUrl(bundleId, _version);
   }
 }

@@ -34,6 +34,39 @@ suite('AzureDevOpsAdapter', () => {
   const apiBase = 'https://dev.azure.com';
   const repoApiPath = '/myorg/myproject/_apis/git/repositories/myrepo';
 
+  const makeCollectionYaml = (opts: {
+    id?: string;
+    name?: string;
+    version?: string;
+    description?: string;
+    author?: string;
+    tags?: string[];
+    items?: { path: string; kind: string }[];
+  } = {}): string => {
+    const {
+      id = 'my-collection',
+      name = 'My Collection',
+      version = '1.0.0',
+      description = 'A test collection',
+      author = 'Test Author',
+      tags = ['test'],
+      items = [{ path: 'prompts/hello.prompt.md', kind: 'prompt' }]
+    } = opts;
+    const tagLines = tags.map((t) => `  - ${t}`).join('\n');
+    const itemLines = items.map((i) => `  - path: ${i.path}\n    kind: ${i.kind}`).join('\n');
+    return [
+      `id: ${id}`,
+      `name: ${name}`,
+      `version: ${version}`,
+      `description: ${description}`,
+      `author: ${author}`,
+      'tags:',
+      tagLines,
+      'items:',
+      itemLines
+    ].join('\n');
+  };
+
   setup(() => {
     sandbox = sinon.createSandbox();
     // Default: VS Code Microsoft auth returns no session (PAT in mockSource is used instead)
@@ -88,42 +121,27 @@ suite('AzureDevOpsAdapter', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // fetchBundles — blob-scan discovery strategy
+  // fetchBundles — collection-blob discovery strategy
   // ---------------------------------------------------------------------------
 
   suite('fetchBundles()', () => {
-    test('should discover bundles from manifest blobs in a single full-tree call', async () => {
-      const manifestYaml = [
-        'id: my-bundle',
-        'name: My Bundle',
-        'version: 1.2.0',
-        'description: A test bundle',
-        'author: Test Author',
-        'tags:',
-        '  - test'
-      ].join('\n');
-
-      // The adapter fetches the FULL tree with recursionLevel=Full (one call)
+    test('should discover a bundle from a .collection.yml blob in a single full-tree call', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
           count: 3,
           value: [
-            // Root folder (always present)
             { objectId: 'root', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
-            // Bundle directory
             { objectId: 'dir1', gitObjectType: 'tree', commitId: 'c1', path: '/my-bundle', isFolder: true },
-            // Manifest blob — this is what the adapter filters for
-            { objectId: 'mf1', gitObjectType: 'blob', commitId: 'c1', path: '/my-bundle/deployment-manifest.yml', isFolder: false }
+            { objectId: 'coll1', gitObjectType: 'blob', commitId: 'c1', path: '/my-bundle/my-bundle.collection.yml', isFolder: false }
           ]
         });
 
-      // The adapter fetches the manifest content (one call per bundle)
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/my-bundle/deployment-manifest.yml')
-        .reply(200, manifestYaml);
+        .query((q) => q.path === '/my-bundle/my-bundle.collection.yml')
+        .reply(200, makeCollectionYaml({ name: 'My Bundle', version: '1.2.0', author: 'Test Author', tags: ['test'] }));
 
       const adapter = new AzureDevOpsAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
@@ -135,8 +153,7 @@ suite('AzureDevOpsAdapter', () => {
       assert.deepStrictEqual(bundles[0].tags, ['test']);
     });
 
-    test('should skip directories that have no manifest blob in the tree', async () => {
-      // Full tree returned with only a directory, no manifest blob
+    test('should skip directories that have no .collection.yml blob in the tree', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
@@ -144,21 +161,17 @@ suite('AzureDevOpsAdapter', () => {
           count: 2,
           value: [
             { objectId: 'root', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
-            // A directory with no manifest inside — the adapter just skips it
-            { objectId: 'dir1', gitObjectType: 'tree', commitId: 'c1', path: '/no-manifest', isFolder: true }
+            { objectId: 'dir1', gitObjectType: 'tree', commitId: 'c1', path: '/no-collection', isFolder: true }
           ]
         });
 
-      // No manifest content call should be made (no nock intercept needed)
       const adapter = new AzureDevOpsAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 0);
     });
 
-    test('should skip manifest blobs nested more than one level deep', async () => {
-      // A manifest sitting at /bundles/inner/deep/deployment-manifest.yml is
-      // two levels below collectionsPath and must NOT become a bundle.
+    test('should skip .collection.yml blobs nested more than one level deep', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
@@ -168,8 +181,7 @@ suite('AzureDevOpsAdapter', () => {
             { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
             { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/outer', isFolder: true },
             { objectId: 'd2', gitObjectType: 'tree', commitId: 'c1', path: '/outer/inner', isFolder: true },
-            // This manifest is depth-2 under '/' — must be ignored
-            { objectId: 'mf', gitObjectType: 'blob', commitId: 'c1', path: '/outer/inner/deployment-manifest.yml', isFolder: false }
+            { objectId: 'coll', gitObjectType: 'blob', commitId: 'c1', path: '/outer/inner/nested.collection.yml', isFolder: false }
           ]
         });
 
@@ -179,10 +191,7 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles.length, 0);
     });
 
-    test('should discover multiple bundles from multiple manifest blobs', async () => {
-      const makeManifest = (name: string, version: string) =>
-        `name: ${name}\nversion: ${version}\nid: ${name.toLowerCase()}\ndescription: d`;
-
+    test('should discover multiple bundles from multiple .collection.yml blobs', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
@@ -191,21 +200,21 @@ suite('AzureDevOpsAdapter', () => {
           value: [
             { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
             { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/bundle-a', isFolder: true },
-            { objectId: 'mf1', gitObjectType: 'blob', commitId: 'c1', path: '/bundle-a/deployment-manifest.yml', isFolder: false },
+            { objectId: 'c1', gitObjectType: 'blob', commitId: 'c1', path: '/bundle-a/bundle-a.collection.yml', isFolder: false },
             { objectId: 'd2', gitObjectType: 'tree', commitId: 'c1', path: '/bundle-b', isFolder: true },
-            { objectId: 'mf2', gitObjectType: 'blob', commitId: 'c1', path: '/bundle-b/deployment-manifest.yml', isFolder: false }
+            { objectId: 'c2', gitObjectType: 'blob', commitId: 'c1', path: '/bundle-b/bundle-b.collection.yml', isFolder: false }
           ]
         });
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/bundle-a/deployment-manifest.yml')
-        .reply(200, makeManifest('Bundle A', '1.0.0'));
+        .query((q) => q.path === '/bundle-a/bundle-a.collection.yml')
+        .reply(200, makeCollectionYaml({ name: 'Bundle A', version: '1.0.0' }));
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/bundle-b/deployment-manifest.yml')
-        .reply(200, makeManifest('Bundle B', '2.0.0'));
+        .query((q) => q.path === '/bundle-b/bundle-b.collection.yml')
+        .reply(200, makeCollectionYaml({ name: 'Bundle B', version: '2.0.0' }));
 
       const adapter = new AzureDevOpsAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
@@ -215,36 +224,40 @@ suite('AzureDevOpsAdapter', () => {
       assert.deepStrictEqual(names, ['Bundle A', 'Bundle B']);
     });
 
-    test('should use collectionsPath when configured', async () => {
+    test('should scope results to collectionsPath when configured', async () => {
       const source = {
         ...mockSource,
         config: { branch: 'main', collectionsPath: '/bundles' }
       };
 
-      let capturedQuery: Record<string, unknown> = {};
+      // Tree contains a .collection.yml inside /bundles (should be discovered)
+      // and one outside /bundles (should be ignored)
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => {
-          capturedQuery = q as Record<string, unknown>;
-          return q.recursionLevel === 'Full';
-        })
+        .query((q) => !q.path && q.recursionLevel === 'Full')
         .reply(200, {
-          count: 1,
+          count: 4,
           value: [
-            { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/bundles', isFolder: true }
+            { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
+            { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/bundles', isFolder: true },
+            { objectId: 'd2', gitObjectType: 'tree', commitId: 'c1', path: '/bundles/my-bundle', isFolder: true },
+            { objectId: 'c1', gitObjectType: 'blob', commitId: 'c1', path: '/bundles/my-bundle/my-bundle.collection.yml', isFolder: false }
           ]
         });
 
-      const adapter = new AzureDevOpsAdapter(source);
-      await adapter.fetchBundles();
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/bundles/my-bundle/my-bundle.collection.yml')
+        .reply(200, makeCollectionYaml({ name: 'In Bundles' }));
 
-      assert.strictEqual(capturedQuery.path, undefined, 'path query param must always be absent — ADO API is unreliable with path+recursionLevel=Full');
+      const adapter = new AzureDevOpsAdapter(source);
+      const bundles = await adapter.fetchBundles();
+
+      assert.strictEqual(bundles.length, 1);
+      assert.strictEqual(bundles[0].name, 'In Bundles');
     });
 
-    test('should always omit path param from tree fetch regardless of collectionsPath (ADO API rejects path with recursionLevel=Full on many versions)', async () => {
-      // The ADO Items API returns HTTP 400 for path=/ and is unreliable with any
-      // path value when combined with recursionLevel=Full. The adapter must omit
-      // path entirely and filter to collectionsPath in memory via findManifestBlobs.
+    test('should always omit path param from tree fetch regardless of collectionsPath', async () => {
       for (const cp of ['/', '/skills', '/prompts/bundles']) {
         const source = { ...mockSource, config: { branch: 'main', collectionsPath: cp } };
         let capturedQuery: Record<string, unknown> = {};
@@ -278,12 +291,9 @@ suite('AzureDevOpsAdapter', () => {
     });
 
     test('should use Bearer token from VS Code Microsoft auth when no PAT is set', async () => {
-      // Source with no PAT configured — adapter falls back to VS Code auth
       const sourceNoPat = { ...mockSource, token: undefined };
-
       const mockToken = 'vscode-microsoft-bearer-token';
 
-      // Override the stub set up in setup() to return a valid session for 'microsoft'
       (vscode.authentication.getSession as sinon.SinonStub).callsFake(
         (providerId: string) => {
           if (providerId === 'microsoft') {
@@ -298,7 +308,6 @@ suite('AzureDevOpsAdapter', () => {
         }
       );
 
-      // The full-tree request must carry a Bearer header (not Basic)
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
@@ -309,6 +318,58 @@ suite('AzureDevOpsAdapter', () => {
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // downloadBundle — in-memory ZIP assembly
+  // ---------------------------------------------------------------------------
+
+  suite('downloadBundle()', () => {
+    test('should fetch .collection.yml and assemble a ZIP containing item files and a deployment manifest', async () => {
+      const collectionYaml = makeCollectionYaml({
+        name: 'Download Test',
+        items: [{ path: 'prompts/hello.prompt.md', kind: 'prompt' }]
+      });
+
+      // 1. fetchBundles needs the full tree
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => !q.path && q.recursionLevel === 'Full')
+        .twice() // called once for fetchBundles, once inside downloadBundle
+        .reply(200, {
+          count: 3,
+          value: [
+            { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
+            { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/my-bundle', isFolder: true },
+            { objectId: 'coll', gitObjectType: 'blob', commitId: 'c1', path: '/my-bundle/my-bundle.collection.yml', isFolder: false }
+          ]
+        });
+
+      // 2. fetchBundles fetches the collection YAML
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/my-bundle/my-bundle.collection.yml')
+        .twice() // once for fetchBundles, once for downloadBundle
+        .reply(200, collectionYaml);
+
+      // 3. downloadBundle fetches each item file
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === 'prompts/hello.prompt.md')
+        .reply(200, '# Hello prompt');
+
+      const adapter = new AzureDevOpsAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+      assert.strictEqual(bundles.length, 1);
+
+      const zipBuffer = await adapter.downloadBundle(bundles[0]);
+
+      assert.ok(Buffer.isBuffer(zipBuffer), 'downloadBundle should return a Buffer');
+      assert.ok(zipBuffer.length > 0, 'ZIP buffer should not be empty');
+      // ZIP magic number PK (0x504B)
+      assert.strictEqual(zipBuffer[0], 0x50);
+      assert.strictEqual(zipBuffer[1], 0x4B);
     });
   });
 
@@ -328,7 +389,6 @@ suite('AzureDevOpsAdapter', () => {
           remoteUrl: mockSource.url
         });
 
-      // fetchBundles is called internally — return empty to keep test focused
       nock(apiBase)
         .get(`${repoApiPath}/items`)
         .query((q) => !q.path && q.recursionLevel === 'Full')
@@ -361,8 +421,6 @@ suite('AzureDevOpsAdapter', () => {
 
   suite('validate()', () => {
     test('should return valid when the repository is accessible and bundles exist', async () => {
-      const manifestYaml = 'id: b\nname: Bundle\nversion: 1.0.0\ndescription: d';
-
       nock(apiBase)
         .get(`${repoApiPath}`)
         .query(true)
@@ -376,14 +434,14 @@ suite('AzureDevOpsAdapter', () => {
           value: [
             { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
             { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/bundle1', isFolder: true },
-            { objectId: 'mf1', gitObjectType: 'blob', commitId: 'c1', path: '/bundle1/deployment-manifest.yml', isFolder: false }
+            { objectId: 'c1', gitObjectType: 'blob', commitId: 'c1', path: '/bundle1/bundle1.collection.yml', isFolder: false }
           ]
         });
 
       nock(apiBase)
         .get(`${repoApiPath}/items`)
-        .query((q) => q.path === '/bundle1/deployment-manifest.yml')
-        .reply(200, manifestYaml);
+        .query((q) => q.path === '/bundle1/bundle1.collection.yml')
+        .reply(200, makeCollectionYaml({ name: 'Bundle 1' }));
 
       const adapter = new AzureDevOpsAdapter(mockSource);
       const result = await adapter.validate();
@@ -414,8 +472,6 @@ suite('AzureDevOpsAdapter', () => {
 
     test('should return invalid when URL is malformed', () => {
       const source = { ...mockSource, url: 'https://github.com/org/repo' };
-
-      // The constructor would throw for this URL, so test the guard directly
       assert.throws(() => new AzureDevOpsAdapter(source), /Invalid Azure DevOps URL/);
     });
 
@@ -438,20 +494,17 @@ suite('AzureDevOpsAdapter', () => {
   // ---------------------------------------------------------------------------
 
   suite('getManifestUrl() / getDownloadUrl()', () => {
-    test('should return URLs that include the bundle path without double slashes', () => {
+    test('should return URLs that include the bundle directory path', () => {
       const adapter = new AzureDevOpsAdapter(mockSource);
-      // Bundle ID format: {host}/{org}/{project}/{repo}{/path} (no double slash)
       const bundleId = 'dev.azure.com/myorg/myproject/myrepo/my-bundle';
 
       const manifestUrl = adapter.getManifestUrl(bundleId);
       assert.ok(manifestUrl.includes(repoApiPath), 'manifest URL should include repo API path');
-      assert.ok(manifestUrl.includes('deployment-manifest.yml'), 'manifest URL should reference manifest file');
-      assert.ok(!manifestUrl.includes('//my-bundle'), 'manifest URL should not have double slashes in path');
+      assert.ok(!manifestUrl.includes('//my-bundle'), 'manifest URL should not have double slashes');
 
       const downloadUrl = adapter.getDownloadUrl(bundleId);
       assert.ok(downloadUrl.includes(repoApiPath), 'download URL should include repo API path');
-      assert.ok(downloadUrl.includes('$format=zip'), 'download URL should request ZIP format');
-      assert.ok(!downloadUrl.includes('//my-bundle'), 'download URL should not have double slashes in path');
+      assert.ok(!downloadUrl.includes('//my-bundle'), 'download URL should not have double slashes');
     });
   });
 
