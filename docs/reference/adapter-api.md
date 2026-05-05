@@ -174,8 +174,10 @@ export type SourceType =
 
 ### AzureDevOpsAdapter
 
-Fetches bundles from Azure DevOps Git repositories by scanning for subdirectories that contain
-a `deployment-manifest.yml`. Bundles are downloaded as ZIP archives via the ADO Items API.
+Fetches bundles from Azure DevOps Git repositories by scanning for `.collection.yml` files
+at depth-1 under `collectionsPath`. Bundles are assembled on-the-fly: each listed item is
+fetched individually and packaged with a synthesised `deployment-manifest.yml` into an
+in-memory ZIP archive — no `deployment-manifest.yml` needs to exist in the repository.
 
 **Configuration:**
 
@@ -198,7 +200,8 @@ a `deployment-manifest.yml`. Bundles are downloaded as ZIP archives via the ADO 
 
 **Authentication:** Uses `AzureDevOpsAuthService` with the following fallback chain:
 1. PAT from `source.token` (Basic auth)
-2. Azure CLI: `az account get-access-token` (Bearer token)
+2. VS Code Microsoft authentication (Bearer token via `vscode.authentication.getSession`)
+3. Azure CLI: `az account get-access-token` (Bearer token)
 
 ## Authentication
 

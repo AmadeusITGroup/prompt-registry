@@ -4,32 +4,29 @@
  * Fetches prompt bundles from Azure DevOps (ADO) Git repositories.
  * Supports both Azure DevOps Services (cloud) and Azure DevOps Server (on-premises).
  *
- * ## Bundle discovery strategy — "full-tree blob scan"
+ * ## Bundle discovery strategy — "full-tree collection scan"
  *
  * Rather than listing directories one-by-one and probing each for a manifest
  * (an N+1 HTTP pattern), the adapter retrieves the **entire repository tree
  * in a single API call** using `recursionLevel=Full`, then filters the
- * returned item list in memory for blob entries (files) whose filename is
- * one of:
+ * returned item list in memory for blob entries (files) whose filename ends in
+ * `.collection.yml`.
  *
- * - `deployment-manifest.yml`
- * - `deployment-manifest.yaml`
- * - `deployment-manifest.json`
- *
- * Only manifests that sit **exactly one directory level** beneath
+ * Only collection files that sit **exactly one directory level** beneath
  * `collectionsPath` are treated as bundle roots.  This prevents deeply-nested
- * manifests from accidentally being picked up as separate bundles.
+ * files from accidentally being picked up as separate bundles.
  *
- * After finding manifest blob paths, the adapter fetches the **content** of
- * each manifest file (one request per bundle) and parses it to construct
- * `Bundle` objects.
+ * After finding collection blob paths, the adapter fetches the **content** of
+ * each `.collection.yml` file (one request per bundle) and parses it to
+ * construct `Bundle` objects.
  *
  * **API call count**: 1 (full tree) + N (one per discovered bundle)
- * versus the old approach's 1 + up-to-3N calls.
  *
  * ## Downloading bundles
- * Bundles are downloaded as ZIP archives using the ADO Items API's
- * `$format=zip` option, which packages the entire bundle directory on demand.
+ * Bundles are assembled on the fly: the adapter re-fetches the `.collection.yml`,
+ * individually downloads each item listed there, and packages them — together
+ * with a synthesised `deployment-manifest.yml` — into an in-memory ZIP archive.
+ * No `deployment-manifest.yml` needs to exist in the repository.
  *
  * ## Configuration example
  *
