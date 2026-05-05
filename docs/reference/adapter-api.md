@@ -175,7 +175,15 @@ export type SourceType =
 ### AzureDevOpsAdapter
 
 Fetches bundles from Azure DevOps Git repositories by scanning for `.collection.yml` files
-at depth-1 under `collectionsPath`. Bundles are assembled on-the-fly: each listed item is
+under `collectionsPath`. Two repo layouts are supported:
+
+- **Flat layout (depth-0)**: the `.collection.yml` lives directly inside `collectionsPath`
+  (e.g. `collections/my-collection.collection.yml`). Item paths in the YAML are relative to
+  the repo root. Skill items reference the skill directory path.
+- **Bundle-directory layout (depth-1)**: each `.collection.yml` lives inside its own
+  subdirectory one level beneath `collectionsPath` (e.g. `collections/my-bundle/my-bundle.collection.yml`).
+
+Bundles are assembled on-the-fly: each listed item is
 fetched individually and packaged with a synthesised `deployment-manifest.yml` into an
 in-memory ZIP archive — no `deployment-manifest.yml` needs to exist in the repository.
 

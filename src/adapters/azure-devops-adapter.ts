@@ -549,28 +549,35 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Filter a flat item list for **collection blobs** that are exactly one
+   * Filter a flat item list for **collection blobs** that are at most one
    * directory level beneath `collectionsPath`.
    *
-   * A `.collection.yml` file sitting at `<collectionsPath>/<bundleDir>/<file>.collection.yml`
-   * is treated as the collection descriptor for that bundle.
+   * Two layouts are supported:
    *
-   * **Why depth-1?**  Only *immediate* children of `collectionsPath` are
-   * treated as bundle roots.  Files nested deeper are skipped.
+   * **Depth-0 (flat layout)** — the `.collection.yml` sits directly inside
+   * `collectionsPath`.  Items at this depth have exactly one non-empty segment
+   * after the base prefix:
+   * ```
+   * /collections/my-collection.collection.yml   → depth 0 ✓
+   * ```
    *
-   * A path is "depth-1" when, after stripping the `collectionsPath` prefix,
-   * it contains exactly two non-empty segments:
+   * **Depth-1 (bundle-directory layout)** — the `.collection.yml` sits one
+   * level deeper, inside a dedicated bundle subdirectory.  Items at this depth
+   * have exactly two non-empty segments after the base prefix:
    * ```
-   * <bundleDirectoryName>/<collection-filename>
+   * /collections/my-bundle/my-bundle.collection.yml  → depth 1 ✓
    * ```
+   *
+   * Files nested more than one level deep are silently ignored.
    *
    * Examples (collectionsPath = '/prompts'):
    * ```
-   * /prompts/my-bundle/my-bundle.collection.yml  → depth 1 ✓
-   * /prompts/nested/inner/other.collection.yml   → depth 2 ✗ (skipped)
+   * /prompts/my-collection.collection.yml          → depth 0 ✓
+   * /prompts/my-bundle/my-bundle.collection.yml    → depth 1 ✓
+   * /prompts/nested/inner/other.collection.yml     → depth 2 ✗ (skipped)
    * ```
    * @param items - All items returned by {@link fetchFullTree}
-   * @returns Items that are `.collection.yml` blobs at depth-1 under `collectionsPath`
+   * @returns Items that are `.collection.yml` blobs at depth-0 or depth-1 under `collectionsPath`
    */
   private findCollectionBlobs(items: AdoItem[]): AdoItem[] {
     // Strip trailing slash from the base so the depth calculation is consistent
@@ -590,17 +597,17 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       }
 
       // Compute the path relative to collectionsPath.  We then split on '/'
-      // and count non-empty segments; exactly 2 means <bundleDir>/<collection-file>.
+      // and count non-empty segments.
+      // segments.length === 1 → depth-0: <collection-file> directly in collectionsPath
+      // segments.length === 2 → depth-1: <bundleDir>/<collection-file>
+      // length > 2            → nested too deep, skip
       const relative = item.path.startsWith(base)
         ? item.path.substring(base.length).replace(/^\//, '')
         : item.path.replace(/^\//, '');
 
       const segments = relative.split('/').filter(Boolean);
 
-      // segments[0] = bundle directory name
-      // segments[1] = collection file name
-      // length > 2  = nested too deep, skip
-      return segments.length === 2;
+      return segments.length === 1 || segments.length === 2;
     });
   }
 
@@ -668,9 +675,18 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
   /**
    * Build a `Bundle` object from a parsed `CollectionManifest` and bundle directory path.
+   *
+   * **Depth-0 (flat layout)**: when `dirPath` equals the `collectionsPath` base the
+   * collection file lives directly inside `collectionsPath` (e.g.
+   * `/collections/my-collection.collection.yml`).  In that case `dirPath` alone would
+   * be the same for every collection in the folder, so the manifest `id` field is
+   * appended to make each bundle ID unique and stable.
+   *
+   * **Depth-1 (bundle-directory layout)**: `dirPath` is the dedicated bundle
+   * subdirectory (e.g. `/collections/my-bundle`), which is already unique per bundle.
    * @param collection - Parsed collection manifest
-   * @param dirPath - Repository path of the bundle directory (contains the `.collection.yml`)
-   * @param dirName - Basename of the bundle directory
+   * @param dirPath - Repository path of the directory containing the `.collection.yml`
+   * @param dirName - Basename of that directory
    * @param collectionPath - Full path to the `.collection.yml` file (used for manifestUrl)
    */
   private buildBundleFromCollection(
@@ -680,8 +696,17 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     collectionPath: string
   ): Bundle {
     const { projectBaseUrl, repository } = this.parseAdoUrl();
-    // dirPath already starts with '/', so concatenate directly to avoid double slashes
-    const bundleId = `${projectBaseUrl}/${repository}${dirPath}`.replace(/^https?:\/\//, '');
+
+    // For depth-0 bundles, dirPath === the collectionsPath base (e.g. '' or '/collections').
+    // Every collection in the folder would produce the same dirPath, so we append the
+    // manifest's own `id` to guarantee a unique, stable bundle identifier.
+    const base = this.collectionsPath.replace(/\/$/, '');
+    const idPath = dirPath === base
+      ? `${dirPath}/${collection.id}` // depth-0: /collections/my-collection
+      : dirPath; // depth-1: /my-bundle  (existing behaviour)
+
+    // idPath already starts with '/', so concatenate directly to avoid double slashes
+    const bundleId = `${projectBaseUrl}/${repository}${idPath}`.replace(/^https?:\/\//, '');
 
     return {
       id: bundleId,
@@ -737,6 +762,23 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    */
   private createDeploymentManifest(collection: CollectionManifest, dirName: string): Record<string, unknown> {
     const prompts = collection.items.map((item) => {
+      // Skills are directories — derive the skill name from the directory portion of the path
+      // and preserve the full path so the installer can locate the skill folder.
+      if (item.kind === 'skill') {
+        const skillDirPath = item.path.endsWith('.md')
+          ? item.path.substring(0, item.path.lastIndexOf('/'))
+          : item.path;
+        const skillName = skillDirPath.split('/').pop() ?? 'unknown-skill';
+        return {
+          id: skillName,
+          name: this.titleCase(skillName.replace(/-/g, ' ')),
+          description: `Skill from ${collection.name}`,
+          file: skillDirPath,
+          type: 'skill' as const,
+          tags: collection.tags ?? []
+        };
+      }
+
       const filename = item.path.split('/').pop() ?? 'unknown';
       const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
       return {
@@ -772,10 +814,21 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
    * pre-existing directory), this method assembles the archive from individual
    * file fetches so that repos using the `.collection.yml` convention do not need
    * to maintain any `deployment-manifest.yml` files at all.
+   *
+   * **Skill items** are directories rather than single files.  For each item with
+   * `kind === 'skill'`, all blobs under the skill directory are collected from the
+   * already-fetched `allItems` tree and added to the archive preserving their
+   * repo-root-relative paths (e.g. `skills/my-skill/SKILL.md`).
    * @param collection - Parsed collection manifest
    * @param dirName - Bundle directory basename (used as fallback in the manifest)
+   * @param allItems - Full repository item tree (from {@link fetchFullTree}); used to
+   *   discover skill directory contents without an extra API call
    */
-  private async createBundleArchive(collection: CollectionManifest, dirName: string): Promise<Buffer> {
+  private async createBundleArchive(
+    collection: CollectionManifest,
+    dirName: string,
+    allItems: AdoItem[]
+  ): Promise<Buffer> {
     this.logger.debug(`[AzureDevOpsAdapter] Creating archive for collection: ${collection.name}`);
 
     return new Promise<Buffer>((resolve, reject) => {
@@ -801,10 +854,32 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
           // Fetch and add each item file
           for (const item of collection.items) {
             try {
-              const fileContent = await this.fetchFileContent(item.path);
-              const filename = item.path.split('/').pop() ?? 'unknown';
-              archive.append(fileContent, { name: `prompts/${filename}` });
-              this.logger.debug(`[AzureDevOpsAdapter] Added ${filename} to archive`);
+              if (item.kind === 'skill') {
+                // Skills are directories — collect all blobs under the skill dir from
+                // the already-fetched full tree and add them preserving repo-root paths.
+                const skillDirPath = item.path.endsWith('.md')
+                  ? item.path.substring(0, item.path.lastIndexOf('/'))
+                  : item.path;
+                // allItems paths always have a leading '/'; normalise item.path accordingly.
+                const normalizedSkillDir = skillDirPath.startsWith('/')
+                  ? skillDirPath
+                  : `/${skillDirPath}`;
+                const skillFiles = allItems.filter(
+                  (treeItem) => !treeItem.isFolder
+                    && treeItem.path.startsWith(normalizedSkillDir + '/')
+                );
+                for (const skillFile of skillFiles) {
+                  const fileContent = await this.fetchFileContent(skillFile.path);
+                  // Strip leading '/' to get a repo-root-relative archive path
+                  archive.append(fileContent, { name: skillFile.path.replace(/^\//, '') });
+                  this.logger.debug(`[AzureDevOpsAdapter] Added skill file ${skillFile.path} to archive`);
+                }
+              } else {
+                const fileContent = await this.fetchFileContent(item.path);
+                const filename = item.path.split('/').pop() ?? 'unknown';
+                archive.append(fileContent, { name: `prompts/${filename}` });
+                this.logger.debug(`[AzureDevOpsAdapter] Added ${filename} to archive`);
+              }
             } catch (err) {
               this.logger.warn(`[AzureDevOpsAdapter] Skipping item "${item.path}": ${err}`);
             }
@@ -958,10 +1033,17 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       // Re-fetch the .collection.yml to get the item list
       // Find the collection file by scanning the full tree for this bundle's directory
       const allItems = await this.fetchFullTree();
+
+      // Depth-1 layout: collection file is inside a subdirectory (dirPath/<x>.collection.yml)
+      // Depth-0 layout: collection file lives directly in collectionsPath and its name matches
+      //   the collection id → it is at exactly dirPath + '.collection.yml'
       const collectionBlob = allItems.find(
         (item) => !item.isFolder
           && item.path.startsWith(dirPath + '/')
           && item.path.endsWith('.collection.yml')
+      ) ?? allItems.find(
+        (item) => !item.isFolder
+          && item.path === dirPath + '.collection.yml'
       );
 
       if (!collectionBlob) {
@@ -975,7 +1057,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
         throw new Error(`Failed to parse collection file at "${collectionBlob.path}"`);
       }
 
-      return await this.createBundleArchive(collection, dirName);
+      return await this.createBundleArchive(collection, dirName, allItems);
     } catch (error) {
       throw new Error(`Failed to download bundle "${bundle.id}" from Azure DevOps: ${error}`);
     }

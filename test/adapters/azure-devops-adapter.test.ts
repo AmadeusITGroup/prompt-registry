@@ -191,6 +191,54 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles.length, 0);
     });
 
+    test('should discover a bundle from a .collection.yml blob at depth-0 (flat layout)', async () => {
+      // Flat layout: collections/ directly contains .collection.yml (depth-0).
+      // The collection file is at /collections/my-collection.collection.yml — exactly
+      // one segment beneath the collectionsPath base.
+      const source = {
+        ...mockSource,
+        config: { branch: 'main', collectionsPath: '/collections' }
+      };
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => !q.path && q.recursionLevel === 'Full')
+        .reply(200, {
+          count: 5,
+          value: [
+            { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
+            { objectId: 'cd', gitObjectType: 'tree', commitId: 'c1', path: '/collections', isFolder: true },
+            { objectId: 'cf', gitObjectType: 'blob', commitId: 'c1', path: '/collections/my-collection.collection.yml', isFolder: false },
+            { objectId: 'pd', gitObjectType: 'tree', commitId: 'c1', path: '/prompts', isFolder: true },
+            { objectId: 'pf', gitObjectType: 'blob', commitId: 'c1', path: '/prompts/task-helper.prompt.md', isFolder: false }
+          ]
+        });
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/collections/my-collection.collection.yml')
+        .reply(200, makeCollectionYaml({
+          id: 'my-collection',
+          name: 'My Flat Collection',
+          version: '2.0.0',
+          items: [{ path: 'prompts/task-helper.prompt.md', kind: 'prompt' }]
+        }));
+
+      const adapter = new AzureDevOpsAdapter(source);
+      const bundles = await adapter.fetchBundles();
+
+      assert.strictEqual(bundles.length, 1);
+      assert.strictEqual(bundles[0].name, 'My Flat Collection');
+      assert.strictEqual(bundles[0].version, '2.0.0');
+      // Bundle ID must be unique and reference the collection id, not just the collectionsPath.
+      // Expected: dev.azure.com/myorg/myproject/myrepo/collections/my-collection
+      assert.strictEqual(
+        bundles[0].id,
+        'dev.azure.com/myorg/myproject/myrepo/collections/my-collection',
+        'depth-0 bundle ID must include both collectionsPath and the collection id'
+      );
+    });
+
     test('should discover multiple bundles from multiple .collection.yml blobs', async () => {
       nock(apiBase)
         .get(`${repoApiPath}/items`)
@@ -358,6 +406,60 @@ suite('AzureDevOpsAdapter', () => {
         .get(`${repoApiPath}/items`)
         .query((q) => q.path === 'prompts/hello.prompt.md')
         .reply(200, '# Hello prompt');
+
+      const adapter = new AzureDevOpsAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+      assert.strictEqual(bundles.length, 1);
+
+      const zipBuffer = await adapter.downloadBundle(bundles[0]);
+
+      assert.ok(Buffer.isBuffer(zipBuffer), 'downloadBundle should return a Buffer');
+      assert.ok(zipBuffer.length > 0, 'ZIP buffer should not be empty');
+      // ZIP magic number PK (0x504B)
+      assert.strictEqual(zipBuffer[0], 0x50);
+      assert.strictEqual(zipBuffer[1], 0x4B);
+    });
+
+    test('should fetch all files in a skill directory and include them in the ZIP', async () => {
+      const collectionYaml = makeCollectionYaml({
+        name: 'Skill Test',
+        items: [{ path: 'skills/my-skill', kind: 'skill' }]
+      });
+
+      // Full tree includes the skill directory contents
+      const fullTree = {
+        count: 6,
+        value: [
+          { objectId: 'r', gitObjectType: 'tree', commitId: 'c1', path: '/', isFolder: true },
+          { objectId: 'd1', gitObjectType: 'tree', commitId: 'c1', path: '/my-bundle', isFolder: true },
+          { objectId: 'coll', gitObjectType: 'blob', commitId: 'c1', path: '/my-bundle/my-bundle.collection.yml', isFolder: false },
+          { objectId: 'sd', gitObjectType: 'tree', commitId: 'c1', path: '/skills/my-skill', isFolder: true },
+          { objectId: 'sm', gitObjectType: 'blob', commitId: 'c1', path: '/skills/my-skill/SKILL.md', isFolder: false },
+          { objectId: 'ss', gitObjectType: 'blob', commitId: 'c1', path: '/skills/my-skill/scripts/run.sh', isFolder: false }
+        ]
+      };
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => !q.path && q.recursionLevel === 'Full')
+        .twice()
+        .reply(200, fullTree);
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/my-bundle/my-bundle.collection.yml')
+        .twice()
+        .reply(200, collectionYaml);
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/skills/my-skill/SKILL.md')
+        .reply(200, '# My Skill\n');
+
+      nock(apiBase)
+        .get(`${repoApiPath}/items`)
+        .query((q) => q.path === '/skills/my-skill/scripts/run.sh')
+        .reply(200, '#!/bin/sh\n');
 
       const adapter = new AzureDevOpsAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
