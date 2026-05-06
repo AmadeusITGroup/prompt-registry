@@ -151,11 +151,11 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles[0].version, '1.2.0');
       assert.strictEqual(bundles[0].author, 'Test Author');
       assert.deepStrictEqual(bundles[0].tags, ['test']);
-      // Bundle ID for depth-1 layout must follow {project}-{repository}-{collectionId} format.
+      // Bundle ID for depth-1 layout must equal the collectionId from the manifest.
       assert.strictEqual(
         bundles[0].id,
-        'myproject-myrepo-my-collection',
-        'depth-1 bundle ID must follow {project}-{repository}-{collectionId} format'
+        'my-collection',
+        'depth-1 bundle ID must equal the collectionId from the manifest'
       );
     });
 
@@ -236,12 +236,11 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles.length, 1);
       assert.strictEqual(bundles[0].name, 'My Flat Collection');
       assert.strictEqual(bundles[0].version, '2.0.0');
-      // Bundle ID must be unique and reference the collection id, not just the collectionsPath.
-      // Expected format: {project}-{repository}-{collectionId}
+      // Bundle ID must equal the collectionId from the manifest.
       assert.strictEqual(
         bundles[0].id,
-        'myproject-myrepo-my-collection',
-        'depth-0 bundle ID must follow {project}-{repository}-{collectionId} format'
+        'my-collection',
+        'depth-0 bundle ID must equal the collectionId from the manifest'
       );
     });
 
@@ -604,7 +603,7 @@ suite('AzureDevOpsAdapter', () => {
   suite('getManifestUrl() / getDownloadUrl()', () => {
     test('should return the source repository URL', () => {
       const adapter = new AzureDevOpsAdapter(mockSource);
-      const bundleId = 'myproject-myrepo-my-collection';
+      const bundleId = 'my-collection';
 
       const manifestUrl = adapter.getManifestUrl(bundleId);
       assert.strictEqual(manifestUrl, mockSource.url, 'manifest URL should be the source repository URL');

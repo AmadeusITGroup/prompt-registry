@@ -177,8 +177,6 @@ interface AdoRepository {
 interface ParsedAdoUrl {
   /** Full base URL up to and including the project segment */
   projectBaseUrl: string;
-  /** Project name (last path segment of projectBaseUrl) */
-  project: string;
   /** Repository name */
   repository: string;
 }
@@ -287,9 +285,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       throw new Error(`Cannot extract repository name from URL: "${this.source.url}"`);
     }
 
-    const project = projectBaseUrl.split('/').pop() ?? projectBaseUrl;
-
-    return { projectBaseUrl, project, repository };
+    return { projectBaseUrl, repository };
   }
 
   /**
@@ -699,12 +695,7 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     dirName: string,
     collectionPath: string
   ): Bundle {
-    const { project, repository } = this.parseAdoUrl();
-    const collectionId = collection.id ?? dirName;
-
-    // Bundle ID format: {project}-{repository}-{collectionId}
-    // This is short, slash-free, and safe to use as a filename.
-    const bundleId = `${project}-${repository}-${collectionId}`;
+    const bundleId = collection.id ?? dirName;
 
     return {
       id: bundleId,
