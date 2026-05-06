@@ -231,11 +231,11 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles[0].name, 'My Flat Collection');
       assert.strictEqual(bundles[0].version, '2.0.0');
       // Bundle ID must be unique and reference the collection id, not just the collectionsPath.
-      // Expected: dev.azure.com/myorg/myproject/myrepo/collections/my-collection
+      // Expected format: {project}-{repository}-{collectionId}
       assert.strictEqual(
         bundles[0].id,
-        'dev.azure.com/myorg/myproject/myrepo/collections/my-collection',
-        'depth-0 bundle ID must include both collectionsPath and the collection id'
+        'myproject-myrepo-my-collection',
+        'depth-0 bundle ID must follow {project}-{repository}-{collectionId} format'
       );
     });
 
@@ -596,17 +596,15 @@ suite('AzureDevOpsAdapter', () => {
   // ---------------------------------------------------------------------------
 
   suite('getManifestUrl() / getDownloadUrl()', () => {
-    test('should return URLs that include the bundle directory path', () => {
+    test('should return the source repository URL', () => {
       const adapter = new AzureDevOpsAdapter(mockSource);
-      const bundleId = 'dev.azure.com/myorg/myproject/myrepo/my-bundle';
+      const bundleId = 'myproject-myrepo-my-collection';
 
       const manifestUrl = adapter.getManifestUrl(bundleId);
-      assert.ok(manifestUrl.includes(repoApiPath), 'manifest URL should include repo API path');
-      assert.ok(!manifestUrl.includes('//my-bundle'), 'manifest URL should not have double slashes');
+      assert.strictEqual(manifestUrl, mockSource.url, 'manifest URL should be the source repository URL');
 
       const downloadUrl = adapter.getDownloadUrl(bundleId);
-      assert.ok(downloadUrl.includes(repoApiPath), 'download URL should include repo API path');
-      assert.ok(!downloadUrl.includes('//my-bundle'), 'download URL should not have double slashes');
+      assert.strictEqual(downloadUrl, mockSource.url, 'download URL should be the source repository URL');
     });
   });
 

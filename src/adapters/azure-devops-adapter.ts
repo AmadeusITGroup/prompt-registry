@@ -177,6 +177,8 @@ interface AdoRepository {
 interface ParsedAdoUrl {
   /** Full base URL up to and including the project segment */
   projectBaseUrl: string;
+  /** Project name (last path segment of projectBaseUrl) */
+  project: string;
   /** Repository name */
   repository: string;
 }
@@ -285,7 +287,9 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
       throw new Error(`Cannot extract repository name from URL: "${this.source.url}"`);
     }
 
-    return { projectBaseUrl, repository };
+    const project = projectBaseUrl.split('/').pop() ?? projectBaseUrl;
+
+    return { projectBaseUrl, project, repository };
   }
 
   /**
@@ -695,18 +699,12 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
     dirName: string,
     collectionPath: string
   ): Bundle {
-    const { projectBaseUrl, repository } = this.parseAdoUrl();
+    const { project, repository } = this.parseAdoUrl();
+    const collectionId = collection.id ?? dirName;
 
-    // For depth-0 bundles, dirPath === the collectionsPath base (e.g. '' or '/collections').
-    // Every collection in the folder would produce the same dirPath, so we append the
-    // manifest's own `id` to guarantee a unique, stable bundle identifier.
-    const base = this.collectionsPath.replace(/\/$/, '');
-    const idPath = dirPath === base
-      ? `${dirPath}/${collection.id}` // depth-0: /collections/my-collection
-      : dirPath; // depth-1: /my-bundle  (existing behaviour)
-
-    // idPath already starts with '/', so concatenate directly to avoid double slashes
-    const bundleId = `${projectBaseUrl}/${repository}${idPath}`.replace(/^https?:\/\//, '');
+    // Bundle ID format: {project}-{repository}-{collectionId}
+    // This is short, slash-free, and safe to use as a filename.
+    const bundleId = `${project}-${repository}-${collectionId}`;
 
     return {
       id: bundleId,
@@ -896,20 +894,6 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
   /**
    * Decode a bundle ID back to the repository path of the bundle directory.
-   * Bundle IDs are encoded as `{host}/{org}/{project}/{repo}{path}` with the
-   * `https://` prefix stripped. The path always begins with `/`.
-   * @param bundleId - Bundle identifier
-   */
-  private decodeBundleId(bundleId: string): string {
-    const { projectBaseUrl, repository } = this.parseAdoUrl();
-    // Prefix has no trailing slash; the path portion starts with '/'
-    const prefix = `${projectBaseUrl}/${repository}`.replace(/^https?:\/\//, '');
-    if (bundleId.startsWith(prefix)) {
-      return bundleId.substring(prefix.length); // keeps leading '/'
-    }
-    return `/${bundleId}`;
-  }
-
   /**
    * Build the ADO Items API URL for a specific file in the repository.
    * Used as the manifestUrl and downloadUrl for collection-based bundles — the
@@ -1026,35 +1010,25 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.info(`[AzureDevOpsAdapter] Downloading bundle: ${bundle.id}`);
     try {
-      // Recover the bundle directory path from the bundle ID
-      const dirPath = this.decodeBundleId(bundle.id);
-      const dirName = dirPath.split('/').pop() ?? dirPath;
-
-      // Re-fetch the .collection.yml to get the item list
-      // Find the collection file by scanning the full tree for this bundle's directory
-      const allItems = await this.fetchFullTree();
-
-      // Depth-1 layout: collection file is inside a subdirectory (dirPath/<x>.collection.yml)
-      // Depth-0 layout: collection file lives directly in collectionsPath and its name matches
-      //   the collection id → it is at exactly dirPath + '.collection.yml'
-      const collectionBlob = allItems.find(
-        (item) => !item.isFolder
-          && item.path.startsWith(dirPath + '/')
-          && item.path.endsWith('.collection.yml')
-      ) ?? allItems.find(
-        (item) => !item.isFolder
-          && item.path === dirPath + '.collection.yml'
-      );
-
-      if (!collectionBlob) {
-        throw new Error(`No .collection.yml found for bundle at "${dirPath}"`);
+      // Recover the collection file path from the bundle's manifestUrl.
+      // manifestUrl is the ADO Items API URL for the .collection.yml, e.g.:
+      //   https://.../items?...&path=/my-bundle/my-bundle.collection.yml
+      const collectionFilePath = new URL(bundle.manifestUrl).searchParams.get('path');
+      if (!collectionFilePath) {
+        throw new Error(`Cannot determine collection file path from bundle manifestUrl: "${bundle.manifestUrl}"`);
       }
 
-      const fileContent = await this.fetchFileContent(collectionBlob.path);
-      const collection = this.parseCollectionManifest(fileContent, collectionBlob.path);
+      const dirPath = collectionFilePath.substring(0, collectionFilePath.lastIndexOf('/'));
+      const dirName = dirPath.split('/').pop() ?? dirPath;
+
+      // The full tree is still needed for skill directory resolution in createBundleArchive.
+      const allItems = await this.fetchFullTree();
+
+      const fileContent = await this.fetchFileContent(collectionFilePath);
+      const collection = this.parseCollectionManifest(fileContent, collectionFilePath);
 
       if (!collection) {
-        throw new Error(`Failed to parse collection file at "${collectionBlob.path}"`);
+        throw new Error(`Failed to parse collection file at "${collectionFilePath}"`);
       }
 
       return await this.createBundleArchive(collection, dirName, allItems);
@@ -1137,33 +1111,24 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
 
   /**
    * Get the collection manifest URL for a bundle.
-   * Returns the ADO Items API URL for the `.collection.yml` file.
-   * @param bundleId - Bundle identifier (encodes the repository path)
+   * Bundle IDs are no longer URL-encoded paths, so this returns the ADO repository
+   * URL as a stable reference. The actual collection file URL is stored in
+   * `bundle.manifestUrl` and used directly by `downloadBundle`.
+   * @param _bundleId - Bundle identifier (not used)
    * @param _version - Not used; ADO uses branch-based versioning
-   * @returns URL string for the collection file
+   * @returns ADO repository URL
    */
-  public getManifestUrl(bundleId: string, _version?: string): string {
-    const bundlePath = this.decodeBundleId(bundleId);
-    // bundlePath is the directory; the collection file sits inside it
-    // We return the directory URL as a reference since the exact filename
-    // varies. The actual file is resolved dynamically in downloadBundle().
-    const apiBase = this.buildApiBase();
-    const params = new URLSearchParams({
-      'versionDescriptor.version': this.branch,
-      'api-version': ADO_API_VERSION
-    });
-    return `${apiBase}/items?${params.toString()}&path=${this.encodePath(bundlePath)}`;
+  public getManifestUrl(_bundleId: string, _version?: string): string {
+    return this.source.url;
   }
 
   /**
    * Get the download URL for a bundle.
-   * For collection-based bundles the download is assembled on-the-fly, so this
-   * returns the bundle directory URL as a stable reference identifier.
-   * @param bundleId - Bundle identifier (encodes the repository path)
+   * @param _bundleId - Bundle identifier (not used)
    * @param _version - Not used; ADO uses branch-based versioning
-   * @returns URL string referencing the bundle directory
+   * @returns ADO repository URL
    */
-  public getDownloadUrl(bundleId: string, _version?: string): string {
-    return this.getManifestUrl(bundleId, _version);
+  public getDownloadUrl(_bundleId: string, _version?: string): string {
+    return this.source.url;
   }
 }
