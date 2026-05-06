@@ -151,6 +151,12 @@ suite('AzureDevOpsAdapter', () => {
       assert.strictEqual(bundles[0].version, '1.2.0');
       assert.strictEqual(bundles[0].author, 'Test Author');
       assert.deepStrictEqual(bundles[0].tags, ['test']);
+      // Bundle ID for depth-1 layout must follow {project}-{repository}-{collectionId} format.
+      assert.strictEqual(
+        bundles[0].id,
+        'myproject-myrepo-my-collection',
+        'depth-1 bundle ID must follow {project}-{repository}-{collectionId} format'
+      );
     });
 
     test('should skip directories that have no .collection.yml blob in the tree', async () => {

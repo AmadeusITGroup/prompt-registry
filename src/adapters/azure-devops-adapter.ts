@@ -893,8 +893,6 @@ export class AzureDevOpsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Decode a bundle ID back to the repository path of the bundle directory.
-  /**
    * Build the ADO Items API URL for a specific file in the repository.
    * Used as the manifestUrl and downloadUrl for collection-based bundles — the
    * `.collection.yml` file itself is the canonical descriptor.
