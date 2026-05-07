@@ -799,14 +799,16 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @returns Promise resolving to string content of README file
    * @throws {Error} if download fails or network issues occur
    */
-  public async downloadReadme(bundle: Bundle): Promise<Buffer | null> {
+  public async downloadReadme(bundle: Bundle): Promise<string | null> {
     if (!bundle.readmeUrl) {
       return null;
     }
     try {
-      return await this.downloadFile(bundle.readmeUrl);
+      const data = await this.downloadFile(bundle.readmeUrl);
+      return data.toString('utf8');
     } catch (error) {
-      throw new Error(`Failed to download README: ${error}`);
+      this.logger.error(`Failed to download README: ${error}`);
+      return null;
     }
   }
 

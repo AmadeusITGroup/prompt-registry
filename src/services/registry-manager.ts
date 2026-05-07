@@ -1057,9 +1057,9 @@ export class RegistryManager {
       const batch = bundles.filter((b) => b.readmeUrl).slice(i, i + concurrency);
       await Promise.allSettled(
         batch.map(async (bundle) => {
-          const buffer = await adapter.downloadReadme(bundle);
-          if (buffer) {
-            bundle.readme = buffer.toString('utf8');
+          const readme = await adapter.downloadReadme(bundle);
+          if (readme) {
+            bundle.readme = readme;
           }
         })
       );
