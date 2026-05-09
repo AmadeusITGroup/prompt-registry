@@ -112,6 +112,22 @@ suite('plugin-adapter-shared', () => {
       const manifest: PluginManifest = { name: 'test', mcpServers: {} };
       assert.strictEqual(extractMcpServers(manifest), undefined);
     });
+
+    test('returns undefined when mcpServers is a string path reference (I/O required by adapter)', () => {
+      const manifest: PluginManifest = { name: 'test', mcpServers: '.mcp.json' };
+      assert.strictEqual(extractMcpServers(manifest), undefined,
+        'string path refs must not be resolved by extractMcpServers — adapters handle I/O');
+    });
+
+    test('falls back to mcp.items when mcpServers is a string (not inline)', () => {
+      const manifest: PluginManifest = {
+        name: 'test',
+        mcpServers: '.mcp.json',
+        mcp: { items: { 'fallback-server': { command: 'python3' } } }
+      };
+      const result = extractMcpServers(manifest);
+      assert.deepStrictEqual(result, { 'fallback-server': { command: 'python3' } });
+    });
   });
 
   suite('calculateBreakdown()', () => {

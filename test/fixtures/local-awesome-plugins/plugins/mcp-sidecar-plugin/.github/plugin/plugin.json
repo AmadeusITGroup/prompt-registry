@@ -1,0 +1,7 @@
+{
+  "name": "mcp-sidecar-plugin",
+  "description": "Plugin with MCP servers defined in a standalone .mcp.json sidecar (context-matic pattern)",
+  "version": "0.1.0",
+  "keywords": ["mcp", "sidecar", "http"],
+  "skills": []
+}

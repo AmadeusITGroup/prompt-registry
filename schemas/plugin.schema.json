@@ -183,14 +183,24 @@
       "additionalProperties": false
     },
     "mcpServers": {
-      "type": "object",
-      "description": "Alternative MCP server configuration (top-level, compatible with collection format)",
-      "patternProperties": {
-        "^[a-zA-Z0-9_-]+$": {
-          "type": "object"
+      "description": "MCP server configurations. Two forms accepted:\n- Object: inline server definitions (collection-format compat, PR #717)\n- String: relative path to a .mcp.json sidecar file (VS Code format, e.g. \".mcp.json\")\nAuto-discovery: if this field is absent, adapters look for .mcp.json at the plugin root.",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Inline MCP server definitions keyed by server name",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "string",
+          "description": "Relative path to a sidecar file containing mcpServers (e.g. \".mcp.json\")",
+          "minLength": 1
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "version": {
       "type": "string",

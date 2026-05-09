@@ -57,27 +57,31 @@ my-plugin/
     "./skills/diagnose-failure"
   ],
 
-  // MCP server configurations — two equivalent formats, pick one:
+  // MCP server configurations — three supported patterns, pick one:
 
-  // Format A) Top-level mcpServers (compatible with collection format)
+  // Pattern A) Inline object (collection-format compat / PR #717)
   "mcpServers": {
     "azure-tools": {
-      "type": "stdio",
       "command": "node",
-      "args": ["${bundlePath}/server.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"]
     }
   },
 
-  // Format B) Nested under mcp.items (Prompt Registry native format)
+  // Pattern B) String path reference to .mcp.json sidecar (VS Code format)
+  "mcpServers": ".mcp.json",
+
+  // Pattern C) Nested under mcp.items (Prompt Registry native format)
   "mcp": {
     "items": {
       "azure-tools": {
-        "type": "stdio",
         "command": "node",
-        "args": ["${bundlePath}/server.js"]
+        "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"]
       }
     }
   },
+
+  // Auto-discovery: omit mcpServers entirely — adapter reads .mcp.json at plugin root
+  // (used by github/awesome-copilot plugins like context-matic)
 
   "display": {                            // Optional. UI preferences
     "ordering": "alphabetical",           // manual | alphabetical
@@ -111,9 +115,29 @@ When you use the `agents` / `skills` arrays instead of `items`, the adapter reso
 
 ## MCP Server Support
 
-Both `mcpServers` (top-level, collection-format compatible) and `mcp.items` (nested, Prompt Registry native) are supported. If both are present, `mcpServers` takes precedence. The adapter stores MCP server configurations in the `deployment-manifest.yml` under the `mcpServers` key, where `McpServerManager` picks them up at install time.
+Adapters resolve MCP server configurations in this priority order:
 
-MCP servers declared under either format follow the same identity + duplicate-detection rules as collections. See the [MCP section of Collection Schema](./collection-schema.md#mcp-server-duplicate-detection).
+1. **Inline `mcpServers` object** in `plugin.json` (collection-format compat, PR #717)
+2. **`mcp.items` object** in `plugin.json` (Prompt Registry native)
+3. **String path reference** — `"mcpServers": ".mcp.json"` in `plugin.json` → adapter loads the referenced file
+4. **Auto-discovery** — no `mcpServers` in `plugin.json`, but `.mcp.json` exists at the plugin root (used by [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/plugins/context-matic))
+
+The `.mcp.json` sidecar sits at the **plugin root** (sibling of `.github/`), not inside `.github/plugin/`. Its format follows the VS Code `.mcp.json` spec:
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "url": "https://example.com/mcp",
+      "headers": { "Authorization": "Bearer ${MY_TOKEN}" }
+    }
+  }
+}
+```
+
+Use `${CLAUDE_PLUGIN_ROOT}` in paths/args/env values to reference the installed plugin directory. All resolved configurations are archived into `deployment-manifest.yml` under the `mcpServers` key for the install pipeline.
+
+MCP servers follow the same identity + duplicate-detection rules as collections. See the [MCP section of Collection Schema](./collection-schema.md#mcp-server-duplicate-detection).
 
 ## Validation
 

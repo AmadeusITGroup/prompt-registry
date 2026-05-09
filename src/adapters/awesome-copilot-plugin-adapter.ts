@@ -155,7 +155,9 @@ export class AwesomeCopilotPluginAdapter extends RepositoryAdapter {
         const jsonContent = await this.fetchUrl(pluginJsonUrl);
         const manifest = JSON.parse(jsonContent) as PluginManifest;
         pluginItems.push(...derivePluginItems(manifest));
-        mcpServers = mcpServers ?? extractMcpServers(manifest);
+        if (mcpServers === undefined) {
+          mcpServers = await this.resolveMcpServers(pluginDir, manifest);
+        }
       }
 
       const resolved = await this.resolveItemsToFiles(pluginDir, pluginItems);
@@ -242,6 +244,41 @@ export class AwesomeCopilotPluginAdapter extends RepositoryAdapter {
     }
   }
 
+  // ===== MCP resolution =====
+
+  /**
+   * Resolve MCP server configurations for a plugin, trying in priority order:
+   * 1. Inline `mcpServers` object in `plugin.json`
+   * 2. `mcp.items` in `plugin.json` (Prompt Registry native)
+   * 3. File path referenced by `mcpServers` string in `plugin.json` (VS Code format)
+   * 4. Auto-discovery of `.mcp.json` at the plugin root (awesome-copilot convention)
+   */
+  private async resolveMcpServers(
+    pluginDir: string,
+    manifest: PluginManifest
+  ): Promise<Record<string, unknown> | undefined> {
+    // Priority 1+2: inline object or mcp.items (no I/O needed)
+    const inline = extractMcpServers(manifest);
+    if (inline) {
+      return inline;
+    }
+    // Priority 3+4: string path ref or auto-discover .mcp.json
+    const mcpFilename = typeof manifest.mcpServers === 'string' ? manifest.mcpServers : '.mcp.json';
+    const mcpUrl = this.buildRawUrl(`${this.config.pluginsPath}/${pluginDir}/${mcpFilename}`);
+    try {
+      const content = await this.fetchUrl(mcpUrl);
+      const parsed = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
+      if (parsed.mcpServers && Object.keys(parsed.mcpServers).length > 0) {
+        return parsed.mcpServers;
+      }
+    } catch {
+      if (typeof manifest.mcpServers === 'string') {
+        this.logger.warn(`Plugin ${pluginDir}: mcpServers path '${manifest.mcpServers}' not found`);
+      }
+    }
+    return undefined;
+  }
+
   // ===== Discovery / parsing =====
 
   private async listPluginDirectories(): Promise<string[]> {
@@ -270,7 +307,7 @@ export class AwesomeCopilotPluginAdapter extends RepositoryAdapter {
       }
 
       const items = derivePluginItems(manifest);
-      const mcpServers = extractMcpServers(manifest);
+      const mcpServers = await this.resolveMcpServers(pluginDir, manifest);
       const breakdown = calculateBreakdown(items, mcpServers);
       const tags = manifest.tags || manifest.keywords || [];
 

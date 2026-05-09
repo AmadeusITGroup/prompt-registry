@@ -30,8 +30,16 @@ export interface PluginManifest {
   agents?: string[];
   /** Upstream format: skill path refs. */
   skills?: string[];
-  /** MCP server configurations — top-level (collection-format compat). */
-  mcpServers?: Record<string, unknown>;
+  /**
+   * MCP server configurations — top-level.  Two forms accepted:
+   * - `Record<string, unknown>` — inline definitions (collection-format compat, PR #717)
+   * - `string` — relative path to a sidecar file (e.g. `".mcp.json"`, VS Code format)
+   *
+   * When the value is a string the adapter must load and parse the referenced file;
+   * {@link extractMcpServers} will return `undefined` for string values so callers
+   * know I/O is required.
+   */
+  mcpServers?: string | Record<string, unknown>;
   /** MCP server configurations — nested under `mcp.items` (our format). */
   mcp?: {
     items?: Record<string, unknown>;
@@ -112,13 +120,20 @@ export function extractAuthorName(author: PluginManifest['author'] | undefined):
 }
 
 /**
- * Extract MCP servers from a manifest, supporting both formats:
- * - `mcpServers` (top-level, collection-format compat)
- * - `mcp.items` (nested, our format)
+ * Extract MCP servers from a manifest without performing any I/O.
+ *
+ * Supports:
+ * - `mcpServers` inline object (top-level, collection-format compat / PR #717)
+ * - `mcp.items` (nested, Prompt Registry native format)
+ *
+ * Returns `undefined` when `mcpServers` is a *string* path reference — the
+ * caller (adapter) must load the referenced file itself.
+ *
  * @param manifest
  */
 export function extractMcpServers(manifest: PluginManifest): Record<string, unknown> | undefined {
-  const servers = manifest.mcpServers || manifest.mcp?.items;
+  const inlineServers = typeof manifest.mcpServers === 'object' ? manifest.mcpServers : undefined;
+  const servers = inlineServers || manifest.mcp?.items;
   return servers && Object.keys(servers).length > 0 ? servers : undefined;
 }
 

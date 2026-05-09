@@ -1,0 +1,8 @@
+{
+  "name": "mcp-ref-plugin",
+  "description": "Plugin with mcpServers as a string path reference to .mcp.json (VS Code format)",
+  "version": "0.1.0",
+  "keywords": ["mcp", "reference"],
+  "mcpServers": ".mcp.json",
+  "items": []
+}

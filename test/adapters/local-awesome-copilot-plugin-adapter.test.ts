@@ -53,9 +53,9 @@ suite('LocalAwesomeCopilotPluginAdapter', () => {
       const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
 
-      assert.strictEqual(bundles.length, 7);
+      assert.strictEqual(bundles.length, 9);
       const bundleIds = bundles.map((b: Bundle) => b.id).toSorted();
-      assert.deepStrictEqual(bundleIds, ['mcp-plugin', 'no-items-plugin', 'oracle-style-plugin', 'python-dev', 'skills-plugin', 'test-plugin', 'upstream-plugin']);
+      assert.deepStrictEqual(bundleIds, ['mcp-plugin', 'mcp-ref-plugin', 'mcp-sidecar-plugin', 'no-items-plugin', 'oracle-style-plugin', 'python-dev', 'skills-plugin', 'test-plugin', 'upstream-plugin']);
     });
 
     test('should parse plugin.json correctly', async () => {
@@ -131,7 +131,7 @@ suite('LocalAwesomeCopilotPluginAdapter', () => {
 
       assert.ok(metadata.name);
       assert.ok(metadata.description.includes('plugin'));
-      assert.strictEqual(metadata.bundleCount, 7);
+      assert.strictEqual(metadata.bundleCount, 9);
     });
   });
 
@@ -142,7 +142,7 @@ suite('LocalAwesomeCopilotPluginAdapter', () => {
 
       assert.strictEqual(result.valid, true);
       assert.strictEqual(result.errors.length, 0);
-      assert.strictEqual(result.bundlesFound, 7);
+      assert.strictEqual(result.bundlesFound, 9);
     });
 
     test('should fail validation for non-existent directory', async () => {
@@ -298,6 +298,76 @@ suite('LocalAwesomeCopilotPluginAdapter', () => {
       assert.ok(mcpPlugin);
       const breakdown = (mcpPlugin as any).breakdown;
       assert.strictEqual(breakdown.mcpServers, 1, 'breakdown.mcpServers must be 1');
+    });
+  });
+
+  suite('.mcp.json sidecar auto-discovery', () => {
+    test('fetchBundles discovers mcpServers from sidecar .mcp.json when not in plugin.json', async () => {
+      const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      const sidecarPlugin = bundles.find((b: Bundle) => b.id === 'mcp-sidecar-plugin');
+      assert.ok(sidecarPlugin, 'mcp-sidecar-plugin must be discovered');
+      const mcpServers = (sidecarPlugin as any).mcpServers;
+      assert.ok(mcpServers, 'mcpServers must be loaded from .mcp.json sidecar');
+      assert.ok(mcpServers['context-server'], 'context-server from .mcp.json must be present');
+    });
+
+    test('downloadBundle includes sidecar mcpServers in deployment-manifest.yml', async () => {
+      const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      const sidecarPlugin = bundles.find((b: Bundle) => b.id === 'mcp-sidecar-plugin');
+      assert.ok(sidecarPlugin);
+
+      const buffer = await adapter.downloadBundle(sidecarPlugin);
+      const entries = await extractZipBuffer(buffer);
+      const manifestYaml = entries.get('deployment-manifest.yml');
+      assert.ok(manifestYaml);
+
+      const manifest = yaml.load(manifestYaml) as any;
+      assert.ok(manifest.mcpServers, 'mcpServers from sidecar must appear in deployment manifest');
+      assert.ok(manifest.mcpServers['context-server']);
+    });
+
+    test('sidecar plugin breakdown reflects mcpServers count', async () => {
+      const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      const sidecarPlugin = bundles.find((b: Bundle) => b.id === 'mcp-sidecar-plugin');
+      assert.ok(sidecarPlugin);
+      assert.strictEqual((sidecarPlugin as any).breakdown.mcpServers, 1);
+    });
+  });
+
+  suite('.mcp.json string reference in plugin.json', () => {
+    test('fetchBundles loads mcpServers via string mcpServers path reference', async () => {
+      const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      const refPlugin = bundles.find((b: Bundle) => b.id === 'mcp-ref-plugin');
+      assert.ok(refPlugin, 'mcp-ref-plugin must be discovered');
+      const mcpServers = (refPlugin as any).mcpServers;
+      assert.ok(mcpServers, 'mcpServers must be resolved from string path reference');
+      assert.ok(mcpServers['ref-server'], 'ref-server from referenced .mcp.json must be present');
+    });
+
+    test('downloadBundle includes ref-resolved mcpServers in deployment-manifest.yml', async () => {
+      const adapter = new LocalAwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      const refPlugin = bundles.find((b: Bundle) => b.id === 'mcp-ref-plugin');
+      assert.ok(refPlugin);
+
+      const buffer = await adapter.downloadBundle(refPlugin);
+      const entries = await extractZipBuffer(buffer);
+      const manifestYaml = entries.get('deployment-manifest.yml');
+      assert.ok(manifestYaml);
+
+      const manifest = yaml.load(manifestYaml) as any;
+      assert.ok(manifest.mcpServers);
+      assert.ok(manifest.mcpServers['ref-server']);
+      assert.strictEqual(manifest.mcpServers['ref-server'].command, 'node');
     });
   });
 });

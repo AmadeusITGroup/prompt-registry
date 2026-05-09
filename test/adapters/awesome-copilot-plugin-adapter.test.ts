@@ -771,11 +771,133 @@ suite('AwesomeCopilotPluginAdapter', () => {
           description: 'Plugin without MCP'
         }));
 
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/no-mcp-plugin/.mcp.json')
+        .reply(404);
+
       const adapter = new AwesomeCopilotPluginAdapter(mockSource);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
       assert.ok(!(bundles[0] as any).mcpServers, 'mcpServers must NOT be attached when absent');
+    });
+
+    test('fetchBundles auto-discovers mcpServers from .mcp.json sidecar when not in plugin.json', async () => {
+      nock('https://api.github.com')
+        .get('/repos/test-owner/awesome-copilot/contents/plugins?ref=main')
+        .reply(200, [
+          { name: 'context-matic', type: 'dir', path: 'plugins/context-matic' }
+        ]);
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/context-matic/.github/plugin/plugin.json')
+        .reply(200, JSON.stringify({
+          name: 'context-matic',
+          description: 'MCP sidecar pattern (no mcpServers in plugin.json)',
+          version: '0.1.0',
+          skills: ['./skills/integrate-context-matic']
+        }));
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/context-matic/.mcp.json')
+        .reply(200, JSON.stringify({
+          mcpServers: {
+            'context-matic': {
+              url: 'https://chatbotapi.apimatic.io/mcp/plugins',
+              headers: { 'X-Plugin-Client': 'VsCode' }
+            }
+          }
+        }));
+
+      const adapter = new AwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      assert.strictEqual(bundles.length, 1);
+      const mcpServers = (bundles[0] as any).mcpServers;
+      assert.ok(mcpServers, 'mcpServers from sidecar must be attached');
+      assert.ok(mcpServers['context-matic'], 'context-matic server must be present');
+      assert.strictEqual(mcpServers['context-matic'].url, 'https://chatbotapi.apimatic.io/mcp/plugins');
+    });
+
+    test('fetchBundles loads mcpServers via string path reference in plugin.json', async () => {
+      nock('https://api.github.com')
+        .get('/repos/test-owner/awesome-copilot/contents/plugins?ref=main')
+        .reply(200, [
+          { name: 'ref-plugin', type: 'dir', path: 'plugins/ref-plugin' }
+        ]);
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/ref-plugin/.github/plugin/plugin.json')
+        .reply(200, JSON.stringify({
+          name: 'ref-plugin',
+          description: 'Uses mcpServers as string path',
+          mcpServers: '.mcp.json'
+        }));
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/ref-plugin/.mcp.json')
+        .reply(200, JSON.stringify({
+          mcpServers: {
+            'ref-server': { command: 'node', args: ['server.js'] }
+          }
+        }));
+
+      const adapter = new AwesomeCopilotPluginAdapter(mockSource);
+      const bundles = await adapter.fetchBundles();
+
+      assert.strictEqual(bundles.length, 1);
+      const mcpServers = (bundles[0] as any).mcpServers;
+      assert.ok(mcpServers, 'mcpServers from string ref must be attached');
+      assert.ok(mcpServers['ref-server']);
+      assert.strictEqual(mcpServers['ref-server'].command, 'node');
+    });
+
+    test('sidecar mcpServers appear in deployment-manifest.yml on downloadBundle', async () => {
+      const mockBundle: Bundle = {
+        id: 'context-matic',
+        name: 'context-matic',
+        version: '0.1.0',
+        description: 'Sidecar MCP',
+        author: 'test-owner',
+        sourceId: 'awesome-plugin-test',
+        environments: ['general'],
+        tags: [],
+        lastUpdated: '2025-01-01T00:00:00Z',
+        size: '0 items',
+        dependencies: [],
+        license: 'MIT',
+        manifestUrl: 'https://example.com/manifest.json',
+        downloadUrl: 'https://example.com/bundle.zip'
+      };
+      (mockBundle as any).pluginDir = 'context-matic';
+      (mockBundle as any).pluginItems = [];
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/context-matic/.github/plugin/plugin.json')
+        .reply(200, JSON.stringify({
+          name: 'context-matic',
+          description: 'Sidecar MCP'
+        }));
+
+      nock('https://raw.githubusercontent.com')
+        .get('/test-owner/awesome-copilot/main/plugins/context-matic/.mcp.json')
+        .reply(200, JSON.stringify({
+          mcpServers: {
+            'context-matic': {
+              url: 'https://chatbotapi.apimatic.io/mcp/plugins'
+            }
+          }
+        }));
+
+      const adapter = new AwesomeCopilotPluginAdapter(mockSource);
+      const buffer = await adapter.downloadBundle(mockBundle);
+      const entries = await extractZipBuffer(buffer);
+      const manifestYaml = entries.get('deployment-manifest.yml');
+      assert.ok(manifestYaml);
+
+      const manifest = yaml.load(manifestYaml) as any;
+      assert.ok(manifest.mcpServers, 'mcpServers from sidecar must be in deployment manifest');
+      assert.ok(manifest.mcpServers['context-matic']);
     });
 
     test('deployment manifest uses yaml.dump (no escaping bugs with special chars)', async () => {
