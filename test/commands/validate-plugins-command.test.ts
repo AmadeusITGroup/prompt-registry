@@ -26,7 +26,7 @@ function makeContext(extensionPath = EXTENSION_PATH): vscode.ExtensionContext {
       get: () => undefined,
       update: async () => undefined,
       keys: () => [],
-      setKeysForSync: () => undefined,
+      setKeysForSync: () => undefined
     },
     workspaceState: { get: () => undefined, update: async () => undefined, keys: () => [] },
     subscriptions: [],
@@ -40,7 +40,7 @@ function makeContext(extensionPath = EXTENSION_PATH): vscode.ExtensionContext {
     asAbsolutePath: (rel: string) => path.join(extensionPath, rel),
     environmentVariableCollection: {} as any,
     extension: {} as any,
-    languageModelAccessInformation: {} as any,
+    languageModelAccessInformation: {} as any
   } as unknown as vscode.ExtensionContext;
 }
 

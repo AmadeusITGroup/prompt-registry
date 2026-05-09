@@ -42,7 +42,6 @@ const makeBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 suite('plugin-adapter-shared', () => {
-
   suite('mapKindToType()', () => {
     test('maps instruction → instructions', () => {
       assert.strictEqual(mapKindToType('instruction'), 'instructions');
@@ -97,7 +96,7 @@ suite('plugin-adapter-shared', () => {
       const manifest: PluginManifest = {
         name: 'test',
         mcpServers: { 'top-level': { command: 'node' } },
-        mcp: { items: { 'nested': { command: 'python' } } }
+        mcp: { items: { nested: { command: 'python' } } }
       };
       const result = extractMcpServers(manifest);
       assert.deepStrictEqual(result, { 'top-level': { command: 'node' } });

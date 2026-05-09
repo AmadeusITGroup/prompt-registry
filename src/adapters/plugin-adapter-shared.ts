@@ -128,7 +128,6 @@ export function extractAuthorName(author: PluginManifest['author'] | undefined):
  *
  * Returns `undefined` when `mcpServers` is a *string* path reference — the
  * caller (adapter) must load the referenced file itself.
- *
  * @param manifest
  */
 export function extractMcpServers(manifest: PluginManifest): Record<string, unknown> | undefined {
@@ -142,7 +141,7 @@ export function extractMcpServers(manifest: PluginManifest): Record<string, unkn
  * @param items
  * @param mcpServers
  */
-export function calculateBreakdown(items: Array<{ kind: string }>, mcpServers?: Record<string, unknown>): Record<string, number> {
+export function calculateBreakdown(items: { kind: string }[], mcpServers?: Record<string, unknown>): Record<string, number> {
   const breakdown = { prompts: 0, instructions: 0, chatmodes: 0, agents: 0, skills: 0, mcpServers: mcpServers ? Object.keys(mcpServers).length : 0 };
   for (const item of items) {
     switch (item.kind) {
@@ -256,7 +255,6 @@ export function titleCase(str: string): string {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
 }
-
 
 /** Shape of one entry in a deployment manifest's `prompts` array. */
 interface ManifestPrompt {

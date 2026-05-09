@@ -348,7 +348,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     };
   }
 
-
   /**
    * Build GitHub API URL
    * @param path
@@ -570,7 +569,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       });
     });
   }
-
 
   /**
    * Fetch list of available bundles from the source

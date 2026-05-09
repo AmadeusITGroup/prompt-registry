@@ -55,7 +55,10 @@ suite('LocalAwesomeCopilotPluginAdapter', () => {
 
       assert.strictEqual(bundles.length, 9);
       const bundleIds = bundles.map((b: Bundle) => b.id).toSorted();
-      assert.deepStrictEqual(bundleIds, ['mcp-plugin', 'mcp-ref-plugin', 'mcp-sidecar-plugin', 'no-items-plugin', 'oracle-style-plugin', 'python-dev', 'skills-plugin', 'test-plugin', 'upstream-plugin']);
+      assert.deepStrictEqual(bundleIds, [
+        'mcp-plugin', 'mcp-ref-plugin', 'mcp-sidecar-plugin', 'no-items-plugin',
+        'oracle-style-plugin', 'python-dev', 'skills-plugin', 'test-plugin', 'upstream-plugin'
+      ]);
     });
 
     test('should parse plugin.json correctly', async () => {

@@ -255,6 +255,8 @@ export class LocalAwesomeCopilotPluginAdapter extends RepositoryAdapter {
    * 2. `mcp.items` in `plugin.json` (Prompt Registry native)
    * 3. File path referenced by `mcpServers` string in `plugin.json` (VS Code format)
    * 4. Auto-discovery of `.mcp.json` at the plugin root (awesome-copilot convention)
+   * @param pluginRootDir - Absolute path to the plugin root directory
+   * @param manifest - Parsed plugin.json manifest
    */
   private async resolveMcpServers(
     pluginRootDir: string,
