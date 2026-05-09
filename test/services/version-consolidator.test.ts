@@ -86,6 +86,19 @@ suite('VersionConsolidator Unit Tests', () => {
       assert.strictEqual(consolidated.length, 0);
     });
 
+    test('should skip bundles with missing id', () => {
+      const bundles = [
+        BundleBuilder.github('microsoft', 'vscode').withVersion('1.0.0').build(),
+        { ...BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(), id: undefined as any },
+        { ...BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(), id: '' }
+      ];
+
+      const consolidated = consolidator.consolidateBundles(bundles);
+
+      assert.strictEqual(consolidated.length, 1, 'Should only include bundle with valid id');
+      assert.strictEqual(consolidated[0].id, 'microsoft-vscode-1.0.0');
+    });
+
     test('should consolidate each GitHub repo separately', () => {
       const bundles = [
         BundleBuilder.github('owner1', 'repo1').withVersion('1.0.0').build(),

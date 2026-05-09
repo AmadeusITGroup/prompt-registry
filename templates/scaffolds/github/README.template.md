@@ -382,7 +382,7 @@ items:
 - `name`: 1-100 characters
 - `description`: 1-500 characters
 - `items`: 1-50 items, paths must exist
-- `kind`: `prompt`, `instruction`, `chat-mode`, `agent`, or `skill`
+- `kind`: `prompt`, `instruction`, `agent`, or `skill`
 
 ### MCP Servers (Optional)
 

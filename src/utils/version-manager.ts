@@ -144,6 +144,11 @@ export class VersionManager {
    * @throws {Error} if bundleId exceeds maximum length
    */
   public static extractBundleIdentity(bundleId: string, sourceType: SourceType): string {
+    // Guard against undefined/null bundleId
+    if (!bundleId) {
+      return '';
+    }
+
     // Security: Prevent ReDoS attacks with length validation
     if (bundleId.length > this.MAX_BUNDLE_ID_LENGTH) {
       throw new Error(`Bundle ID exceeds maximum length of ${this.MAX_BUNDLE_ID_LENGTH}`);

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "context-server": {
+      "url": "https://example.com/mcp/context",
+      "headers": {
+        "X-Plugin-Client": "VsCode"
+      }
+    }
+  }
+}

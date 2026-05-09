@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ref-server": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"],
+      "env": {
+        "PORT": "3000"
+      }
+    }
+  }
+}

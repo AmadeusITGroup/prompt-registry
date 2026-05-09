@@ -256,4 +256,18 @@ export class SchemaValidator {
     const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
     return this.validate(data, schemaPath, options);
   }
+
+  /**
+   * Validate a plugin manifest (plugin.json) against the plugin schema
+   * @param data Plugin manifest data
+   * @param options Validation options
+   * @returns Validation result
+   */
+  public async validatePlugin(
+    data: any,
+    options: ValidationOptions = {}
+  ): Promise<ValidationResult> {
+    const schemaPath = path.join(this.extensionPath, 'schemas', 'plugin.schema.json');
+    return this.validate(data, schemaPath, options);
+  }
 }

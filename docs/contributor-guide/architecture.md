@@ -5,7 +5,7 @@ VS Code extension providing a marketplace for GitHub Copilot prompt bundles from
 ## Key Features
 
 - Visual Marketplace with search/filter
-- Multi-source support (GitHub, Local, AwesomeCopilot, APM)
+- Multi-source support (GitHub, Local, AwesomeCopilot collections, AwesomeCopilot plugins, APM, Skills)
 - Bundle management (install, update, uninstall)
 - Auto-sync with GitHub Copilot
 - Cross-platform (macOS, Linux, Windows)

@@ -40,6 +40,12 @@ import {
   Logger,
 } from '../utils/logger';
 import {
+  calculateBreakdown,
+  inferEnvironments,
+  mapKindToType,
+  titleCase,
+} from './plugin-adapter-shared';
+import {
   RepositoryAdapter,
 } from './repository-adapter';
 
@@ -168,7 +174,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       const mcpServers = collection.mcpServers || collection.mcp?.items;
 
       // Count items by kind (including MCP servers)
-      const breakdown = this.calculateBreakdown(collection.items, mcpServers);
+      const breakdown = calculateBreakdown(collection.items, mcpServers);
 
       const bundle: Bundle = {
         id: collection.id,
@@ -178,7 +184,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         author: collection.author || this.extractRepoOwner(),
         repository: this.source.url,
         tags: collection.tags || [],
-        environments: this.inferEnvironments(collection.tags || []),
+        environments: inferEnvironments(collection.tags || []),
         sourceId: this.source.id,
         manifestUrl: this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`),
         downloadUrl: this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`),
@@ -304,7 +310,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
         return {
           id: skillName,
-          name: this.titleCase(skillName.replace(/-/g, ' ')),
+          name: titleCase(skillName.replace(/-/g, ' ')),
           description: `Skill from ${collection.name}`,
           file: itemPath, // Preserve full path for skills
           type: 'skill' as const,
@@ -314,19 +320,18 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
       // For other types, use prompts/ folder
       const filename = itemPath.split('/').pop() || 'unknown';
-      const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
+      const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '').replace(/\.md$/, '');
 
       return {
         id,
-        name: this.titleCase(id.replace(/-/g, ' ')),
+        name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${collection.name}`,
         file: `prompts/${filename}`,
-        type: this.mapKindToType(itemKind),
+        type: mapKindToType(itemKind),
         tags: collection.tags || []
       };
     });
 
-    // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
     const mcpServers = collection.mcpServers || collection.mcp?.items;
 
     return {
@@ -341,91 +346,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       prompts,
       ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
     };
-  }
-
-  /**
-   * Map collection kind to Prompt Registry type
-   * @param kind
-   */
-  private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
-    const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
-      prompt: 'prompt',
-      instruction: 'instructions',
-      'chat-mode': 'chatmode',
-      agent: 'agent',
-      skill: 'skill'
-    };
-    return kindMap[kind] || 'prompt';
-  }
-
-  /**
-   * Calculate content breakdown from items
-   * @param items
-   * @param mcpServers
-   */
-  private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
-    const breakdown = {
-      prompts: 0,
-      instructions: 0,
-      chatmodes: 0,
-      agents: 0,
-      skills: 0,
-      mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
-    };
-
-    for (const item of items) {
-      switch (item.kind) {
-        case 'prompt': {
-          breakdown.prompts++;
-          break;
-        }
-        case 'instruction': {
-          breakdown.instructions++;
-          break;
-        }
-        case 'chat-mode': {
-          breakdown.chatmodes++;
-          break;
-        }
-        case 'agent': {
-          breakdown.agents++;
-          break;
-        }
-        case 'skill': {
-          breakdown.skills++;
-          break;
-        }
-      }
-    }
-
-    return breakdown;
-  }
-
-  /**
-   * Infer environments from tags
-   * @param tags
-   */
-  private inferEnvironments(tags: string[]): string[] {
-    const envMap: Record<string, string> = {
-      azure: 'cloud',
-      aws: 'cloud',
-      gcp: 'cloud',
-      frontend: 'web',
-      backend: 'server',
-      database: 'data',
-      devops: 'infrastructure',
-      testing: 'testing'
-    };
-
-    const environments = new Set<string>();
-    for (const tag of tags) {
-      const env = envMap[tag.toLowerCase()];
-      if (env) {
-        environments.add(env);
-      }
-    }
-
-    return environments.size > 0 ? Array.from(environments) : ['general'];
   }
 
   /**
@@ -648,17 +568,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         reject(error);
       });
     });
-  }
-
-  /**
-   * Convert kebab-case to Title Case
-   * @param str
-   */
-  private titleCase(str: string): string {
-    return str
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
   }
 
   /**

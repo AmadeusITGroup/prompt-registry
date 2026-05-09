@@ -1,0 +1,17 @@
+{
+  "id": "mcp-plugin",
+  "name": "mcp-plugin",
+  "description": "A plugin with MCP server configuration",
+  "tags": ["mcp", "tools"],
+  "mcpServers": {
+    "context-server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "API_KEY": "${API_KEY}"
+      }
+    }
+  },
+  "items": []
+}

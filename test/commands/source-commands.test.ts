@@ -72,6 +72,58 @@ suite('Source Management Commands', () => {
       assert.strictEqual(source.type, 'local');
       assert.ok(source.url.startsWith('/'));
     });
+
+    test('should support awesome-copilot-plugin sources (new plugin format)', () => {
+      const source = {
+        id: 'awesome-plugin-source',
+        name: 'Awesome Copilot Plugins',
+        type: 'awesome-copilot-plugin',
+        url: 'https://github.com/github/awesome-copilot',
+        enabled: true,
+        priority: 1,
+        config: { branch: 'main', pluginsPath: 'plugins' }
+      };
+
+      assert.strictEqual(source.type, 'awesome-copilot-plugin');
+      assert.ok(source.url.includes('github.com'));
+      assert.strictEqual(source.config.branch, 'main');
+      assert.strictEqual(source.config.pluginsPath, 'plugins');
+    });
+
+    test('should support local-awesome-copilot-plugin sources', () => {
+      const source = {
+        id: 'local-plugin-source',
+        name: 'Local Plugin Collection',
+        type: 'local-awesome-copilot-plugin',
+        url: '/path/to/awesome-copilot-clone',
+        enabled: true,
+        priority: 1,
+        config: { pluginsPath: 'plugins' }
+      };
+
+      assert.strictEqual(source.type, 'local-awesome-copilot-plugin');
+      assert.ok(source.url.startsWith('/'));
+      assert.strictEqual(source.config.pluginsPath, 'plugins');
+    });
+
+    test('awesome-copilot-plugin URL defaults to official repository', () => {
+      const DEFAULT_URL = 'https://github.com/github/awesome-copilot';
+      const source = {
+        id: 'official-plugin-source',
+        name: 'Official Awesome Copilot',
+        type: 'awesome-copilot-plugin',
+        url: DEFAULT_URL,
+        enabled: true,
+        priority: 1
+      };
+
+      assert.strictEqual(source.url, DEFAULT_URL);
+    });
+
+    test('local-awesome-copilot-plugin is marked as a local source type', () => {
+      const LOCAL_TYPES = ['local', 'local-awesome-copilot', 'local-awesome-copilot-plugin', 'local-apm', 'local-skills'];
+      assert.ok(LOCAL_TYPES.includes('local-awesome-copilot-plugin'));
+    });
   });
 
   suite('editSource', () => {

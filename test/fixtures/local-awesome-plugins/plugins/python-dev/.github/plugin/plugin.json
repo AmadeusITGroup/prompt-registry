@@ -1,0 +1,11 @@
+{
+  "id": "python-dev",
+  "name": "python-dev",
+  "description": "Python development tools and skills",
+  "path": "plugins/python-dev",
+  "tags": ["python", "development", "testing"],
+  "itemCount": 1,
+  "items": [
+    { "kind": "skill", "path": "./skills/python-testing" }
+  ]
+}

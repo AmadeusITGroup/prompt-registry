@@ -1,6 +1,6 @@
-# Validating Collections
+# Validating Collections and Plugins
 
-Validate your collection files before publishing to catch errors early.
+Validate your collection or plugin files before publishing to catch errors early.
 
 ## Quick Validation
 
@@ -45,7 +45,18 @@ Validates all `.collection.yml` files in your `collections/` directory, includin
 **Duplicate collection name**
 → Each collection must have a unique name across the repository
 
+## Validating Plugins
+
+For the plugin format (`plugins/<id>/.github/plugin/plugin.json`):
+
+```bash
+Ctrl+Shift+P → "Prompt Registry: Validate Plugins"
+```
+
+The same classes of checks apply (required fields, id format, item kinds and paths, referenced files exist, duplicate ids), validated against [`schemas/plugin.schema.json`](../../schemas/plugin.schema.json). Use `Prompt Registry: List All Plugins` to print a summary without running full validation.
+
 ## See Also
 
 - [Collection Schema](./collection-schema.md) — Full YAML reference
+- [Plugin Schema](./plugin-schema.md) — `plugin.json` reference
 - [Creating Collections](./creating-source-bundle.md) — Getting started

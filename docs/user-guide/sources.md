@@ -14,6 +14,8 @@ If you select a hub during first-run setup, all sources defined in that hub are 
 |------|----------|--------|
 | `awesome-copilot` | Community collections (GitHub-hosted) | Active |
 | `local-awesome-copilot` | Local collection development/testing | Active |
+| `awesome-copilot-plugin` | Community plugins using the new `plugin.json` format (GitHub-hosted) | Active |
+| `local-awesome-copilot-plugin` | Local plugin development/testing | Active |
 | `github` | GitHub repository releases | Active ( Recommended ) |
 | `local` | File system directories | Active |
 | `apm` | APM package repositories | Active |
@@ -42,7 +44,7 @@ Command Palette:
 - **Remote skills (`anthropic/skills`)**: each skill version is derived from a content hash. If any file in the skill directory (including `assets/`, `references/`, etc.) changes, the Marketplace shows **Update** after you sync the source.
 - **Local skills (`local-skills`)**: installations are symlinked to your filesystem. Running **Sync Source** updates the recorded version automatically—no manual update button—so the UI reflects the latest hash without touching the symlink.
 
-> Tip: if a skill doesnt show the expected update, run **Sync Source** and check the logs for hash calculation warnings.
+> Tip: if a skill doesn't show the expected update, run **Sync Source** and check the logs for hash calculation warnings.
 
 ## Private Repositories
 

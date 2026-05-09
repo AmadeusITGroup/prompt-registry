@@ -39,7 +39,7 @@ docs/
 | Validation logic | `contributor-guide/architecture/validation.md` |
 | MCP integration | `contributor-guide/architecture/mcp-integration.md` |
 | Commands or settings | `reference/commands.md`, `reference/settings.md` |
-| Bundle/collection schemas | `author-guide/collection-schema.md`, `reference/hub-schema.md` |
+| Bundle/collection schemas | `author-guide/collection-schema.md`, `author-guide/plugin-schema.md`, `reference/hub-schema.md` |
 | Testing strategy | `contributor-guide/testing.md` |
 
 ## Updating Documentation
@@ -71,7 +71,7 @@ Update documentation when:
 | Installation/update flow changes | `contributor-guide/architecture/installation-flow.md`, `contributor-guide/architecture/update-system.md` |
 | UI changes | `contributor-guide/architecture/ui-components.md` |
 | User-facing behavior | Relevant file in `user-guide/` |
-| Schema changes | `author-guide/collection-schema.md` or `reference/hub-schema.md` |
+| Schema changes | `author-guide/collection-schema.md`, `author-guide/plugin-schema.md`, or `reference/hub-schema.md` |
 | Repository-level installation | `user-guide/repository-installation.md` |
 | Collection authoring | `author-guide/` (appropriate file) |
 | Development process | `contributor-guide/` (appropriate file) |
