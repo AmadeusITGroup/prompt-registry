@@ -160,6 +160,12 @@ post-compile-fixes-cross-platform.js
 
 # Cache directories
 .cache/
+.primitive-index/
+lib/.primitive-index/
+analytics-output/
+lib/ratings-output/
+lib/.env.test
+lib/.env*.local
 
 # Claude local settings file
 .claude/settings.local.json
