@@ -9,6 +9,7 @@
   let selectedTags = [];
   let showInstalledOnly = false;
   let setupState = 'complete'; // Default to complete to avoid showing setup prompt unnecessarily
+  let sourcesCount = 0;
 
   // Handle messages from extension
   window.addEventListener('message', (event) => {
@@ -18,6 +19,7 @@
       allBundles = message.bundles;
       filterOptions = message.filterOptions || { tags: [], sources: [] };
       setupState = message.setupState || 'complete';
+      sourcesCount = message.sourcesCount || 0;
       updateFilterUI();
       renderBundles();
     }
@@ -361,14 +363,18 @@
       var hasFiltersApplied = searchTerm || selectedSource !== 'all' || selectedTags.length > 0 || showInstalledOnly;
 
       if (allBundles.length === 0) {
-        // No bundles at all - check if setup is incomplete or in progress
-        var isSetupIncomplete = setupState === 'incomplete' || setupState === 'not_started' || setupState === 'in_progress';
+        var hasNoSources = setupState === 'complete' && sourcesCount === 0;
+        var shouldShowSetupPrompt = setupState === 'incomplete' || setupState === 'not_started' || setupState === 'in_progress' || hasNoSources;
 
-        marketplace.innerHTML = isSetupIncomplete
+        var setupMessage = hasNoSources
+          ? 'No sources are configured. Complete setup to browse bundles.'
+          : 'No hub is configured. Complete setup to browse bundles.';
+
+        marketplace.innerHTML = shouldShowSetupPrompt
           ? '<div class="empty-state">'
           + '<div class="empty-state-icon">⚙️</div>'
           + '<div class="empty-state-title">Setup Not Complete</div>'
-          + '<p>No hub is configured. Complete setup to browse bundles.</p>'
+          + '<p>' + setupMessage + '</p>'
           + '<button class="primary-button" data-action="completeSetup">'
           + 'Complete Setup'
           + '</button>'

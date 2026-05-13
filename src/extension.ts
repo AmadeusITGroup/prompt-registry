@@ -417,9 +417,27 @@ export class PromptRegistryExtension {
         await this.setupStateManager.reset();
         // Clear active hub to ensure hub selector is shown
         await this.hubManager?.setActiveHub(null);
-        // Remove any ghost hubs left by failed imports
+        // Remove any ghost hubs left by failed imports (also removes hub-linked sources)
         await this.hubManager?.deleteAllHubs();
+        // Remove any remaining sources not linked to a hub (standalone sources)
+        if (this.registryManager) {
+          const remainingSources = await this.registryManager.listSources();
+          const results = await Promise.allSettled(
+            remainingSources.map((s) => this.registryManager.removeSource(s.id))
+          );
+          const failures = results.filter((r) => r.status === 'rejected');
+          if (failures.length > 0) {
+            this.logger.warn(`Failed to remove ${failures.length} standalone source(s) during reset`);
+          }
+        }
         this.logger.info('First run state reset via SetupStateManager');
+        if (this.registryManager) {
+          const leftover = await this.registryManager.listSources();
+          if (leftover.length > 0) {
+            vscode.window.showWarningMessage(`First run state reset, but ${leftover.length} source(s) could not be removed. Reload the window to retry.`);
+            return;
+          }
+        }
         vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
       }),
 

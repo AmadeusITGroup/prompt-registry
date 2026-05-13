@@ -153,6 +153,38 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
       assert.strictEqual(postedMessages[0].setupState, SetupState.COMPLETE);
     });
 
+    test('should include sourcesCount in bundlesLoaded message', async () => {
+      // WHEN setup is complete but no sources are configured, sourcesCount must be 0
+      // so the webview can show "Setup Not Complete" instead of the infinite spinner
+      mockSetupStateManager.getState.resolves(SetupState.COMPLETE);
+      mockRegistryManager.searchBundles.resolves([]);
+      mockRegistryManager.listInstalledBundles.resolves([]);
+      mockRegistryManager.listSources.resolves([]);
+
+      await (marketplaceProvider as any).loadBundles();
+
+      assert.strictEqual(postedMessages.length, 1);
+      assert.strictEqual(postedMessages[0].type, 'bundlesLoaded');
+      assert.strictEqual(postedMessages[0].sourcesCount, 0,
+        'sourcesCount should be 0 when no sources configured');
+    });
+
+    test('should include correct sourcesCount when sources are configured', async () => {
+      mockSetupStateManager.getState.resolves(SetupState.COMPLETE);
+      mockRegistryManager.searchBundles.resolves([]);
+      mockRegistryManager.listInstalledBundles.resolves([]);
+      mockRegistryManager.listSources.resolves([
+        { id: 'source-1' } as any,
+        { id: 'source-2' } as any
+      ]);
+
+      await (marketplaceProvider as any).loadBundles();
+
+      assert.strictEqual(postedMessages.length, 1);
+      assert.strictEqual(postedMessages[0].sourcesCount, 2,
+        'sourcesCount should reflect actual number of sources');
+    });
+
     test('should include setup state in bundlesLoaded message when setup is in progress', async () => {
       mockSetupStateManager.getState.resolves(SetupState.IN_PROGRESS);
       mockRegistryManager.searchBundles.resolves([]);
@@ -341,6 +373,8 @@ suite('MarketplaceViewProvider - Empty State UI', () => {
         'marketplace.js should include "Setup Not Complete" message');
       assert.ok(jsContent.includes('No hub is configured'),
         'marketplace.js should include explanation about no hub configured');
+      assert.ok(jsContent.includes('No sources are configured'),
+        'marketplace.js should include explanation for complete+no-sources case');
     });
 
     test('external marketplace JS should include syncing message', () => {

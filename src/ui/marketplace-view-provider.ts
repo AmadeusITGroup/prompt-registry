@@ -335,7 +335,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             tags: availableTags,
             sources: availableSources
           },
-          setupState: setupState
+          setupState: setupState,
+          sourcesCount: sources.length
         });
       }
 
