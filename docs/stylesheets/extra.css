@@ -1,0 +1,13 @@
+/* Amadeus brand colors: Dark Sky + Vivid Sky */
+:root {
+  --md-primary-fg-color: #000835;
+  --md-primary-fg-color--light: #0a1a5c;
+  --md-primary-fg-color--dark: #000520;
+  --md-accent-fg-color: #3A8BFF;
+  --md-accent-fg-color--transparent: #3A8BFF1a;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: #3A8BFF;
+  --md-accent-fg-color--transparent: #3A8BFF1a;
+}

@@ -1,0 +1,109 @@
+site_name: Prompt Registry
+site_description: Marketplace and registry for Copilot prompt bundles in VS Code
+site_url: https://amadeustitgroup.github.io/prompt-registry/
+repo_url: https://github.com/AmadeusITGroup/prompt-registry
+repo_name: GitHub
+
+theme:
+  name: material
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
+
+docs_dir: docs
+
+exclude_docs: |
+  AGENTS.md
+  CLAUDE.md
+  README.md
+  _hooks/
+
+hooks:
+  - docs/_hooks/readme_hook.py
+
+nav:
+  - Home: index.md
+  - User Guide:
+      - Getting Started: user-guide/getting-started.md
+      - Marketplace: user-guide/marketplace.md
+      - Repository Installation: user-guide/repository-installation.md
+      - Sources: user-guide/sources.md
+      - Profiles and Hubs: user-guide/profiles-and-hubs.md
+      - Configuration: user-guide/configuration.md
+      - Troubleshooting: user-guide/troubleshooting.md
+  - Author Guide:
+      - Creating Collections: author-guide/creating-source-bundle.md
+      - Creating Skills: author-guide/creating-skills.md
+      - Collection Scripts: author-guide/collection-scripts.md
+      - Collection Schema: author-guide/collection-schema.md
+      - Agentic Primitives: author-guide/agentic-primitives-guide.md
+      - Adding Sources to Hubs: author-guide/adding-profile-source-to-hub.md
+      - Validation: author-guide/validation.md
+      - Publishing: author-guide/publishing.md
+  - Contributor Guide:
+      - Development Setup: contributor-guide/development-setup.md
+      - Architecture: contributor-guide/architecture.md
+      - Architecture Details:
+          - Adapters: contributor-guide/architecture/adapters.md
+          - Authentication: contributor-guide/architecture/authentication.md
+          - Installation Flow: contributor-guide/architecture/installation-flow.md
+          - Update System: contributor-guide/architecture/update-system.md
+          - UI Components: contributor-guide/architecture/ui-components.md
+          - MCP Integration: contributor-guide/architecture/mcp-integration.md
+          - Scaffolding: contributor-guide/architecture/scaffolding.md
+          - Validation: contributor-guide/architecture/validation.md
+      - Core Flows: contributor-guide/core-flows.md
+      - Testing: contributor-guide/testing.md
+      - Testing SSH Remote: contributor-guide/testing-ssh-remote.md
+      - Validation: contributor-guide/validation.md
+      - Coding Standards: contributor-guide/coding-standards.md
+      - Collection Scripts Spec: contributor-guide/spec-collection-scripts-lib.md
+      - Releasing: contributor-guide/releasing.md
+  - Reference:
+      - Commands: reference/commands.md
+      - Settings: reference/settings.md
+      - Adapter API: reference/adapter-api.md
+      - Hub Schema: reference/hub-schema.md
+  - Migration Guide: migration-guide.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      pygments_lang_class: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
