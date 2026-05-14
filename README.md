@@ -3,6 +3,7 @@
 > A visual marketplace for discovering, installing, and managing GitHub Copilot prompt libraries from multiple sources.
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=AmadeusITGroup.prompt-registry)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue?logo=github)](https://amadeustitgroup.github.io/prompt-registry/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Version](https://img.shields.io/badge/version-0.0.2-green.svg)](https://github.com/AmadeusITGroup/prompt-registry)
 
