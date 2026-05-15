@@ -36,6 +36,11 @@ build/
 *.js.map
 *.d.ts.map
 
+# Docusaurus
+website/build/
+website/.docusaurus/
+website/node_modules/
+
 # Generated skill references (copied from docs/ at build time)
 resources/skills/prompt-registry-helper/references
 

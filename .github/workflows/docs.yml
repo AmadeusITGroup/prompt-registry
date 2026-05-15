@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'mkdocs.yml'
+      - 'website/**'
       - 'README.md'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'mkdocs.yml'
+      - 'website/**'
       - 'README.md'
   workflow_dispatch:
 
@@ -34,19 +34,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.x'
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
 
-      - name: Install MkDocs Material
-        run: pip install mkdocs-material==9.7.6 pytest
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
 
-      - name: Test hooks
-        run: pytest docs/_hooks/ -v
+      - name: Build documentation
+        working-directory: website
+        run: npm run build
 
-      - name: Build documentation (strict)
-        run: mkdocs build --strict
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
 
   deploy:
     name: Deploy to GitHub Pages
@@ -54,23 +60,17 @@ jobs:
     needs: build
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
-      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
 
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install MkDocs Material
-        run: pip install mkdocs-material==9.7.6
-
       - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+        id: deployment
+        uses: actions/deploy-pages@v4
