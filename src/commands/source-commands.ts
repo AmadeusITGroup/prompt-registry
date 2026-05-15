@@ -142,6 +142,20 @@ export class SourceCommands {
         return uris && uris.length > 0 ? uris[0].fsPath : undefined;
       }
 
+      case 'azure-devops': {
+        return await vscode.window.showInputBox({
+          prompt: 'Enter Azure DevOps repository URL',
+          placeHolder: 'https://dev.azure.com/org/project/_git/repo',
+          validateInput: (value) => {
+            if (!value || !value.startsWith('https://') || !value.includes('/_git/')) {
+              return 'Please enter a valid Azure DevOps HTTPS URL containing /_git/';
+            }
+            return undefined;
+          },
+          ignoreFocusOut: true
+        });
+      }
+
       default: {
         return undefined;
       }
@@ -329,6 +343,11 @@ export class SourceCommands {
             label: '$(folder-library) Local Skills',
             description: 'Local filesystem directory with skills in skills/ folder (SKILL.md files)',
             value: 'local-skills' as SourceType
+          },
+          {
+            label: '$(azure) Azure DevOps',
+            description: 'Azure DevOps Git repository (cloud or on-premises) with .collection.yml bundles',
+            value: 'azure-devops' as SourceType
           }
         ],
         {
@@ -414,6 +433,28 @@ export class SourceCommands {
 
           config = {
             branch: branch || 'main'
+          };
+
+          break;
+        }
+        case 'azure-devops': {
+          const branch = await vscode.window.showInputBox({
+            prompt: 'Enter branch name (or press Enter for "main")',
+            placeHolder: 'main',
+            value: 'main',
+            ignoreFocusOut: true
+          });
+
+          const collectionsPath = await vscode.window.showInputBox({
+            prompt: 'Enter bundles root path within the repository (or press Enter for "/")',
+            placeHolder: '/',
+            value: '/',
+            ignoreFocusOut: true
+          });
+
+          config = {
+            branch: branch || 'main',
+            collectionsPath: collectionsPath || '/'
           };
 
           break;

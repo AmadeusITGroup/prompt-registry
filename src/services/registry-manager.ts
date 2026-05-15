@@ -11,6 +11,9 @@ import {
   AwesomeCopilotAdapter,
 } from '../adapters/awesome-copilot-adapter';
 import {
+  AzureDevOpsAdapter,
+} from '../adapters/azure-devops-adapter';
+import {
   GitHubAdapter,
 } from '../adapters/github-adapter';
 import {
@@ -189,6 +192,7 @@ export class RegistryManager {
     RepositoryAdapterFactory.register('apm', ApmAdapter);
     RepositoryAdapterFactory.register('skills', SkillsAdapter);
     RepositoryAdapterFactory.register('local-skills', LocalSkillsAdapter);
+    RepositoryAdapterFactory.register('azure-devops', AzureDevOpsAdapter);
   }
 
   /**

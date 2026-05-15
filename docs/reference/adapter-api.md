@@ -170,6 +170,46 @@ export type SourceType =
 | `LocalApmAdapter` | `local-apm` | Local APM packages | Active |
 | `SkillsAdapter` | `skills` | Fetches skills from a GitHub repository's `skills/` directory | Active |
 | `LocalSkillsAdapter` | `local-skills` | Local filesystem skills directory | Active |
+| `AzureDevOpsAdapter` | `azure-devops` | Private ADO Git repositories (cloud or on-premises) | Active |
+
+### AzureDevOpsAdapter
+
+Fetches bundles from Azure DevOps Git repositories by scanning for `.collection.yml` files
+under `collectionsPath`. Two repo layouts are supported:
+
+- **Flat layout (depth-0)**: the `.collection.yml` lives directly inside `collectionsPath`
+  (e.g. `collections/my-collection.collection.yml`). Item paths in the YAML are relative to
+  the repo root. Skill items reference the skill directory path.
+- **Bundle-directory layout (depth-1)**: each `.collection.yml` lives inside its own
+  subdirectory one level beneath `collectionsPath` (e.g. `collections/my-bundle/my-bundle.collection.yml`).
+
+Bundles are assembled on-the-fly: each listed item is
+fetched individually and packaged with a synthesised `deployment-manifest.yml` into an
+in-memory ZIP archive — no `deployment-manifest.yml` needs to exist in the repository.
+
+**Configuration:**
+
+```json
+{
+  "id": "my-ado-source",
+  "name": "My ADO Prompts",
+  "type": "azure-devops",
+  "url": "https://dev.azure.com/myorg/myproject/_git/myrepo",
+  "enabled": true,
+  "priority": 1,
+  "private": true,
+  "token": "<personal-access-token>",
+  "config": {
+    "branch": "main",
+    "collectionsPath": "/"
+  }
+}
+```
+
+**Authentication:** Uses `AzureDevOpsAuthService` with the following fallback chain:
+1. PAT from `source.token` (Basic auth)
+2. VS Code Microsoft authentication (Bearer token via `vscode.authentication.getSession`)
+3. Azure CLI: `az account get-access-token` (Bearer token)
 
 ## Authentication
 
