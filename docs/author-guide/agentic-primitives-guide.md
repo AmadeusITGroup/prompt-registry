@@ -289,6 +289,6 @@ flowchart LR
 ## Resources
 
 - [Prompt Registry Documentation](../README.md)
-- [Collection Authoring Guide](creating-collections.md)
+- [Collection Authoring Guide](creating-source-bundle.md)
 - [Skill Development Guide](creating-skills.md)
-- [Hub Configuration Guide](../reference/hub-config.md)
+- [Hub Configuration Guide](../reference/hub-schema.md)

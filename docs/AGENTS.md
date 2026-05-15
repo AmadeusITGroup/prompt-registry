@@ -87,6 +87,17 @@ Update documentation when:
 ## Style Notes
 
 - Use relative links within docs/ (e.g., `../user-guide/getting-started.md`)
+- Links to files outside `docs/` (e.g., `../../CONTRIBUTING.md`) are automatically rewritten to absolute GitHub URLs at build time by `docs/_hooks/readme_hook.py`
 - Include "See Also" sections to connect related topics
 - Add screenshot placeholders with descriptive alt text when UI changes
 - Keep each file focused on one topic
+
+### GitHub Pages / MkDocs Maintenance
+
+When adding or modifying documentation:
+
+1. **New doc pages** must be added to the `nav:` section in `mkdocs.yml`
+2. **Links to root-level files** (CONTRIBUTING.md, LICENSE.txt, etc.) should use relative paths — the build hook rewrites them automatically
+3. **Root README links** must use the `./` prefix (e.g., `](./CONTRIBUTING.md)`) so the hook can detect and rewrite them for the docs site
+4. **Excluding files** from the MkDocs build: add them to `exclude_docs` in `mkdocs.yml` and to `excluded_files` in `docs/_hooks/readme_hook.py`
+5. **Verify changes** by running `mkdocs build --strict` — it must pass with 0 warnings
