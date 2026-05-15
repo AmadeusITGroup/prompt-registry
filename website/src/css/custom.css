@@ -1,0 +1,39 @@
+/* Amadeus brand colors — Dark Sky / Vivid Sky */
+
+:root {
+  --ifm-color-primary: #3a8bff;        /* Vivid Sky */
+  --ifm-color-primary-dark: #1a73e8;
+  --ifm-color-primary-darker: #1565d8;
+  --ifm-color-primary-darkest: #0d47a1;
+  --ifm-color-primary-light: #5ea0ff;
+  --ifm-color-primary-lighter: #7eb3ff;
+  --ifm-color-primary-lightest: #b3d4ff;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #5ea0ff;
+  --ifm-color-primary-dark: #3a8bff;
+  --ifm-color-primary-darker: #1a73e8;
+  --ifm-color-primary-darkest: #1565d8;
+  --ifm-color-primary-light: #7eb3ff;
+  --ifm-color-primary-lighter: #a3c8ff;
+  --ifm-color-primary-lightest: #d1e4ff;
+  --ifm-background-color: #000835;      /* Dark Sky */
+  --ifm-background-surface-color: #0a1148;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Navbar: use Vivid Sky for this comparison branch */
+.navbar {
+  background-color: #3a8bff;
+}
+.navbar .navbar__title,
+.navbar .navbar__link {
+  color: #fff;
+}
+.navbar .navbar__link:hover,
+.navbar .navbar__link--active {
+  color: #d1e4ff;
+}

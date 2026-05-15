@@ -87,6 +87,17 @@ Update documentation when:
 ## Style Notes
 
 - Use relative links within docs/ (e.g., `../user-guide/getting-started.md`)
+- Links to files outside `docs/` (e.g., `../../CONTRIBUTING.md`) are automatically rewritten to absolute GitHub URLs at build time by the remark plugin in `website/src/plugins/remark-rewrite-links.ts`
 - Include "See Also" sections to connect related topics
 - Add screenshot placeholders with descriptive alt text when UI changes
 - Keep each file focused on one topic
+
+### GitHub Pages / Docusaurus Maintenance
+
+When adding or modifying documentation:
+
+1. **New doc pages** must be added to the appropriate sidebar in `website/sidebars.ts`
+2. **Links to root-level files** (CONTRIBUTING.md, LICENSE.txt, etc.) should use relative paths — the remark plugin rewrites them automatically
+3. **Root README links** must use the `./` prefix (e.g., `](./CONTRIBUTING.md)`) so the injection plugin can detect and rewrite them for the docs site
+4. **Excluding files** from the Docusaurus build: add them to `exclude` in `website/docusaurus.config.ts` and to `EXCLUDED_FILES` in `website/src/plugins/remark-rewrite-links.ts`
+5. **Verify changes** by running `cd website && npm run build` — it must complete with no errors
