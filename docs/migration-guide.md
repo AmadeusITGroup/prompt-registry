@@ -71,4 +71,4 @@ Search your codebase for any remaining references to chatmode files and update t
 ## Need Help?
 
 - [GitHub Scaffold Documentation](https://github.com/prompt-registry/docs)
-- [Collection Schema Reference](../docs/author-guide/collection-schema.md)
+- [Collection Schema Reference](author-guide/collection-schema.md)
