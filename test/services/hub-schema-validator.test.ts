@@ -6,13 +6,13 @@
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as yaml from 'js-yaml';
 import {
   SchemaValidator,
 } from '../../src/services/schema-validator';
 import {
   HubConfig,
 } from '../../src/types/hub';
-import * as yaml from 'js-yaml';
 
 suite('HubSchemaValidator - TDD', () => {
   let validator: SchemaValidator;

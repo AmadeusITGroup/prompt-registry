@@ -807,7 +807,7 @@ export class GitHubAdapter extends RepositoryAdapter {
       const data = await this.downloadFile(bundle.readmeUrl);
       return data.toString('utf8');
     } catch (error) {
-      this.logger.error(`Failed to download README: ${error}`);
+      this.logger.warn(`Failed to download README for ${bundle.id}: ${error}`);
       return null;
     }
   }

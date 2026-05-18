@@ -5,9 +5,8 @@
  */
 
 import * as fs from 'node:fs';
-import markdownIt, {
-  MarkdownIt,
-} from 'markdown-it-ts';
+import MarkdownIt from 'markdown-it';
+import sanitizeHtml from 'sanitize-html';
 import * as vscode from 'vscode';
 import {
   RegistryManager,
@@ -74,7 +73,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   private sourceSyncDebounceTimer?: NodeJS.Timeout;
   private isLoadingBundles = false;
   private disposables: vscode.Disposable[] = [];
-  private markDownIt: MarkdownIt | undefined;
+  private markDownIt: InstanceType<typeof MarkdownIt> | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -106,9 +105,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       this.registryManager.onAutoUpdatePreferenceChanged(() => this.loadBundles()),
       // Repository bundle changes (lockfile changes, workspace folder changes)
       this.registryManager.onRepositoryBundlesChanged(() => this.loadBundles())
-      // this.registryManager.onReadmeDownloaded((sourceId, bundleDetails)=>{
-      //   this.handleReadmeDownloaded()
-      // })
     );
   }
 
@@ -184,9 +180,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Get a singleton instance of MarkdownIt for rendering markdown content
    * @returns MarkdownIt instance
    */
-  private getMarkdownItInstance(): MarkdownIt {
+  private getMarkdownItInstance(): InstanceType<typeof MarkdownIt> {
     if (!this.markDownIt) {
-      this.markDownIt = markdownIt({ html: false });
+      this.markDownIt = new MarkdownIt({ html: false });
     }
     return this.markDownIt;
   }
@@ -897,8 +893,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   private getMarkdownRender(rawmarkdown: string): string {
     const md = this.getMarkdownItInstance();
     const html = md.render(rawmarkdown);
-    this.logger.debug('[Markdown Render] Rendered markdown content\n' + html);
-    return html;
+    return sanitizeHtml(html, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        img: ['src', 'alt', 'title', 'width', 'height']
+      },
+      allowedSchemes: ['https'] // Only HTTPS images — blocks http://, data:, javascript:
+    });
   }
 
   /**
@@ -931,7 +933,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     );
 
     // Generate CSP
-    const cspSource = `default-src 'none'; img-src https: ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';`;
+    // Removed unsafe-inline ( instructed by copilot. To be reviewed )
+    const cspSource = `default-src 'none'; img-src https: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';`;
 
     // Load HTML template
     const htmlPath = vscode.Uri.joinPath(

@@ -6,6 +6,7 @@
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as yaml from 'js-yaml';
 import nock from 'nock';
 import {
   HubManager,
@@ -26,7 +27,6 @@ import {
 import {
   generateHubSourceId,
 } from '../../src/utils/source-id-utils';
-import * as yaml from 'js-yaml';
 
 // Mock SchemaValidator for unit tests
 class MockSchemaValidator {

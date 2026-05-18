@@ -1065,64 +1065,12 @@ export class RegistryManager {
       );
       const bundleIdsWithReadmes = batch.filter((b) => b.readme).map((b) => b.id);
       if (bundleIdsWithReadmes.length > 0) {
+        // Cache before firing event so consumers reading from cache get the readme content
+        await this.storage.cacheSourceBundles(sourceId, bundles);
         this._onReadmeDownloaded.fire({ sourceId, bundleIds: bundleIdsWithReadmes });
       }
     }
-
-    // Re-cache bundles with readme content only if any readmes were actually downloaded
-    // to avoid a race condition with concurrent cache reads
-    if (bundles.some((b) => b.readme)) {
-      await this.storage.cacheSourceBundles(sourceId, bundles);
-    }
   }
-
-  /**
-   * Mock readme download method for testing only
-   */
-  // private async downloadReadmesConcurrently(bundles: Bundle[], sourceId: string, _adapter: IRepositoryAdapter): Promise<void> {
-
-  //   for (const bundle of bundles) {
-  //     const tags = bundle.tags?.length ? bundle.tags.map((t) => `\`${t}\``).join(' · ') : '';
-  //     bundle.readme = [
-  //       `# ${bundle.name}`,
-  //       '',
-  //       bundle.description || 'A curated prompt bundle for GitHub Copilot.',
-  //       '',
-  //       '## Installation',
-  //       '',
-  //       '```',
-  //       `Prompt Registry → Search "${bundle.id}" → Install`,
-  //       '```',
-  //       '',
-  //       '## What\'s Included',
-  //       '',
-  //       '| Type | Description |',
-  //       '|------|-------------|',
-  //       '| Prompts | Reusable prompt templates for common workflows |',
-  //       '| Instructions | Context-setting files that guide Copilot behavior |',
-  //       '| Agents | Specialized agent modes for domain-specific tasks |',
-  //       '',
-  //       '## Usage',
-  //       '',
-  //       'Once installed, the prompts and instructions are automatically available in your Copilot Chat sessions.',
-  //       '',
-  //       tags ? `## Tags\n\n${tags}\n` : '',
-  //       '## Contributing',
-  //       '',
-  //       'Contributions are welcome! Please open an issue or submit a pull request.',
-  //       '',
-  //       '---',
-  //       '',
-  //       `*v${bundle.version}* · ${bundle.author || 'Community'} · Last updated: ${bundle.lastUpdated ? new Date(bundle.lastUpdated).toLocaleDateString() : 'N/A'}`
-  //     ].filter(Boolean).join('\n');
-  //     this._onReadmeDownloaded.fire({ sourceId, bundleIds: [bundle.id] });
-  //   }
-  //   // Re-cache bundles with readme content only if any readmes were actually downloaded
-  //   // to avoid a race condition with concurrent cache reads
-  //   if (bundles.some((b) => b.readme)) {
-  //     await this.storage.cacheSourceBundles(sourceId, bundles);
-  //   }
-  // }
 
   /**
    * Set HubManager instance for hub integration
@@ -2438,5 +2386,6 @@ export class RegistryManager {
     this._onSourceSynced.dispose();
     this._onAutoUpdatePreferenceChanged.dispose();
     this._onRepositoryBundlesChanged.dispose();
+    this._onReadmeDownloaded.dispose();
   }
 }
