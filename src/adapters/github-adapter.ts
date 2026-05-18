@@ -554,6 +554,10 @@ export class GitHubAdapter extends RepositoryAdapter {
       return null;
     }
 
+    const readmeAsset = release.assets.find((a) =>
+      a.name.toLowerCase() === 'readme.md'
+    );
+
     // Fetch deployment manifest with caching
     let manifest: any = null;
     try {
@@ -587,7 +591,8 @@ export class GitHubAdapter extends RepositoryAdapter {
       license: manifest?.license || 'Unknown',
       manifestUrl: manifestAsset.url,
       downloadUrl: bundleAsset.url,
-      repository: this.source.url
+      repository: this.source.url,
+      readmeUrl: readmeAsset ? readmeAsset.url : undefined
     };
 
     // Attach prompts array from manifest for content breakdown display
@@ -785,6 +790,25 @@ export class GitHubAdapter extends RepositoryAdapter {
       return await this.downloadFile(bundle.downloadUrl);
     } catch (error) {
       throw new Error(`Failed to download bundle: ${error}`);
+    }
+  }
+
+  /**
+   * Download readme file from GitHub release assets
+   * @param bundle - Bundle object containing readmeUrl
+   * @returns Promise resolving to string content of README file
+   * @throws {Error} if download fails or network issues occur
+   */
+  public async downloadReadme(bundle: Bundle): Promise<string | null> {
+    if (!bundle.readmeUrl) {
+      return null;
+    }
+    try {
+      const data = await this.downloadFile(bundle.readmeUrl);
+      return data.toString('utf8');
+    } catch (error) {
+      this.logger.warn(`Failed to download README for ${bundle.id}: ${error}`);
+      return null;
     }
   }
 

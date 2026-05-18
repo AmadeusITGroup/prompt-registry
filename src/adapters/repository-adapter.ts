@@ -38,6 +38,13 @@ export interface IRepositoryAdapter {
   downloadBundle(bundle: Bundle): Promise<Buffer>;
 
   /**
+   * Download readme file for a specific bundle
+   * @param bundle Bundle to download readme for
+   * @returns Promise with buffer containing readme data, or null if not available
+   */
+  downloadReadme(bundle: Bundle): Promise<string | null>;
+
+  /**
    * Fetch metadata about the source
    * @returns Promise with source metadata
    */
@@ -138,6 +145,14 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Default implementation returns undefined
+   * @param _ the bundle to install
+   */
+  public downloadReadme(_: Bundle): Promise<string | null> {
+    return Promise.resolve(null);
   }
 
   public abstract fetchBundles(): Promise<Bundle[]>;

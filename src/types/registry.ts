@@ -79,6 +79,8 @@ export interface Bundle {
     algorithm: string;
     hash: string;
   };
+  readmeUrl?: string; // URL to the README asset (if available)
+  readme?: string;
 }
 
 /**

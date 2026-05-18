@@ -152,6 +152,7 @@ export class RegistryManager {
   private readonly _onSourceSynced = new vscode.EventEmitter<SourceSyncedEvent>();
   private readonly _onAutoUpdatePreferenceChanged = new vscode.EventEmitter<AutoUpdatePreferenceChangedEvent>();
   private readonly _onRepositoryBundlesChanged = new vscode.EventEmitter<void>();
+  private readonly _onReadmeDownloaded = new vscode.EventEmitter<{ sourceId: string; bundleIds: string[] }>();
 
   // Public event accessors
   public readonly onBundleInstalled = this._onBundleInstalled.event;
@@ -170,6 +171,7 @@ export class RegistryManager {
   public readonly onSourceSynced = this._onSourceSynced.event;
   public readonly onAutoUpdatePreferenceChanged = this._onAutoUpdatePreferenceChanged.event;
   public readonly onRepositoryBundlesChanged = this._onRepositoryBundlesChanged.event;
+  public readonly onReadmeDownloaded = this._onReadmeDownloaded.event;
 
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.storage = new RegistryStorage(context);
@@ -1044,6 +1046,33 @@ export class RegistryManager {
   }
 
   /**
+   * Download readme files concurrently
+   * @param bundles - Bundles to download readmes for
+   * @param sourceId - Source ID for caching purposes
+   * @param adapter - Adapter to use for downloading readmes
+   */
+  private async downloadReadmesConcurrently(bundles: Bundle[], sourceId: string, adapter: IRepositoryAdapter): Promise<void> {
+    const concurrency = CONCURRENCY_CONSTANTS.README_DOWNLOAD_CONCURRENCY;
+    for (let i = 0; i < bundles.length; i += concurrency) {
+      const batch = bundles.filter((b) => b.readmeUrl).slice(i, i + concurrency);
+      await Promise.allSettled(
+        batch.map(async (bundle) => {
+          const readme = await adapter.downloadReadme(bundle);
+          if (readme) {
+            bundle.readme = readme;
+          }
+        })
+      );
+      const bundleIdsWithReadmes = batch.filter((b) => b.readme).map((b) => b.id);
+      if (bundleIdsWithReadmes.length > 0) {
+        // Cache before firing event so consumers reading from cache get the readme content
+        await this.storage.cacheSourceBundles(sourceId, bundles);
+        this._onReadmeDownloaded.fire({ sourceId, bundleIds: bundleIdsWithReadmes });
+      }
+    }
+  }
+
+  /**
    * Set HubManager instance for hub integration
    * @param hubManager
    */
@@ -1276,6 +1305,11 @@ export class RegistryManager {
 
     // Fire source synced event
     this._onSourceSynced.fire({ sourceId, bundleCount: bundles.length });
+
+    // Download the readme files in concurrent, non blocking way
+    this.downloadReadmesConcurrently(bundles, sourceId, adapter).catch((err) => {
+      this.logger.error(`Failed to download readmes for source '${sourceId}'`, err as Error);
+    });
   }
 
   /**
@@ -2352,5 +2386,6 @@ export class RegistryManager {
     this._onSourceSynced.dispose();
     this._onAutoUpdatePreferenceChanged.dispose();
     this._onRepositoryBundlesChanged.dispose();
+    this._onReadmeDownloaded.dispose();
   }
 }

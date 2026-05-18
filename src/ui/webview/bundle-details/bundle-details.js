@@ -50,6 +50,11 @@
     if (message.type === 'autoUpdateStatusChanged') {
       autoUpdateEnabled = message.enabled;
       updateToggleUI();
+    } else if (message.type === 'readmeUpdated') {
+      var readmeContent = document.querySelector('.details-content');
+      if (readmeContent) {
+        readmeContent.innerHTML = message.readmeHtml;
+      }
     }
   });
 

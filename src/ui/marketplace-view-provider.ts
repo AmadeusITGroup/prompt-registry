@@ -5,6 +5,8 @@
  */
 
 import * as fs from 'node:fs';
+import MarkdownIt from 'markdown-it';
+import sanitizeHtml from 'sanitize-html';
 import * as vscode from 'vscode';
 import {
   RegistryManager,
@@ -71,6 +73,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   private sourceSyncDebounceTimer?: NodeJS.Timeout;
   private isLoadingBundles = false;
   private disposables: vscode.Disposable[] = [];
+  private markDownIt: InstanceType<typeof MarkdownIt> | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -172,6 +175,38 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       void this.loadBundles();
     }, UI_CONSTANTS.SOURCE_SYNC_DEBOUNCE_MS);
   }
+
+  /**
+   * Get a singleton instance of MarkdownIt for rendering markdown content
+   * @returns MarkdownIt instance
+   */
+  private getMarkdownItInstance(): InstanceType<typeof MarkdownIt> {
+    if (!this.markDownIt) {
+      this.markDownIt = new MarkdownIt({ html: false });
+    }
+    return this.markDownIt;
+  }
+
+  // private handleReadmeDownloaded(sourceId: string, bundleIds: string[], panel: vscode.WebviewPanel): void {
+  //   // TODO handle render through the details view
+  //   // Handle messages from the details panel
+  //   panel.webview.onDidReceiveMessage(
+  //     async (message) => {
+  //       if (message.type === 'openPromptFile') {
+  //         await this.openPromptFileInEditor(message.installPath, message.filePath);
+  //       } else if (message.type === 'toggleAutoUpdate') {
+  //         await this.handleToggleAutoUpdate(message.bundleId, message.enabled);
+  //         // Update the panel with new status
+  //         if (installed) {
+  //           const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
+  //           panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
+  //         }
+  //       }
+  //     },
+  //     undefined,
+  //     this.context.subscriptions
+  //   );
+  // }
 
   /**
    * Find installed bundle by marketplace bundle ID using identity matching
@@ -851,6 +886,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Render markdown to HTML using markdown-it
+   * @param rawmarkdown - The raw markdown string to render
+   * @returns The rendered HTML string
+   */
+  private getMarkdownRender(rawmarkdown: string): string {
+    const md = this.getMarkdownItInstance();
+    const html = md.render(rawmarkdown);
+    return sanitizeHtml(html, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        img: ['src', 'alt', 'title', 'width', 'height']
+      },
+      allowedSchemes: ['https'] // Only HTTPS images — blocks http://, data:, javascript:
+    });
+  }
+
+  /**
    * Get HTML for bundle details panel
    * @param webview
    * @param bundle
@@ -880,7 +933,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     );
 
     // Generate CSP
-    const cspSource = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';`;
+    // Removed unsafe-inline ( instructed by copilot. To be reviewed )
+    const cspSource = `default-src 'none'; img-src https: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';`;
 
     // Load HTML template
     const htmlPath = vscode.Uri.joinPath(
@@ -908,8 +962,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     </div>`
       : '';
 
-    const breakdownContent = isInstalled
-      ? `
+    const breakdownContent = `
         <div class="breakdown">
             <div class="breakdown-item">
                 <div class="breakdown-icon">💬</div>
@@ -936,13 +989,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-count">${breakdown.mcpServers}</div>
                 <div class="breakdown-label">MCP Servers</div>
             </div>
-        </div>`
-      : `
-        <div class="info-message">
-            <p style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
-                📦 Install this bundle to see the detailed content breakdown.
-            </p>
         </div>`;
+
+    const detailsSection = bundle.readme
+      ? `
+    <div class="section">
+        <h2>Details</h2>
+        <div class="details-content">
+            ${this.getMarkdownRender(bundle.readme)}
+        </div>
+    </div>`
+      : '';
 
     const installedInfoRows = isInstalled
       ? `
@@ -991,6 +1048,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{promptsSection}}', promptsSection)
       .replace('{{autoUpdateEnabled}}', String(autoUpdateEnabled))
       .replace('{{bundleId}}', bundleId)
+      .replace('{{detailsSection}}', detailsSection)
       .replace(/\{\{nonce\}\}/g, nonce)
       .replace('{{scriptUri}}', scriptUri.toString());
 
@@ -1129,7 +1187,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     const nonce = this.getNonce();
 
     // Generate CSP
-    const cspSource = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';`;
+    const cspSource = `default-src 'none'; img-src https: ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';`;
 
     // Load HTML template from external file
     const htmlPath = vscode.Uri.joinPath(
@@ -1239,6 +1297,22 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
       );
 
+      const readmeDisposable = this.registryManager.onReadmeDownloaded(async ({ bundleIds }) => {
+        if (!bundleIds.includes(bundleId) || !bundle.readme) {
+          return;
+        }
+
+        const updatedBundle = await this.registryManager.getBundleDetails(bundleId);
+        if (!updatedBundle.readme) {
+          return;
+        }
+
+        panel.webview.postMessage({
+          type: 'readmeUpdated',
+          readmeHtml: this.getMarkdownRender(updatedBundle.readme)
+        });
+      });
+
       // Set HTML content
       panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
 
@@ -1269,6 +1343,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           }
         })
       );
+      panel.onDidDispose(() => {
+        readmeDisposable.dispose();
+      });
     } catch (error) {
       this.logger.error('Failed to open bundle details', error as Error);
       vscode.window.showErrorMessage('Failed to open bundle details');
