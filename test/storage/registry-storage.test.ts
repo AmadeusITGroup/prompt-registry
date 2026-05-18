@@ -262,7 +262,7 @@ suite('RegistryStorage', () => {
       const backup = structuredClone(original);
 
       // Simulate modification
-      original.sources.push({ id: 'source-2' } as any);
+      original.sources.push({ id: 'source-2' });
 
       // Simulate error and restore
       const restored = backup;

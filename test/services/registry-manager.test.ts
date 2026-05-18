@@ -480,7 +480,7 @@ suite('RegistryManager - Event Emission Behavior', () => {
       url: 'file:///skills-shelf',
       enabled: true,
       priority: 1
-    } as RegistrySource]);
+    }]);
 
     const mockAdapter = {
       fetchBundles: sandbox.stub().resolves([

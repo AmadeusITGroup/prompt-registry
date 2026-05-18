@@ -55,16 +55,16 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('getInstance()', () => {
     test('should return singleton instance', () => {
-      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
-      const instance2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager);
+      const instance2 = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       assert.strictEqual(instance1, instance2, 'Should return same instance');
     });
 
     test('should create new instance after reset', () => {
-      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager);
       SetupStateManager.resetInstance();
-      const instance2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const instance2 = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       assert.notStrictEqual(instance1, instance2, 'Should return new instance after reset');
     });
@@ -72,7 +72,7 @@ suite('SetupStateManager - Unit Tests', () => {
     test('should throw error when context is missing on first call', () => {
       SetupStateManager.resetInstance();
       assert.throws(
-        () => SetupStateManager.getInstance(undefined, mockHubManager as any),
+        () => SetupStateManager.getInstance(undefined, mockHubManager),
         /SetupStateManager requires context and hubManager on first call/
       );
     });
@@ -86,7 +86,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return existing instance without parameters after first call', () => {
-      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const instance1 = SetupStateManager.getInstance(mockContext, mockHubManager);
       const instance2 = SetupStateManager.getInstance(); // No parameters
 
       assert.strictEqual(instance1, instance2, 'Should return same instance without parameters');
@@ -95,7 +95,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('getState()', () => {
     test('should return NOT_STARTED by default', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       const state = await manager.getState();
 
       assert.strictEqual(state, SetupState.NOT_STARTED);
@@ -103,7 +103,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
     test('should return stored state', async () => {
       globalStateData.set('promptregistry.setupState', SetupState.COMPLETE);
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       const state = await manager.getState();
 
       assert.strictEqual(state, SetupState.COMPLETE);
@@ -111,7 +111,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
     test('should return NOT_STARTED for invalid state value', async () => {
       globalStateData.set('promptregistry.setupState', 'invalid_state');
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       const state = await manager.getState();
 
       assert.strictEqual(state, SetupState.NOT_STARTED);
@@ -120,7 +120,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('isComplete()', () => {
     test('should return true when state is COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       const isComplete = await manager.isComplete();
@@ -128,7 +128,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return false when state is not COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markStarted();
 
       const isComplete = await manager.isComplete();
@@ -138,7 +138,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('isIncomplete()', () => {
     test('should return true when state is INCOMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
 
       const isIncomplete = await manager.isIncomplete();
@@ -146,7 +146,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return false when state is not INCOMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       const isIncomplete = await manager.isIncomplete();
@@ -156,7 +156,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('markStarted()', () => {
     test('should transition to IN_PROGRESS', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markStarted();
 
       const state = await manager.getState();
@@ -164,7 +164,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should persist state', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markStarted();
 
       const storedState = globalStateData.get('promptregistry.setupState');
@@ -174,7 +174,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('markComplete()', () => {
     test('should transition to COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       const state = await manager.getState();
@@ -184,7 +184,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('markIncomplete()', () => {
     test('should transition to INCOMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
 
       const state = await manager.getState();
@@ -194,7 +194,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('reset()', () => {
     test('should transition to NOT_STARTED', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
       await manager.reset();
 
@@ -203,7 +203,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should reset resume prompt shown flag (in-memory)', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
       await manager.markResumePromptShown();
 
@@ -223,7 +223,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('detectIncompleteSetup()', () => {
     test('should return true when state is INCOMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
 
       const isIncomplete = await manager.detectIncompleteSetup();
@@ -231,7 +231,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return false when state is COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       const isIncomplete = await manager.detectIncompleteSetup();
@@ -244,7 +244,7 @@ suite('SetupStateManager - Unit Tests', () => {
       mockHubManager.listHubs.resolves([]);
       mockHubManager.getActiveHub.resolves(null);
 
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       const isIncomplete = await manager.detectIncompleteSetup();
 
       assert.strictEqual(isIncomplete, true);
@@ -258,7 +258,7 @@ suite('SetupStateManager - Unit Tests', () => {
       globalStateData.set('promptregistry.hubInitialized', false);
       mockHubManager.listHubs.resolves([{ id: 'hub1', name: 'Hub 1' }] as any);
 
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       const isIncomplete = await manager.detectIncompleteSetup();
 
       assert.strictEqual(isIncomplete, false);
@@ -267,7 +267,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('shouldShowResumePrompt()', () => {
     test('should return true when incomplete and prompt not shown', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
 
       const shouldShow = await manager.shouldShowResumePrompt();
@@ -275,7 +275,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return false when incomplete but prompt already shown', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
       await manager.markResumePromptShown();
 
@@ -284,7 +284,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should return false when setup is complete', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       const shouldShow = await manager.shouldShowResumePrompt();
@@ -294,7 +294,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('markResumePromptShown()', () => {
     test('should set resume prompt shown flag in-memory only', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markResumePromptShown();
 
       // Should NOT be persisted to globalState
@@ -308,7 +308,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should reset flag when instance is reset (session-scoped)', async () => {
-      const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager1.markIncomplete();
       await manager1.markResumePromptShown();
 
@@ -318,7 +318,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
       // Reset instance (simulate new session)
       SetupStateManager.resetInstance();
-      const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Flag should be reset
       shouldShow = await manager2.shouldShowResumePrompt();
@@ -328,11 +328,11 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('state persistence', () => {
     test('should persist state across manager instances', async () => {
-      const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager1.markIncomplete();
 
       SetupStateManager.resetInstance();
-      const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager);
       const state = await manager2.getState();
 
       assert.strictEqual(state, SetupState.INCOMPLETE);
@@ -341,7 +341,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('reset() from different states', () => {
     test('should reset from INCOMPLETE state', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markIncomplete();
 
       await manager.reset();
@@ -351,7 +351,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should reset from IN_PROGRESS state', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markStarted();
 
       await manager.reset();
@@ -361,7 +361,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should reset from COMPLETE state', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
       await manager.markComplete();
 
       await manager.reset();
@@ -373,7 +373,7 @@ suite('SetupStateManager - Unit Tests', () => {
 
   suite('state flow scenarios', () => {
     test('should handle fresh install flow: NOT_STARTED → IN_PROGRESS → COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Initial state
       let state = await manager.getState();
@@ -391,7 +391,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should handle cancellation flow: NOT_STARTED → IN_PROGRESS → INCOMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       await manager.markStarted();
       await manager.markIncomplete();
@@ -402,7 +402,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should handle resume flow: INCOMPLETE → IN_PROGRESS → COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Start incomplete
       await manager.markIncomplete();
@@ -419,7 +419,7 @@ suite('SetupStateManager - Unit Tests', () => {
     });
 
     test('should handle skip and reset flow: INCOMPLETE → NOT_STARTED → COMPLETE', async () => {
-      const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Start incomplete and skip
       await manager.markIncomplete();
@@ -444,7 +444,7 @@ suite('SetupStateManager - Unit Tests', () => {
       try {
         process.env.VSCODE_TEST = '1';
 
-        const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+        const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
         await manager.markComplete();
 
         const state = await manager.getState();
@@ -461,11 +461,11 @@ suite('SetupStateManager - Unit Tests', () => {
     test('should allow marking complete in ExtensionMode.Test', async () => {
       const testContext = {
         ...mockContext,
-        extensionMode: 3 as any // ExtensionMode.Test
+        extensionMode: 3 // ExtensionMode.Test
       } as vscode.ExtensionContext;
 
       SetupStateManager.resetInstance();
-      const manager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+      const manager = SetupStateManager.getInstance(testContext, mockHubManager);
       await manager.markComplete();
 
       const state = await manager.getState();

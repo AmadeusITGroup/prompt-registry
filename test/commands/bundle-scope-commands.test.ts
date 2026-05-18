@@ -89,11 +89,11 @@ suite('BundleScopeCommands', () => {
     sandbox.stub(vscode.workspace, 'workspaceFolders').get(() => mockWorkspaceFolders);
 
     // Setup LockfileManager.getInstance to return our mock
-    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager as any);
+    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager);
     mockLockfileManager.updateCommitMode.resolves();
 
     // Setup default behaviors
-    mockRegistryManager.getStorage.returns(mockStorage as any);
+    mockRegistryManager.getStorage.returns(mockStorage);
     mockRegistryManager.getBundleName.resolves(testBundleName);
     mockWithProgress.callsFake(async (_options: any, callback: any) => {
       return await callback({ report: sandbox.stub() });
@@ -114,9 +114,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Move');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -137,9 +137,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Move');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -157,9 +157,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Cancel');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -175,9 +175,9 @@ suite('BundleScopeCommands', () => {
       mockStorage.getInstalledBundle.withArgs(testBundleId, 'user').resolves(undefined);
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -195,9 +195,9 @@ suite('BundleScopeCommands', () => {
       mockStorage.getInstalledBundle.withArgs(testBundleId, 'user').resolves(userBundle);
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -226,9 +226,9 @@ suite('BundleScopeCommands', () => {
       );
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -253,9 +253,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Move');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -274,9 +274,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Cancel');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -292,9 +292,9 @@ suite('BundleScopeCommands', () => {
       mockStorage.getInstalledBundle.withArgs(testBundleId, 'repository').resolves(undefined);
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -323,9 +323,9 @@ suite('BundleScopeCommands', () => {
       );
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -349,9 +349,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Switch');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -371,9 +371,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Switch');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -391,9 +391,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Cancel');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -409,9 +409,9 @@ suite('BundleScopeCommands', () => {
       mockStorage.getInstalledBundle.withArgs(testBundleId, 'repository').resolves(undefined);
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -428,9 +428,9 @@ suite('BundleScopeCommands', () => {
       mockStorage.getInstalledBundle.withArgs(testBundleId, 'repository').resolves(repoBundle);
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -458,9 +458,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Move');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 
@@ -479,9 +479,9 @@ suite('BundleScopeCommands', () => {
       mockShowWarningMessage.resolves('Switch');
 
       const commands = new BundleScopeCommands(
-        mockRegistryManager as any,
-        mockScopeConflictResolver as any,
-        mockRepositoryScopeService as any
+        mockRegistryManager,
+        mockScopeConflictResolver,
+        mockRepositoryScopeService
 
       );
 

@@ -449,7 +449,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
         try {
           await testContext.registryManager.installBundle(lockfileBundleId, {
             scope: 'repository',
-            commitMode: (bundleEntry.commitMode as RepositoryCommitMode) || 'commit',
+            commitMode: (bundleEntry.commitMode) || 'commit',
             version: bundleEntry.version
           });
         } catch (reinstallError: any) {

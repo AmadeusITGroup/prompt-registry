@@ -1050,7 +1050,7 @@ export function createInstalledBundleFromLockfile(
 
   // Use commitModeOverride if provided, otherwise fall back to entry's commitMode
   // This supports the dual-lockfile pattern where commit mode is implicit based on file location
-  const commitMode = options?.commitModeOverride ?? bundleEntry.commitMode as RepositoryCommitMode;
+  const commitMode = options?.commitModeOverride ?? bundleEntry.commitMode;
 
   return {
     bundleId,

@@ -24,9 +24,6 @@ import {
   RepositoryScopeService,
 } from '../../src/services/repository-scope-service';
 import {
-  IScopeService,
-} from '../../src/services/scope-service';
-import {
   ScopeServiceFactory,
 } from '../../src/services/scope-service-factory';
 import {
@@ -126,13 +123,13 @@ suite('BundleInstaller - Repository Scope', () => {
     // Stub ScopeServiceFactory
     sandbox.stub(ScopeServiceFactory, 'create').callsFake((scope, _context, _workspaceRoot, _storage) => {
       if (scope === 'repository') {
-        return mockRepositoryScopeService as unknown as IScopeService;
+        return mockRepositoryScopeService;
       }
-      return mockUserScopeService as unknown as IScopeService;
+      return mockUserScopeService;
     });
 
     // Stub LockfileManager.getInstance
-    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager as unknown as LockfileManager);
+    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager);
 
     // Stub vscode.workspace.workspaceFolders
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([

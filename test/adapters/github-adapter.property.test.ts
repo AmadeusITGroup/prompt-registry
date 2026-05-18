@@ -311,36 +311,22 @@ suite('GitHubAdapter Property-Based Tests', () => {
           )
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource();
+          const adapter = new GitHubAdapter(source);
+          const htmlBody = config.htmlTemplate(config.errorText);
+
+          stubHttpsWithResponse(sandbox, 401, htmlBody, 'text/html');
 
           try {
-            const source = createTestSource();
-            const adapter = new GitHubAdapter(source);
-            const htmlBody = config.htmlTemplate(config.errorText);
+            await (adapter as any).makeRequest('https://api.github.com/test');
+            assert.fail('Should have thrown error for HTML response');
+          } catch (error: unknown) {
+            const err = error as Error;
 
-            stubHttpsWithResponse(iterationSandbox, 401, htmlBody, 'text/html');
-
-            // Attempt to make a request
-            try {
-              await (adapter as any).makeRequest('https://api.github.com/test');
-              assert.fail('Should have thrown error for HTML response');
-            } catch (error: unknown) {
-              const err = error as Error;
-
-              // Always verify HTML was recognized
-              assert.ok(
-                ErrorCheckers.indicatesHtmlDetection(err),
-                'Error should indicate HTML response was detected'
-              );
-
-              // Check if extraction occurred (best-effort, non-failing)
-              const hasExtractedText = err.message.includes(config.errorText);
-              if (!hasExtractedText) {
-                console.log(`Note: HTML text extraction didn't capture: "${config.errorText.substring(0, 30)}..."`);
-              }
-            }
-          } finally {
-            iterationSandbox.restore();
+            assert.ok(
+              ErrorCheckers.indicatesHtmlDetection(err),
+              'Error should indicate HTML response was detected'
+            );
           }
         }
       ),
@@ -366,35 +352,21 @@ suite('GitHubAdapter Property-Based Tests', () => {
           htmlBody: fc.string({ minLength: 20, maxLength: 200 })
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource();
+          const adapter = new GitHubAdapter(source);
+          const htmlContent = `<html><body>${config.htmlBody}</body></html>`;
+
+          stubHttpsWithResponse(sandbox, config.statusCode, htmlContent, 'text/html');
 
           try {
-            const source = createTestSource();
-            const adapter = new GitHubAdapter(source);
-            const htmlContent = `<html><body>${config.htmlBody}</body></html>`;
+            await (adapter as any).makeRequest('https://api.github.com/test');
+            assert.fail('Should have thrown error for HTML response');
+          } catch (error: unknown) {
+            const err = error as Error;
 
-            stubHttpsWithResponse(iterationSandbox, config.statusCode, htmlContent, 'text/html');
-
-            // Attempt to make a request
-            try {
-              await (adapter as any).makeRequest('https://api.github.com/test');
-              assert.fail('Should have thrown error for HTML response');
-            } catch (error: unknown) {
-              const err = error as Error;
-
-              // Verify error is NOT a JSON parse error
-              if (ErrorCheckers.isJsonParseError(err)) {
-                console.log(`HTML messaging test failed: Error is about JSON parsing, not auth: ${err.message}`);
-                assert.fail('Error should indicate authentication issue, not JSON parsing');
-              }
-
-              // Verify error indicates auth issue (lenient check)
-              if (!ErrorCheckers.indicatesAuthIssue(err)) {
-                console.log(`HTML messaging test: Error doesn't clearly indicate auth issue: ${err.message}`);
-              }
+            if (ErrorCheckers.isJsonParseError(err)) {
+              assert.fail('Error should indicate authentication issue, not JSON parsing');
             }
-          } finally {
-            iterationSandbox.restore();
           }
         }
       ),
@@ -459,54 +431,19 @@ suite('GitHubAdapter Property-Based Tests', () => {
           urlPath: fc.constantFrom('/repos/owner/repo', '/repos/test/test-repo', '/user')
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource(config.token);
+          const adapter = new GitHubAdapter(source);
+          const testUrl = `https://api.github.com${config.urlPath}`;
+
+          stubHttpsWithResponse(sandbox, config.statusCode);
+          loggerHelpers.resetHistory();
 
           try {
-            const source = createTestSource(config.token);
-            const adapter = new GitHubAdapter(source);
-            const testUrl = `https://api.github.com${config.urlPath}`;
-
-            stubHttpsWithResponse(iterationSandbox, config.statusCode);
-            loggerHelpers.resetHistory();
-
-            // Attempt to make a request
-            try {
-              await (adapter as any).makeRequest(testUrl);
-              assert.fail('Should have thrown error');
-            } catch {
-              const errorCalls = loggerStub.error.getCalls();
-
-              if (errorCalls.length === 0) {
-                console.log('Comprehensive logging test failed: No error logs captured');
-                assert.fail('Should have logged error');
-              }
-
-              // Check that logs include authentication method
-              const hasAuthMethodLog = errorCalls.some((call) => {
-                const message = call.args[0]?.toString().toLowerCase() || '';
-                return message.includes('auth')
-                  && (message.includes('method') || message.includes('explicit')
-                    || message.includes('vscode') || message.includes('gh-cli'));
-              });
-
-              if (!hasAuthMethodLog) {
-                console.log('Comprehensive logging test: No log mentions auth method');
-              }
-
-              // Check that logs include URL
-              const hasUrlLog = errorCalls.some((call) => {
-                const message = call.args[0]?.toString() || '';
-                return message.includes('URL') || message.includes('api.github.com');
-              });
-
-              if (!hasUrlLog) {
-                console.log('Comprehensive logging test: No log mentions URL');
-              }
-
-              assert.ok(errorCalls.length > 0, 'Should have logged error details');
-            }
-          } finally {
-            iterationSandbox.restore();
+            await (adapter as any).makeRequest(testUrl);
+            assert.fail('Should have thrown error');
+          } catch {
+            const errorCalls = loggerStub.error.getCalls();
+            assert.ok(errorCalls.length > 0, 'Should have logged error details');
           }
         }
       ),
@@ -531,45 +468,25 @@ suite('GitHubAdapter Property-Based Tests', () => {
           token: fc.string({ minLength: 20, maxLength: 50 }).filter((s) => s.trim().length > 0)
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource(config.token);
+          const adapter = new GitHubAdapter(source);
 
-          try {
-            const source = createTestSource(config.token);
-            const adapter = new GitHubAdapter(source);
+          loggerHelpers.resetHistory();
+          await (adapter as any).getAuthenticationToken();
 
-            loggerHelpers.resetHistory();
-            await (adapter as any).getAuthenticationToken();
+          const allLogCalls = loggerHelpers.collectAllCalls();
 
-            const allLogCalls = loggerHelpers.collectAllCalls();
-
-            // Check that no log contains the full token (beyond first 8 chars)
-            const fullTokenInLogs = allLogCalls.some((call) => {
-              const message = call.args[0]?.toString() || '';
-              if (config.token.length > 8) {
-                const tokenSuffix = config.token.substring(8);
-                return message.includes(tokenSuffix);
-              }
-              return false;
-            });
-
-            if (fullTokenInLogs) {
-              console.log('Token sanitization test failed: Full token found in logs');
-              assert.fail('Full token should not appear in logs');
+          const fullTokenInLogs = allLogCalls.some((call) => {
+            const message = call.args[0]?.toString() || '';
+            if (config.token.length > 8) {
+              const tokenSuffix = config.token.substring(8);
+              return message.includes(tokenSuffix);
             }
+            return false;
+          });
 
-            // Check that token prefix appears with ellipsis or truncation (optional)
-            const tokenPrefix = config.token.substring(0, 8);
-            const hasTokenPreview = allLogCalls.some((call) => {
-              const message = call.args[0]?.toString() || '';
-              return message.includes(tokenPrefix)
-                && (message.includes('...') || message.includes('preview'));
-            });
-
-            if (!hasTokenPreview) {
-              console.log('Token sanitization test: No token preview found in logs');
-            }
-          } finally {
-            iterationSandbox.restore();
+          if (fullTokenInLogs) {
+            assert.fail('Full token should not appear in logs');
           }
         }
       ),
@@ -595,50 +512,20 @@ suite('GitHubAdapter Property-Based Tests', () => {
           token: fc.string({ minLength: 10, maxLength: 50 }).filter((s) => s.trim().length > 0)
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource(config.token);
+          const adapter = new GitHubAdapter(source);
+
+          stubHttpsWithResponse(sandbox, config.statusCode);
 
           try {
-            const source = createTestSource(config.token);
-            const adapter = new GitHubAdapter(source);
+            await (adapter as any).makeRequest('https://api.github.com/test');
+            assert.fail('Should have thrown error');
+          } catch (error: unknown) {
+            const err = error as Error;
+            const errorMsg = err.message.toLowerCase();
 
-            stubHttpsWithResponse(iterationSandbox, config.statusCode);
-
-            try {
-              await (adapter as any).makeRequest('https://api.github.com/test');
-              assert.fail('Should have thrown error');
-            } catch (error: unknown) {
-              const err = error as Error;
-              const errorMsg = err.message.toLowerCase();
-
-              // Verify error-specific suggestions based on status code
-              const suggestionChecks: Record<number, { keywords: string[]; description: string }> = {
-                401: {
-                  keywords: ['token', 'invalid', 'expired', 'valid'],
-                  description: 'token validity suggestion'
-                },
-                403: {
-                  keywords: ['scope', 'permission', 'access', 'forbidden'],
-                  description: 'scope/permission suggestion'
-                },
-                404: {
-                  keywords: ['not found', 'repository', 'exist', 'accessible'],
-                  description: 'repository suggestion'
-                }
-              };
-
-              const check = suggestionChecks[config.statusCode];
-              if (check) {
-                const hasSuggestion = check.keywords.some((keyword) => errorMsg.includes(keyword));
-                if (!hasSuggestion) {
-                  console.log(`Error-specific suggestions test: ${config.statusCode} error missing ${check.description}: ${err.message}`);
-                }
-              }
-
-              assert.ok(errorMsg.includes(config.statusCode.toString()),
-                'Error should mention status code');
-            }
-          } finally {
-            iterationSandbox.restore();
+            assert.ok(errorMsg.includes(config.statusCode.toString()),
+              'Error should mention status code');
           }
         }
       ),
@@ -657,6 +544,14 @@ suite('GitHubAdapter Property-Based Tests', () => {
   test('Property 15: Exhaustion Method Listing', async function () {
     this.timeout(TEST_CONFIG.TIMEOUT);
 
+    sandbox.stub(vscode.authentication, 'getSession').resolves(undefined);
+
+    const childProcess = require('node:child_process');
+    sandbox.stub(childProcess, 'exec')
+      .callsFake((...args: any[]) => {
+        args[1](new Error('gh not found'), null);
+      });
+
     await fc.assert(
       fc.asyncProperty(
         fc.record({
@@ -664,50 +559,17 @@ suite('GitHubAdapter Property-Based Tests', () => {
           failureCount: fc.integer({ min: 2, max: 3 })
         }),
         async (config) => {
-          const iterationSandbox = sinon.createSandbox();
+          const source = createTestSource(config.explicitToken);
+          const adapter = new GitHubAdapter(source);
+
+          stubHttpsWithResponse(sandbox, 401, JSON.stringify({ message: 'Bad credentials' }));
 
           try {
-            const source = createTestSource(config.explicitToken);
-
-            // Mock all auth methods to fail
-            iterationSandbox.stub(vscode.authentication, 'getSession')
-              .resolves(undefined);
-
-            const childProcess = require('node:child_process');
-            iterationSandbox.stub(childProcess, 'exec')
-              .callsFake((...args: any[]) => {
-                args[1](new Error('gh not found'), null);
-              });
-
-            const adapter = new GitHubAdapter(source);
-
-            stubHttpsWithResponse(iterationSandbox, 401, JSON.stringify({ message: 'Bad credentials' }));
-
-            try {
-              await (adapter as any).makeRequest('https://api.github.com/test');
-              assert.fail('Should have thrown error after exhausting methods');
-            } catch (error: unknown) {
-              const err = error as Error;
-              const errorMsg = err.message.toLowerCase();
-
-              // Verify error message mentions attempted methods
-              const mentionsAttemptedMethods = errorMsg.includes('attempted')
-                || errorMsg.includes('tried')
-                || errorMsg.includes('method');
-
-              if (!mentionsAttemptedMethods) {
-                console.log(`Exhaustion listing test: Error doesn't mention attempted methods: ${err.message}`);
-              }
-
-              const mentionsExplicit = errorMsg.includes('explicit');
-              if (!mentionsExplicit) {
-                console.log(`Exhaustion listing test: Error doesn't mention explicit method: ${err.message}`);
-              }
-
-              assert.ok(err.message.length > 0, 'Should have error message');
-            }
-          } finally {
-            iterationSandbox.restore();
+            await (adapter as any).makeRequest('https://api.github.com/test');
+            assert.fail('Should have thrown error after exhausting methods');
+          } catch (error: unknown) {
+            const err = error as Error;
+            assert.ok(err.message.length > 0, 'Should have error message');
           }
         }
       ),

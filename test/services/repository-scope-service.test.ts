@@ -189,7 +189,7 @@ suite('RepositoryScopeService', () => {
     });
 
     // Create service
-    service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+    service = new RepositoryScopeService(workspaceRoot, mockStorage);
   });
 
   teardown(() => {

@@ -352,16 +352,52 @@ suite('E2E: GitHub Scaffold Integration Tests', () => {
 suite('E2E: Script Execution Tests', () => {
   const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
   let testDir: string;
+  let npmInstalled: boolean;
 
-  setup(() => {
-    // Create unique temp directory for each test
+  suiteSetup(async function () {
+    this.timeout(60_000);
+
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scaffold-script-e2e-'));
+
+    const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
+    await scaffoldCommand.execute(testDir, {
+      projectName: 'script-test-project'
+    });
+
+    try {
+      execSync('npm install --prefer-offline', {
+        cwd: testDir,
+        stdio: 'pipe',
+        timeout: 30_000
+      });
+      npmInstalled = true;
+    } catch {
+      npmInstalled = false;
+    }
+
+    if (npmInstalled) {
+      execSync('git init && git config user.email "test@test.com" && git config user.name "Test" && git add -A && git commit -m "initial"', {
+        cwd: testDir,
+        stdio: 'pipe',
+        timeout: 10_000
+      });
+    }
   });
 
-  teardown(() => {
-    // Clean up test directory
+  suiteTeardown(() => {
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  setup(function () {
+    if (!npmInstalled) {
+      this.skip();
+    }
+    // Clean artifacts from previous tests to maintain isolation
+    const distDir = path.join(testDir, 'dist');
+    if (fs.existsSync(distDir)) {
+      fs.rmSync(distDir, { recursive: true, force: true });
     }
   });
 
@@ -370,28 +406,8 @@ suite('E2E: Script Execution Tests', () => {
    * Requirements: 5.5 - Test validation scripts in generated projects
    */
   test('E2E: Validation script validates example collection successfully', async function () {
-    this.timeout(60_000);
+    this.timeout(30_000);
 
-    const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-
-    await scaffoldCommand.execute(testDir, {
-      projectName: 'validation-test-project'
-    });
-
-    // Install dependencies (includes @prompt-registry/collection-scripts)
-    try {
-      execSync('npm install', {
-        cwd: testDir,
-        stdio: 'pipe',
-        timeout: 30_000
-      });
-    } catch {
-      // npm install may fail in test environment, skip if so
-      this.skip();
-      return;
-    }
-
-    // Run validation via npm script (backed by @prompt-registry/collection-scripts)
     try {
       const result = execSync('npm run validate --silent', {
         cwd: testDir,
@@ -399,7 +415,6 @@ suite('E2E: Script Execution Tests', () => {
         timeout: 30_000
       });
 
-      // Validation should succeed for the example collection
       const output = result.toString();
       assert.ok(
         !output.toLowerCase().includes('error') || output.toLowerCase().includes('0 error'),
@@ -409,7 +424,6 @@ suite('E2E: Script Execution Tests', () => {
       const stderr = error.stderr?.toString() || '';
       const stdout = error.stdout?.toString() || '';
 
-      // Allow failure due to missing dependencies
       if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
         this.skip();
       } else {
@@ -423,27 +437,8 @@ suite('E2E: Script Execution Tests', () => {
    * Requirements: 5.5 - Test validation scripts in generated projects
    */
   test('E2E: List collections script finds example collection', async function () {
-    this.timeout(60_000);
+    this.timeout(30_000);
 
-    const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-
-    await scaffoldCommand.execute(testDir, {
-      projectName: 'list-test-project'
-    });
-
-    // Install dependencies
-    try {
-      execSync('npm install', {
-        cwd: testDir,
-        stdio: 'pipe',
-        timeout: 30_000
-      });
-    } catch {
-      this.skip();
-      return;
-    }
-
-    // Run list-collections via npm script
     try {
       const result = execSync('npm run list-collections --silent', {
         cwd: testDir,
@@ -452,7 +447,6 @@ suite('E2E: Script Execution Tests', () => {
       });
 
       const output = result.toString();
-      // Should list the example collection
       assert.ok(
         output.includes('example') || output.includes('collection'),
         'List script should find example collection'
@@ -461,7 +455,6 @@ suite('E2E: Script Execution Tests', () => {
       const stderr = error.stderr?.toString() || '';
       const stdout = error.stdout?.toString() || '';
 
-      // Allow failure due to missing dependencies
       if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
         this.skip();
       } else {
@@ -475,43 +468,22 @@ suite('E2E: Script Execution Tests', () => {
    * Requirements: 5.5 - Test build scripts produce correct output
    */
   test('E2E: Build script creates bundle with correct structure', async function () {
-    this.timeout(60_000);
+    this.timeout(30_000);
 
-    const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-    const projectName = 'build-test-project';
-
-    await scaffoldCommand.execute(testDir, { projectName });
-
-    // Install dependencies
-    try {
-      execSync('npm install', {
-        cwd: testDir,
-        stdio: 'pipe',
-        timeout: 30_000
-      });
-    } catch {
-      this.skip();
-      return;
-    }
-
-    // Create output directory
     const outputDir = path.join(testDir, 'dist');
     fs.mkdirSync(outputDir, { recursive: true });
 
     try {
-      // Build the example collection via npm script with required arguments
       execSync(`npm run build-collection-bundle -- --collection-file collections/example.collection.yml --version 1.0.0 --repo-slug test-repo --out-dir ${outputDir}`, {
         cwd: testDir,
         stdio: 'pipe',
         timeout: 30_000
       });
 
-      // Verify output files exist
-      const collectionOutDir = path.join(outputDir, projectName);
+      const collectionOutDir = path.join(outputDir, 'script-test-project');
       if (fs.existsSync(collectionOutDir)) {
         const outputFiles = fs.readdirSync(collectionOutDir);
 
-        // Should have created deployment-manifest.yml and zip file
         const hasManifest = outputFiles.some((f) => f.includes('manifest') || f.endsWith('.yml'));
         const hasZip = outputFiles.some((f) => f.endsWith('.zip'));
 
@@ -520,7 +492,6 @@ suite('E2E: Script Execution Tests', () => {
           'Build script should produce manifest and/or zip files'
         );
       } else {
-        // Check if any output was created
         const distFiles = fs.readdirSync(outputDir);
         assert.ok(
           distFiles.length > 0,
@@ -531,7 +502,6 @@ suite('E2E: Script Execution Tests', () => {
       const stderr = error.stderr?.toString() || '';
       const stdout = error.stdout?.toString() || '';
 
-      // Allow failure due to missing dependencies
       if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
         this.skip();
       } else {
@@ -545,34 +515,8 @@ suite('E2E: Script Execution Tests', () => {
    * Requirements: 5.5 - Test build scripts produce correct output
    */
   test('E2E: Compute version script returns valid version', async function () {
-    this.timeout(60_000);
+    this.timeout(30_000);
 
-    const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
-
-    await scaffoldCommand.execute(testDir, {
-      projectName: 'version-test-project'
-    });
-
-    // Install dependencies
-    try {
-      execSync('npm install', {
-        cwd: testDir,
-        stdio: 'pipe',
-        timeout: 30_000
-      });
-    } catch {
-      this.skip();
-      return;
-    }
-
-    // Initialize git repo (required for version computation from git tags)
-    execSync('git init && git config user.email "test@test.com" && git config user.name "Test" && git add -A && git commit -m "initial"', {
-      cwd: testDir,
-      stdio: 'pipe',
-      timeout: 10_000
-    });
-
-    // Run compute-collection-version via npm script
     try {
       const result = execSync('npm run compute-collection-version -- --collection-file collections/example.collection.yml', {
         cwd: testDir,
@@ -581,7 +525,6 @@ suite('E2E: Script Execution Tests', () => {
       });
 
       const output = result.toString().trim();
-      // Should return a valid semver version
       const semverPattern = /\d+\.\d+\.\d+/;
       assert.ok(
         semverPattern.test(output),
@@ -591,11 +534,9 @@ suite('E2E: Script Execution Tests', () => {
       const stderr = error.stderr?.toString() || '';
       const stdout = error.stdout?.toString() || '';
 
-      // Allow failure due to missing dependencies
       if (stderr.includes('Cannot find module') || stdout.includes('Cannot find module')) {
         this.skip();
       } else if (stderr.includes('Usage:') || stdout.includes('Usage:')) {
-        // Script ran but needs different arguments - that's OK
         assert.ok(true, 'Compute version script is executable');
       } else {
         assert.fail(`Compute version script failed: ${stderr || stdout}`);

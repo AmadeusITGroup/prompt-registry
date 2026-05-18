@@ -113,7 +113,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: legacyId,
       name: 'Test Source',
-      type: sourceType as any,
+      type: sourceType,
       url: url,
       enabled: true,
       priority: 1
@@ -139,7 +139,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: currentId,
       name: 'Already Migrated',
-      type: sourceType as any,
+      type: sourceType,
       url: url,
       enabled: true,
       priority: 1
@@ -158,7 +158,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: 'my-custom-source', // not hub-generated format
       name: 'Custom Source',
-      type: 'local' as any,
+      type: 'local',
       url: 'file:///path/to/source',
       enabled: true,
       priority: 1
@@ -183,7 +183,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: legacyId,
       name: 'Cache Test',
-      type: sourceType as any,
+      type: sourceType,
       url: url,
       enabled: true,
       priority: 1
@@ -215,7 +215,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: legacyId,
       name: 'Install Test',
-      type: sourceType as any,
+      type: sourceType,
       url: url,
       enabled: true,
       priority: 1
@@ -249,7 +249,7 @@ suite('sourceIdNormalizationMigration', () => {
     config.sources.push({
       id: legacyId,
       name: 'Idempotent Test',
-      type: sourceType as any,
+      type: sourceType,
       url: url,
       enabled: true,
       priority: 1

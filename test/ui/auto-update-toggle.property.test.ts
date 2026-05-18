@@ -61,7 +61,7 @@ suite('Auto-Update Toggle - Property Tests', () => {
       {} as any, // bundleOps - not used in these tests
       {} as any, // sourceOps - not used in these tests
       {} as any, // bundleNotifications - not used in these tests
-      mockStorage as any
+      mockStorage
     );
   });
 

@@ -39,7 +39,7 @@ suite('ApmAdapter', () => {
     mockRuntime = sandbox.createStubInstance(ApmRuntimeManager);
     mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
 
-    sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
+    sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime);
 
     // Stub vscode authentication
     sandbox.stub(vscode.authentication, 'getSession').resolves(undefined);
@@ -197,7 +197,8 @@ suite('ApmAdapter', () => {
     test('should return empty array when manifest not found', async () => {
       const adapter = new ApmAdapter(mockSource);
 
-      // Will return empty array for non-existent repo
+      sandbox.stub(adapter as any, 'httpsGet').rejects(new Error('Not Found'));
+
       const bundles = await adapter.fetchBundles();
 
       assert.ok(Array.isArray(bundles));
@@ -234,15 +235,15 @@ suite('ApmAdapter', () => {
     test('should cache results', async () => {
       const adapter = new ApmAdapter(mockSource);
 
-      // First call
-      const bundles1 = await adapter.fetchBundles();
+      const httpsGetStub = sandbox.stub(adapter as any, 'httpsGet');
+      httpsGetStub.resolves(JSON.stringify({ tree: [] }));
 
-      // Second call should use cache (same result, no network)
+      const bundles1 = await adapter.fetchBundles();
       const bundles2 = await adapter.fetchBundles();
 
-      // Both should return arrays
       assert.ok(Array.isArray(bundles1));
       assert.ok(Array.isArray(bundles2));
+      assert.strictEqual(httpsGetStub.callCount, 1, 'Should only make one network call due to caching');
     });
   });
 
@@ -266,9 +267,10 @@ suite('ApmAdapter', () => {
 
       const adapter = new ApmAdapter(mockSource);
 
+      sandbox.stub(adapter as any, 'httpsGet').resolves(JSON.stringify({ tree: [] }));
+
       const result = await adapter.validate();
 
-      // Should include validation info
       assert.ok('valid' in result);
       assert.ok('errors' in result);
     });
@@ -352,31 +354,32 @@ suite('ApmAdapter', () => {
     });
 
     test('should not execute arbitrary code from manifest', async () => {
-      // This test verifies that even if a manifest contains script fields,
-      // the adapter does not execute them - it only parses YAML data
       const adapter = new ApmAdapter(mockSource);
 
-      // Fetch bundles - internal https.get will fail for non-existent repo
-      // but this demonstrates the adapter doesn't execute scripts
+      const httpsGetStub = sandbox.stub(adapter as any, 'httpsGet');
+      httpsGetStub.onCall(0).resolves(JSON.stringify({
+        tree: [{ path: 'apm.yml', type: 'blob' }]
+      }));
+      httpsGetStub.onCall(1).resolves('name: malicious\nversion: 1.0.0\nscripts:\n  preinstall: "rm -rf /"');
+
       const bundles = await adapter.fetchBundles();
 
-      // Should return array (empty or with bundles) without executing any scripts
       assert.ok(Array.isArray(bundles));
+      assert.strictEqual(bundles.length, 1);
+      assert.strictEqual(bundles[0].name, 'malicious');
     });
   });
 
   suite('Error Handling', () => {
     test('should handle network errors gracefully', async () => {
-      // When network fails, adapter should return empty array (internal error handling)
-      // Network errors are caught internally and result in empty bundle array
       const adapter = new ApmAdapter(mockSource);
 
-      // The adapter uses https.get internally which will fail for non-existent repos
-      // This tests the graceful handling - no unhandled rejections
+      sandbox.stub(adapter as any, 'httpsGet').rejects(new Error('ECONNREFUSED'));
+
       const bundles = await adapter.fetchBundles();
 
-      // Should return empty array on failure (repo doesn't exist)
       assert.ok(Array.isArray(bundles));
+      assert.strictEqual(bundles.length, 0);
     });
 
     test('should provide helpful error messages when runtime not installed', async () => {

@@ -248,7 +248,7 @@ export class BundleInstaller {
 
       return entries;
     } catch (error) {
-      this.logger.warn('Failed to parse manifest, falling back to bundle cache files', error as Error);
+      this.logger.warn('Failed to parse manifest, falling back to bundle cache files', error);
       return this.collectFileEntries(bundlePath, workspaceRoot);
     }
   }
@@ -355,7 +355,7 @@ export class BundleInstaller {
         bundle_settings: {
           include_common_in_environment_bundles: true,
           create_common_bundle: true,
-          compression: 'none' as any,
+          compression: 'none',
           naming: {
             environment_bundle: bundle.id
           }
@@ -366,7 +366,7 @@ export class BundleInstaller {
           author: 'awesome-copilot',
           last_updated: new Date().toISOString()
         }
-      } as DeploymentManifest;
+      };
     }
 
     this.logger.debug(`Validating manifest: ${manifestPath}`);
@@ -561,7 +561,7 @@ export class BundleInstaller {
     try {
       await this.removeDirectory(tempDir);
     } catch (error) {
-      this.logger.warn('Failed to cleanup temp directory', error as Error);
+      this.logger.warn('Failed to cleanup temp directory', error);
       // Don't fail the installation if cleanup fails
     }
   }
@@ -1037,7 +1037,7 @@ export class BundleInstaller {
         bundle_settings: {
           include_common_in_environment_bundles: true,
           create_common_bundle: true,
-          compression: 'none' as any,
+          compression: 'none',
           naming: {
             environment_bundle: bundle.id
           }

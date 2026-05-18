@@ -149,10 +149,10 @@ export const AutoUpdateTestHelpers = {
     };
 
     const service = new AutoUpdateService(
-      mockBundleOps as any,
-      mockSourceOps as any,
-      mockNotifications as any,
-      storage as any
+      mockBundleOps,
+      mockSourceOps,
+      mockNotifications,
+      storage
     );
 
     return {

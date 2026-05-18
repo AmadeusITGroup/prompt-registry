@@ -29,7 +29,7 @@ export class Logger {
     // Check for LOG_LEVEL environment variable
     const envLogLevel = process.env.LOG_LEVEL?.toUpperCase();
     if (envLogLevel && envLogLevel in LogLevel) {
-      this.logLevel = LogLevel[envLogLevel as keyof typeof LogLevel] as LogLevel;
+      this.logLevel = LogLevel[envLogLevel as keyof typeof LogLevel];
     } else {
       // Default to DEBUG for normal operation, ERROR for tests if LOG_LEVEL not set
       this.logLevel = this.isTestEnvironment ? LogLevel.ERROR : LogLevel.DEBUG;

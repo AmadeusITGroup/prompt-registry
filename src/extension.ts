@@ -209,7 +209,7 @@ export class PromptRegistryExtension {
       this.telemetryService = TelemetryService.getInstance();
       this.telemetryService.subscribeToRegistryEvents(this.registryManager);
     } catch (error) {
-      this.logger.warn('Failed to initialize telemetry service (non-fatal)', error as Error);
+      this.logger.warn('Failed to initialize telemetry service (non-fatal)', error);
     }
   }
 
@@ -223,7 +223,7 @@ export class PromptRegistryExtension {
       const registryStorage = this.registryManager.getStorage();
       await runSourceIdNormalizationMigration(registryStorage, migrationRegistry);
     } catch (error) {
-      this.logger.warn('Migration failed (non-fatal)', error as Error);
+      this.logger.warn('Migration failed (non-fatal)', error);
       // Don't fail activation if migrations fail
     }
   }
@@ -264,7 +264,7 @@ export class PromptRegistryExtension {
         await this.sourceCommands!.syncAllSources({ silent: true });
         vscode.commands.executeCommand('promptRegistry.refresh');
       } catch (error) {
-        this.logger.warn('Source sync after hub sync failed', error as Error);
+        this.logger.warn('Source sync after hub sync failed', error);
       }
     });
 
@@ -527,7 +527,7 @@ export class PromptRegistryExtension {
 
       this.logger.info('Copilot integration initialized successfully');
     } catch (error) {
-      this.logger.warn('Failed to initialize Copilot integration', error as Error);
+      this.logger.warn('Failed to initialize Copilot integration', error);
       // Don't fail extension activation if Copilot integration fails
       // It's an optional feature that requires GitHub Copilot
     }
@@ -608,7 +608,7 @@ export class PromptRegistryExtension {
 
       this.logger.info('Update notification system initialized successfully');
     } catch (error) {
-      this.logger.warn('Failed to initialize update notification system', error as Error);
+      this.logger.warn('Failed to initialize update notification system', error);
       // Don't fail extension activation if update system fails
     }
   }
@@ -799,7 +799,7 @@ export class PromptRegistryExtension {
 
       this.logger.info('Repository-level installation services initialized successfully');
     } catch (error) {
-      this.logger.warn('Failed to initialize repository-level installation services', error as Error);
+      this.logger.warn('Failed to initialize repository-level installation services', error);
       // Don't fail extension activation if repository services fail
     }
   }
@@ -836,7 +836,7 @@ export class PromptRegistryExtension {
 
       this.logger.info(`Repository services initialized for workspace: ${repositoryPath}`);
     } catch (error) {
-      this.logger.warn(`Failed to initialize repository services for workspace: ${workspaceFolder.uri.fsPath}`, error as Error);
+      this.logger.warn(`Failed to initialize repository services for workspace: ${workspaceFolder.uri.fsPath}`, error);
     }
   }
 
@@ -1150,7 +1150,7 @@ export class PromptRegistryExtension {
       // Automatic update checking removed - users can access all commands via status bar menu
       this.logger.debug('Automatic update checking disabled - use command menu instead');
     } catch (error) {
-      this.logger.warn('Failed to perform automatic update check', error as Error);
+      this.logger.warn('Failed to perform automatic update check', error);
     }
   }
 
@@ -1311,7 +1311,7 @@ export class PromptRegistryExtension {
       }
       await this.hubManager.syncActiveHub();
     } catch (error) {
-      this.logger.warn('Failed to auto-sync active hub on activation', error as Error);
+      this.logger.warn('Failed to auto-sync active hub on activation', error);
       // Don't fail extension activation if sync fails
     }
   }

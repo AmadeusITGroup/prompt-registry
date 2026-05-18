@@ -106,7 +106,7 @@ function createMockSource(overrides?: Partial<RegistrySource>): RegistrySource {
     enabled: true,
     priority: 0,
     ...overrides
-  } as RegistrySource;
+  };
 }
 
 suite('TelemetryService', () => {
@@ -303,7 +303,7 @@ suite('TelemetryService', () => {
 
     suite('source events', () => {
       test('should track source.added with source details', () => {
-        emitters.sourceAdded.fire(createMockSource({ id: 's1', type: 'github' as any }));
+        emitters.sourceAdded.fire(createMockSource({ id: 's1', type: 'github' }));
 
         assert.strictEqual(loggerStub.info.callCount, 1);
         const { eventName, data } = parseTelemetryLog(loggerStub.info.firstCall);

@@ -153,7 +153,7 @@ async function migrateSourceCacheFiles(
         logger.debug(`Renamed cache file: ${sanitize(oldId)}.json -> ${sanitize(newId)}.json`);
       }
     } catch (error) {
-      logger.warn(`Failed to rename cache file for ${oldId}`, error as Error);
+      logger.warn(`Failed to rename cache file for ${oldId}`, error);
     }
   }
 }
@@ -192,7 +192,7 @@ async function migrateInstallationRecords(
         logger.debug(`Updated sourceId in installation record: ${file}`);
       }
     } catch (error) {
-      logger.warn(`Failed to migrate installation record ${file}`, error as Error);
+      logger.warn(`Failed to migrate installation record ${file}`, error);
     }
   }
 }

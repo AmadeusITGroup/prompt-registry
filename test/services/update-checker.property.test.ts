@@ -70,8 +70,8 @@ suite('UpdateChecker Property Tests', () => {
 
     // Create UpdateChecker with mocked dependencies
     updateChecker = new UpdateChecker(
-      registryManager as any,
-      registryStorage as any,
+      registryManager,
+      registryStorage,
       mockMemento
     );
   });
@@ -266,8 +266,8 @@ suite('UpdateChecker Property Tests', () => {
           const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
           const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
           const testUpdateChecker = new UpdateChecker(
-            testRegistryManager as any,
-            testRegistryStorage as any,
+            testRegistryManager,
+            testRegistryStorage,
             testMemento
           );
 
@@ -404,8 +404,8 @@ suite('UpdateChecker Property Tests', () => {
           const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
           const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
           const testUpdateChecker = new UpdateChecker(
-            testRegistryManager as any,
-            testRegistryStorage as any,
+            testRegistryManager,
+            testRegistryStorage,
             testMemento
           );
 
@@ -583,8 +583,8 @@ suite('UpdateChecker Property Tests', () => {
           const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
           const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
           const testUpdateChecker = new UpdateChecker(
-            testRegistryManager as any,
-            testRegistryStorage as any,
+            testRegistryManager,
+            testRegistryStorage,
             testMemento
           );
 

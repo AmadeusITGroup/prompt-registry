@@ -80,7 +80,7 @@ suite('SetupStateManager - Property Tests', () => {
           // Reset state for each test
           globalStateData.clear();
           SetupStateManager.resetInstance();
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           const validTransitions: Record<SetupState, SetupState[]> = {
             [SetupState.NOT_STARTED]: [SetupState.IN_PROGRESS, SetupState.COMPLETE, SetupState.INCOMPLETE],
@@ -156,7 +156,7 @@ suite('SetupStateManager - Property Tests', () => {
         async (repeatCount) => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           // Mark as complete once
           await manager.markComplete();
@@ -197,7 +197,7 @@ suite('SetupStateManager - Property Tests', () => {
         async (targetState) => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
-          const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager1 = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           // Transition to target state
           switch (targetState) {
@@ -223,7 +223,7 @@ suite('SetupStateManager - Property Tests', () => {
 
           // Create new manager instance (simulates extension reload)
           SetupStateManager.resetInstance();
-          const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager2 = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           const stateAfterReload = await manager2.getState();
 
@@ -266,7 +266,7 @@ suite('SetupStateManager - Property Tests', () => {
           mockHubManager.listHubs.resolves(mockHubs);
           mockHubManager.getActiveHub.resolves(mockActiveHub);
 
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
           const isIncomplete = await manager.detectIncompleteSetup();
 
           const hasAnyHub = hasHubs || hasActiveHub;
@@ -341,7 +341,7 @@ suite('SetupStateManager - Property Tests', () => {
         async (operations) => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           for (const op of operations) {
             switch (op) {
@@ -387,7 +387,7 @@ suite('SetupStateManager - Property Tests', () => {
         async (checkCount) => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
           // Set up incomplete state
           await manager.markIncomplete();
@@ -423,7 +423,7 @@ suite('SetupStateManager - Property Tests', () => {
 
           // Verify that a new instance (simulating new session) allows prompt again
           SetupStateManager.resetInstance();
-          const newSessionManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const newSessionManager = SetupStateManager.getInstance(mockContext, mockHubManager);
           await newSessionManager.markIncomplete();
           const shouldShowInNewSession = await newSessionManager.shouldShowResumePrompt();
           assert.strictEqual(
@@ -472,7 +472,7 @@ suite('SetupStateManager - Property Tests', () => {
           } as any;
 
           try {
-            const manager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+            const manager = SetupStateManager.getInstance(testContext, mockHubManager);
 
             const isTestEnv = hasVscodeTest || extensionMode === 3;
             const testParams = formatTestParams({
@@ -537,7 +537,7 @@ suite('SetupStateManager - Property Tests', () => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
 
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
           const testParams = formatTestParams({ callCount });
 
           // Simulate the cancellation flow
@@ -598,7 +598,7 @@ suite('SetupStateManager - Property Tests', () => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
 
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
           const testParams = formatTestParams({ transition, repeatCount });
 
           // Apply the transition once
@@ -681,7 +681,7 @@ suite('SetupStateManager - Property Tests', () => {
           globalStateData.clear();
           SetupStateManager.resetInstance();
 
-          const manager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+          const manager = SetupStateManager.getInstance(mockContext, mockHubManager);
           const testParams = formatTestParams({ initialState, resetCount });
 
           // Set initial state

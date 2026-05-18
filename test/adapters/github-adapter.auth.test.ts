@@ -53,7 +53,7 @@ suite('GitHubAdapter Authentication Tests', () => {
     };
 
     const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
-      .resolves(mockSession as any);
+      .resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 
@@ -79,7 +79,7 @@ suite('GitHubAdapter Authentication Tests', () => {
       scopes: ['repo']
     };
 
-    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
+    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 
@@ -196,7 +196,7 @@ suite('GitHubAdapter Authentication Tests', () => {
     };
 
     const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
-      .resolves(mockSession as any);
+      .resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 
@@ -220,7 +220,7 @@ suite('GitHubAdapter Authentication Tests', () => {
       scopes: ['repo']
     };
 
-    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
+    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 
@@ -305,7 +305,7 @@ suite('GitHubAdapter Authentication Tests', () => {
       scopes: ['repo']
     };
 
-    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
+    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 
@@ -346,7 +346,7 @@ suite('GitHubAdapter Authentication Tests', () => {
       scopes: []
     };
 
-    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
+    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession);
 
     const adapter = new GitHubAdapter(source);
 

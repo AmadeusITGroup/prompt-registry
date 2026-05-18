@@ -134,7 +134,7 @@ suite('BundleInstallationCommands - Property Tests', () => {
     mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
     mockRegistryManager.installBundle.resolves();
     mockStorage.setUpdatePreference.resolves();
-    mockRegistryManager.getStorage.returns(mockStorage as any);
+    mockRegistryManager.getStorage.returns(mockStorage);
 
     // Mock createQuickPick for scope selection dialog
     mockCreateQuickPick.returns(createMockQuickPick('accept', scope, commitMode));
@@ -209,7 +209,7 @@ suite('BundleInstallationCommands - Property Tests', () => {
     hideHandler = null;
 
     // Create commands instance
-    commands = new BundleInstallationCommands(mockRegistryManager as any);
+    commands = new BundleInstallationCommands(mockRegistryManager);
   });
 
   teardown(() => {
@@ -371,7 +371,7 @@ suite('BundleInstallationCommands - Property Tests', () => {
               .withVersion(version)
               .build();
             mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
-            mockRegistryManager.getStorage.returns(mockStorage as any);
+            mockRegistryManager.getStorage.returns(mockStorage);
 
             // Setup installation failure
             mockRegistryManager.installBundle.rejects(new Error(errorMessage));

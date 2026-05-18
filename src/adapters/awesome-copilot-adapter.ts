@@ -696,7 +696,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
           try {
             return await this.parseCollection(file);
           } catch (error) {
-            this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+            this.logger.warn(`Failed to parse collection ${file}:`, error);
             return null;
           }
         }));

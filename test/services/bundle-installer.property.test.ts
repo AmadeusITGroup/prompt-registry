@@ -142,7 +142,7 @@ suite('BundleInstaller Property Tests', () => {
     });
 
     // Stub LockfileManager.getInstance
-    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager as unknown as LockfileManager);
+    sandbox.stub(LockfileManager, 'getInstance').returns(mockLockfileManager);
 
     // Stub vscode.workspace.workspaceFolders
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([
