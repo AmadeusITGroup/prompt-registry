@@ -123,7 +123,7 @@ suite('UpdateScheduler Property Tests', () => {
               testUpdateChecker.checkForUpdates.resolves(mockUpdates);
 
               // Create scheduler
-              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker as any);
+              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker);
 
               // Initialize scheduler
               await scheduler.initialize();
@@ -220,7 +220,7 @@ suite('UpdateScheduler Property Tests', () => {
               testUpdateChecker.checkForUpdates.resolves([]);
 
               // Create scheduler
-              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker as any);
+              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker);
 
               // Initialize scheduler
               await scheduler.initialize();
@@ -322,7 +322,7 @@ suite('UpdateScheduler Property Tests', () => {
               testUpdateChecker.checkForUpdates.resolves([]);
 
               // Create scheduler
-              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker as any);
+              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker);
               await scheduler.initialize();
 
               // Skip startup check
@@ -400,7 +400,7 @@ suite('UpdateScheduler Property Tests', () => {
               testUpdateChecker.checkForUpdates.resolves([]);
 
               // Create scheduler
-              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker as any);
+              const scheduler = new UpdateScheduler(mockContext, testUpdateChecker);
               await scheduler.initialize();
 
               // Skip startup check

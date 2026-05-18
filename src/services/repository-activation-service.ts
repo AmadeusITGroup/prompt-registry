@@ -169,7 +169,7 @@ export class RepositoryActivationService {
     try {
       return await this.setupStateManager.isComplete();
     } catch (error) {
-      this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
+      this.logger.warn('Failed to check setup completion, proceeding with detection', error);
       return true;
     }
   }

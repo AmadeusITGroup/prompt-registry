@@ -159,11 +159,11 @@ suite('McpConfigService - Duplicate Detection', () => {
           'prompt-registry:bundle-a:server1': {
             command: 'node',
             args: ['mcp-server.js']
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:server1': {
             command: 'node',
             args: ['mcp-server.js']
-          } as McpStdioServerConfig
+          }
         }
       };
 
@@ -216,11 +216,11 @@ suite('McpConfigService - Duplicate Detection', () => {
           'prompt-registry:bundle-a:api-server': {
             type: 'http',
             url: 'https://api.example.com/mcp'
-          } as McpRemoteServerConfig,
+          },
           'prompt-registry:bundle-b:api-server': {
             type: 'http',
             url: 'https://api.example.com/mcp'
-          } as McpRemoteServerConfig
+          }
         }
       };
 
@@ -263,13 +263,13 @@ suite('McpConfigService - Duplicate Detection', () => {
         servers: {
           'prompt-registry:bundle-a:server': {
             command: 'shared-server'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:server': {
             command: 'shared-server'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-c:server': {
             command: 'shared-server'
-          } as McpStdioServerConfig
+          }
         }
       };
 
@@ -315,14 +315,14 @@ suite('McpConfigService - Duplicate Detection', () => {
         servers: {
           'prompt-registry:bundle-a:server1': {
             command: 'server-a'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:server2': {
             command: 'server-b'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-c:api': {
             type: 'http',
             url: 'https://api.example.com/mcp'
-          } as McpRemoteServerConfig
+          }
         }
       };
 
@@ -362,10 +362,10 @@ suite('McpConfigService - Duplicate Detection', () => {
           'prompt-registry:bundle-a:server': {
             command: 'shared-server',
             disabled: true // Already disabled
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:server': {
             command: 'shared-server'
-          } as McpStdioServerConfig
+          }
         }
       };
 
@@ -418,10 +418,10 @@ suite('McpConfigService - Duplicate Detection', () => {
         servers: {
           'untracked-server': {
             command: 'some-server'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-a:server': {
             command: 'some-server'
-          } as McpStdioServerConfig
+          }
         }
       };
 
@@ -454,11 +454,11 @@ suite('McpConfigService - Duplicate Detection', () => {
         servers: {
           'prompt-registry:bundle-a:stdio': {
             command: 'https://api.example.com/mcp'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:remote': {
             type: 'http',
             url: 'https://api.example.com/mcp'
-          } as McpRemoteServerConfig
+          }
         }
       };
 
@@ -495,10 +495,10 @@ suite('McpConfigService - Duplicate Detection', () => {
         servers: {
           'prompt-registry:bundle-a:my-server': {
             command: 'shared'
-          } as McpStdioServerConfig,
+          },
           'prompt-registry:bundle-b:my-server': {
             command: 'shared'
-          } as McpStdioServerConfig
+          }
         }
       };
 

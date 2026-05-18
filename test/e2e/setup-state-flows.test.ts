@@ -76,8 +76,8 @@ suite('E2E: Setup State Flows', () => {
    */
   const simulateHubConfigured = () => {
     const { mockHubs, mockActiveHub } = createMockHubData(true, true);
-    mockHubManager.listHubs.resolves(mockHubs as any);
-    mockHubManager.getActiveHub.resolves(mockActiveHub as any);
+    mockHubManager.listHubs.resolves(mockHubs);
+    mockHubManager.getActiveHub.resolves(mockActiveHub);
   };
 
   /**
@@ -96,7 +96,7 @@ suite('E2E: Setup State Flows', () => {
 
     // Reset singleton
     SetupStateManager.resetInstance();
-    setupStateManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+    setupStateManager = SetupStateManager.getInstance(mockContext, mockHubManager);
   });
 
   teardown(() => {
@@ -158,7 +158,7 @@ suite('E2E: Setup State Flows', () => {
 
       // Simulate extension reload by resetting singleton
       SetupStateManager.resetInstance();
-      const newManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const newManager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Verify state persisted
       const state = await newManager.getState();
@@ -230,7 +230,7 @@ suite('E2E: Setup State Flows', () => {
 
       // Simulate extension reload
       SetupStateManager.resetInstance();
-      const newManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+      const newManager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
       // Verify resume prompt should be shown
       const shouldShow = await newManager.shouldShowResumePrompt();
@@ -395,7 +395,7 @@ suite('E2E: Setup State Flows', () => {
 
         // Create fresh manager
         SetupStateManager.resetInstance();
-        const testManager = SetupStateManager.getInstance(mockContext, mockHubManager as any);
+        const testManager = SetupStateManager.getInstance(mockContext, mockHubManager);
 
         // In test environment, setup should be marked complete immediately
         // (This simulates what checkFirstRun does in test environment)
@@ -425,7 +425,7 @@ suite('E2E: Setup State Flows', () => {
       const testContext = createMockContext(3);
 
       SetupStateManager.resetInstance();
-      const testManager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+      const testManager = SetupStateManager.getInstance(testContext, mockHubManager);
 
       // Mark complete (simulating test environment behavior)
       await testManager.markComplete();
@@ -444,7 +444,7 @@ suite('E2E: Setup State Flows', () => {
       const testContext = createMockContext(3);
 
       SetupStateManager.resetInstance();
-      const testManager = SetupStateManager.getInstance(testContext, mockHubManager as any);
+      const testManager = SetupStateManager.getInstance(testContext, mockHubManager);
 
       // Even if we try to mark incomplete, test environment should allow marking complete
       await testManager.markIncomplete();
@@ -557,9 +557,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService with SetupStateManager
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -589,9 +589,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService with SetupStateManager
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -620,9 +620,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService with SetupStateManager
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -662,9 +662,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService with SetupStateManager
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -688,9 +688,9 @@ suite('E2E: Setup State Flows', () => {
       RepositoryActivationService.resetInstance(testWorkspaceRoot);
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         undefined // No SetupStateManager
       );
@@ -717,9 +717,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -762,9 +762,9 @@ suite('E2E: Setup State Flows', () => {
       // Create RepositoryActivationService with SetupStateManager
       repositoryActivationService = RepositoryActivationService.getInstance(
         testWorkspaceRoot,
-        mockLockfileManager as any,
-        mockHubManager as any,
-        mockStorage as any,
+        mockLockfileManager,
+        mockHubManager,
+        mockStorage,
         undefined,
         setupStateManager
       );
@@ -823,7 +823,7 @@ suite('E2E: Setup State Flows', () => {
         account: { id: 'id-1', label: 'alice' },
         id: 'session-1',
         scopes: ['repo']
-      } as any);
+      });
 
       await setupStateManager.markStarted();
 

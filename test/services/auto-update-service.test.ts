@@ -49,10 +49,10 @@ suite('AutoUpdateService', () => {
 
     // Create service with mocked dependencies
     service = new AutoUpdateService(
-      mockRegistryManager as any, // BundleOperations
-      mockRegistryManager as any, // SourceOperations
-      mockBundleNotifications as any,
-      mockStorage as any
+      mockRegistryManager, // BundleOperations
+      mockRegistryManager, // SourceOperations
+      mockBundleNotifications,
+      mockStorage
     );
   });
 
@@ -420,7 +420,7 @@ suite('AutoUpdateService', () => {
         version: targetVersion
       };
 
-      mockRegistryManager.getBundleDetails.resolves(bundle as any);
+      mockRegistryManager.getBundleDetails.resolves(bundle);
       mockRegistryManager.listSources.resolves([source]);
       mockRegistryManager.syncSource.resolves();
       mockRegistryManager.listInstalledBundles
@@ -485,7 +485,7 @@ suite('AutoUpdateService', () => {
         version: targetVersion
       };
 
-      mockRegistryManager.getBundleDetails.resolves(bundle as any);
+      mockRegistryManager.getBundleDetails.resolves(bundle);
       mockRegistryManager.listSources.resolves([source]);
       mockRegistryManager.listInstalledBundles
         .onFirstCall().resolves([installedBundle])
@@ -548,7 +548,7 @@ suite('AutoUpdateService', () => {
         version: targetVersion
       };
 
-      mockRegistryManager.getBundleDetails.resolves(bundle as any);
+      mockRegistryManager.getBundleDetails.resolves(bundle);
       mockRegistryManager.listSources.resolves([source]);
       mockRegistryManager.listInstalledBundles
         .onFirstCall().resolves([installedBundle])
@@ -611,7 +611,7 @@ suite('AutoUpdateService', () => {
         version: targetVersion
       };
 
-      mockRegistryManager.getBundleDetails.resolves(bundle as any);
+      mockRegistryManager.getBundleDetails.resolves(bundle);
       mockRegistryManager.listSources.resolves([source]);
       mockRegistryManager.syncSource.rejects(new Error('Sync failed'));
       mockRegistryManager.listInstalledBundles
@@ -668,7 +668,7 @@ suite('AutoUpdateService', () => {
         version: targetVersion
       };
 
-      mockRegistryManager.getBundleDetails.resolves(bundle as any);
+      mockRegistryManager.getBundleDetails.resolves(bundle);
       mockRegistryManager.listSources.resolves([]); // No sources found
       mockRegistryManager.listInstalledBundles
         .onFirstCall().resolves([installedBundle])

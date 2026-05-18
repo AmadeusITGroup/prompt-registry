@@ -57,7 +57,7 @@ suite('HubSyncScheduler', () => {
 
   suite('initialize()', () => {
     test('should schedule periodic sync', async () => {
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       // Advance 24h — should trigger sync
@@ -66,7 +66,7 @@ suite('HubSyncScheduler', () => {
     });
 
     test('should not schedule if already initialized', async () => {
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
       scheduler.initialize(); // second call is a no-op
 
@@ -77,7 +77,7 @@ suite('HubSyncScheduler', () => {
 
   suite('periodic sync', () => {
     test('should call hubManager.syncActiveHub() on each tick', async () => {
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       await clock.tickAsync(TWENTY_FOUR_HOURS_MS);
@@ -94,7 +94,7 @@ suite('HubSyncScheduler', () => {
         resolveSync = resolve;
       }));
 
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       // Trigger first sync (will hang)
@@ -119,7 +119,7 @@ suite('HubSyncScheduler', () => {
         .onFirstCall().rejects(new Error('Network error'))
         .onSecondCall().resolves();
 
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       // First tick — fails
@@ -134,7 +134,7 @@ suite('HubSyncScheduler', () => {
 
   suite('dispose()', () => {
     test('should clear scheduled timer', async () => {
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       scheduler.dispose();
@@ -145,7 +145,7 @@ suite('HubSyncScheduler', () => {
     });
 
     test('should register on context.subscriptions for auto-disposal', () => {
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       assert.strictEqual(disposables.length, 1);
     });
   });
@@ -154,7 +154,7 @@ suite('HubSyncScheduler', () => {
     test('should skip timers in test environment', async () => {
       delete process.env.HUB_SYNC_SCHEDULER_ALLOW_TIMERS_IN_TESTS;
 
-      scheduler = new HubSyncScheduler(mockContext, mockHubManager as any);
+      scheduler = new HubSyncScheduler(mockContext, mockHubManager);
       scheduler.initialize();
 
       await clock.tickAsync(TWENTY_FOUR_HOURS_MS);

@@ -170,10 +170,10 @@ suite('AutoUpdateService - Property Tests', () => {
 
     // Create service with mocked dependencies
     service = new AutoUpdateService(
-      mockRegistryManager as any, // BundleOperations
-      mockRegistryManager as any, // SourceOperations
-      mockBundleNotifications as any,
-      mockStorage as any
+      mockRegistryManager, // BundleOperations
+      mockRegistryManager, // SourceOperations
+      mockBundleNotifications,
+      mockStorage
     );
   });
 
@@ -953,7 +953,7 @@ suite('AutoUpdateService - Property Tests', () => {
             const mockSource: RegistrySource = {
               id: 'github-source',
               name: 'GitHub Source',
-              type: 'github' as SourceType,
+              type: 'github',
               url: 'https://github.com/owner/repo',
               enabled: true,
               priority: 1

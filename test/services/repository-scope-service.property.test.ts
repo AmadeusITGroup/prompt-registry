@@ -88,7 +88,7 @@ suite('RepositoryScopeService Property Tests', () => {
     mockStorage = sandbox.createStubInstance(RegistryStorage);
 
     // Create service
-    service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+    service = new RepositoryScopeService(workspaceRoot, mockStorage);
   });
 
   teardown(() => {
@@ -273,7 +273,7 @@ suite('RepositoryScopeService Property Tests', () => {
           createGitDirectory();
 
           // Recreate service with fresh workspace
-          service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+          service = new RepositoryScopeService(workspaceRoot, mockStorage);
 
           // Add paths to git exclude (using internal method if exposed, or via syncBundle)
           // For this test, we'll directly test the git exclude file manipulation
@@ -594,7 +594,7 @@ prompts:
           fs.mkdirSync(path.join(tempDir, 'bundles'), { recursive: true });
 
           // Create service with fresh workspace
-          service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+          service = new RepositoryScopeService(workspaceRoot, mockStorage);
 
           // Create skill bundle
           const bundleId = `skill-bundle-${skillName}`;
@@ -655,7 +655,7 @@ prompts:
           fs.mkdirSync(path.join(tempDir, 'bundles'), { recursive: true });
 
           // Create service with fresh workspace
-          service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+          service = new RepositoryScopeService(workspaceRoot, mockStorage);
 
           // Create skill bundle with a simple file
           const bundleId = `skill-bundle-${skillName}`;
@@ -702,7 +702,7 @@ prompts:
           fs.mkdirSync(path.join(tempDir, 'bundles'), { recursive: true });
 
           // Create service with fresh workspace
-          service = new RepositoryScopeService(workspaceRoot, mockStorage as unknown as RegistryStorage);
+          service = new RepositoryScopeService(workspaceRoot, mockStorage);
 
           // Create skill bundle
           const bundleId = `skill-bundle-${skillName}`;

@@ -129,7 +129,7 @@ suite('E2E: Context Menu Regression Prevention', () => {
     hubManagerStub = sandbox.createStubInstance(HubManager);
 
     setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
-    provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
   });
 
   teardown(() => {

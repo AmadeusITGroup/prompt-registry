@@ -526,7 +526,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             bundles.push(bundle);
           }
         } catch (error) {
-          this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+          this.logger.warn(`Failed to parse collection ${file}:`, error);
         }
       }
 

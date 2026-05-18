@@ -52,7 +52,7 @@ suite('RegistryTreeProvider - Context Menu Bug', () => {
     // Use shared helper for consistent mock setup
     setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
 
-    provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
   });
 
   teardown(() => {

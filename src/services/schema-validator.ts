@@ -82,7 +82,7 @@ export class SchemaValidator {
    */
   private formatErrors(errors: Ajv.ErrorObject[]): string[] {
     return errors.map((error) => {
-      const dataPath = error.dataPath || '';
+      const dataPath = error.instancePath || '';
       const message = error.message || 'validation failed';
       const params: any = error.params;
 

@@ -104,8 +104,8 @@ suite('MarketplaceViewProvider Empty State - Property Tests', () => {
     // Create MarketplaceViewProvider
     marketplaceProvider = new MarketplaceViewProvider(
       mockContext,
-      mockRegistryManager as any,
-      mockSetupStateManager as any
+      mockRegistryManager,
+      mockSetupStateManager
     );
 
     // Set up the view with mock webview

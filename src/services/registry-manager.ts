@@ -1972,7 +1972,7 @@ export class RegistryManager {
         }));
         allProfiles.push(...convertedHubProfiles);
       } catch (error) {
-        this.logger.warn('Failed to get hub profiles', error as Error);
+        this.logger.warn('Failed to get hub profiles', error);
       }
     }
 
@@ -2046,7 +2046,7 @@ export class RegistryManager {
           if (hubProfile && hubProfile.hubId) {
             await this.hubManager.activateProfile(hubProfile.hubId, validatedProfileId, { installBundles: true });
             // Fire event to update tree view with active status
-            this._onProfileActivated.fire({ ...hubProfile, active: true } as Profile);
+            this._onProfileActivated.fire({ ...hubProfile, active: true });
             return;
           }
         }

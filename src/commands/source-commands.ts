@@ -288,47 +288,47 @@ export class SourceCommands {
   public async addSource(): Promise<void> {
     try {
       // Step 1: Select source type
-      const sourceType = await vscode.window.showQuickPick(
+      const sourceType = await vscode.window.showQuickPick<vscode.QuickPickItem & { value: SourceType }>(
         [
           {
             label: '$(github) GitHub Releases',
             description: 'Versioned releases with zip file in the assets for both public or private GitHub repository',
-            value: 'github' as SourceType
+            value: 'github'
           },
           {
             label: '$(folder) Local Directory',
             description: 'Local filesystem directory',
-            value: 'local' as SourceType
+            value: 'local'
           },
           {
             label: '$(package) Collection from GitHub repository',
             description: 'GitHub repository with .collection.yml files based on Awesome Copilot specification',
-            value: 'awesome-copilot' as SourceType
+            value: 'awesome-copilot'
           },
           {
             label: '$(folder-library) Local Collection',
             description: 'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
-            value: 'local-awesome-copilot' as SourceType
+            value: 'local-awesome-copilot'
           },
           {
             label: '$(package) APM Repository',
             description: 'Remote APM repository (GitHub) containing apm.yml',
-            value: 'apm' as SourceType
+            value: 'apm'
           },
           {
             label: '$(folder-library) Local APM Package',
             description: 'Local filesystem directory containing apm.yml',
-            value: 'local-apm' as SourceType
+            value: 'local-apm'
           },
           {
             label: '$(sparkle) Skills Repository',
             description: 'GitHub repository with skills in skills/ folder (Anthropic-style SKILL.md files)',
-            value: 'skills' as SourceType
+            value: 'skills'
           },
           {
             label: '$(folder-library) Local Skills',
             description: 'Local filesystem directory with skills in skills/ folder (SKILL.md files)',
-            value: 'local-skills' as SourceType
+            value: 'local-skills'
           }
         ],
         {

@@ -51,7 +51,7 @@ function createMockManifest(): DeploymentManifest {
     bundle_settings: {
       include_common_in_environment_bundles: true,
       create_common_bundle: true,
-      compression: 'zip' as any,
+      compression: 'zip',
       naming: {
         environment_bundle: 'bundle'
       }
@@ -76,13 +76,13 @@ suite('Bundle State Management - Integration Tests', () => {
     // Create mock context
     mockContext = {
       globalState: {
-        get: sandbox.stub(),
+        get: sandbox.stub() as any,
         update: sandbox.stub(),
         keys: sandbox.stub().returns([]),
         setKeysForSync: sandbox.stub()
-      } as any,
+      },
       workspaceState: {
-        get: sandbox.stub(),
+        get: sandbox.stub() as any,
         update: sandbox.stub(),
         keys: sandbox.stub().returns([]),
         setKeysForSync: sandbox.stub()
@@ -91,7 +91,7 @@ suite('Bundle State Management - Integration Tests', () => {
       extensionPath: '/mock/extension/path',
       extensionUri: vscode.Uri.file('/mock/extension/path'),
       environmentVariableCollection: {} as any,
-      extensionMode: 3 as any, // ExtensionMode.Test
+      extensionMode: 3, // ExtensionMode.Test
       storageUri: vscode.Uri.file('/mock/storage'),
       globalStorageUri: vscode.Uri.file('/mock/global/storage'),
       logUri: vscode.Uri.file('/mock/log'),
@@ -102,7 +102,7 @@ suite('Bundle State Management - Integration Tests', () => {
       globalStoragePath: '/mock/global/storage',
       logPath: '/mock/log',
       extension: {} as any
-    } as vscode.ExtensionContext;
+    };
 
     // Create mock storage
     mockStorage = sandbox.createStubInstance(RegistryStorage);

@@ -279,7 +279,7 @@ export class ApmAdapter extends RepositoryAdapter {
           owner,
           repo,
           path: subpath
-        }) as ApmBundle);
+        }));
       }
     }
 

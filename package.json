@@ -777,7 +777,7 @@
     "fast-check": "^3.23.2",
     "globals": "^16.5.0",
     "jsonc-eslint-parser": "^2.4.2",
-    "mocha": "^10.1.0",
+    "mocha": "^11.7.5",
     "nock": "^14.0.10",
     "nyc": "^17.1.0",
     "playwright": "^1.56.1",
@@ -794,7 +794,7 @@
     "@prompt-registry/collection-scripts": "workspace:^",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
-    "axios": "^1.15.2",
+    "axios": "^1.16.1",
     "fs-extra": "^11.3.2",
     "glob": "^11.1.0",
     "js-yaml": "^4.1.1",
@@ -804,19 +804,10 @@
   },
   "extensionDependencies": [],
   "overrides": {
-    "archiver-utils": {
-      "glob": "^11.1.0"
-    },
-    "archiver": {
-      "readdir-glob": "^3.0.0"
-    },
-    "glob": {
-      "minimatch": {
-        "brace-expansion": "^5.0.5"
-      }
-    },
     "mocha": {
-      "chokidar": "^5.0.0"
+      "chokidar": "^5.0.0",
+      "diff": "^8.0.3",
+      "serialize-javascript": "^7.0.5"
     }
   },
   "nyc": {

@@ -26,17 +26,17 @@ export class SettingsCommands {
   public async exportSettings(): Promise<void> {
     try {
       // Step 1: Choose format
-      const formatChoice = await vscode.window.showQuickPick(
+      const formatChoice = await vscode.window.showQuickPick<vscode.QuickPickItem & { value: ExportFormat }>(
         [
           {
             label: 'JSON',
             description: 'JavaScript Object Notation (widely supported)',
-            value: 'json' as ExportFormat
+            value: 'json'
           },
           {
             label: 'YAML',
             description: 'YAML Ain\'t Markup Language (human-readable)',
-            value: 'yaml' as ExportFormat
+            value: 'yaml'
           }
         ],
         {
@@ -115,19 +115,19 @@ export class SettingsCommands {
       this.logger.info(`Importing settings from ${format.toUpperCase()} file: ${fileUri.fsPath}`);
 
       // Step 4: Choose strategy
-      const strategyChoice = await vscode.window.showQuickPick(
+      const strategyChoice = await vscode.window.showQuickPick<vscode.QuickPickItem & { value: ImportStrategy }>(
         [
           {
             label: 'Merge',
             description: 'Add imported items to existing settings (recommended)',
             detail: 'Existing sources and profiles will be preserved',
-            value: 'merge' as ImportStrategy
+            value: 'merge'
           },
           {
             label: 'Replace',
             description: 'Delete all current settings and import new ones',
             detail: '⚠️  Warning: All current sources, profiles, and settings will be lost',
-            value: 'replace' as ImportStrategy
+            value: 'replace'
           }
         ],
         {

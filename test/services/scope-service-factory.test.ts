@@ -54,12 +54,12 @@ suite('ScopeServiceFactory', () => {
       storagePath: '/mock/storage',
       globalStoragePath: path.join(os.tmpdir(), 'test-storage'),
       logPath: '/mock/log',
-      extensionMode: 3 as any, // ExtensionMode.Test
+      extensionMode: 3, // ExtensionMode.Test
       workspaceState: {
-        get: sandbox.stub(),
+        get: sandbox.stub() as any,
         update: sandbox.stub(),
         keys: sandbox.stub().returns([])
-      } as any,
+      },
       secrets: {
         get: sandbox.stub(),
         store: sandbox.stub(),
@@ -72,7 +72,7 @@ suite('ScopeServiceFactory', () => {
       storageUri: vscode.Uri.file('/mock/storage'),
       logUri: vscode.Uri.file('/mock/log'),
       languageModelAccessInformation: {} as any
-    } as vscode.ExtensionContext;
+    };
 
     // Create mock storage
     mockStorage = sandbox.createStubInstance(RegistryStorage);
@@ -190,7 +190,7 @@ suite('ScopeServiceFactory', () => {
 
       // Act & Assert
       assert.throws(
-        () => ScopeServiceFactory.create(scope, mockContext, undefined as any, mockStorage),
+        () => ScopeServiceFactory.create(scope, mockContext, undefined, mockStorage),
         /workspaceRoot is required for repository scope/,
         'Should throw error when workspaceRoot is missing for repository scope'
       );
@@ -202,7 +202,7 @@ suite('ScopeServiceFactory', () => {
 
       // Act & Assert
       assert.throws(
-        () => ScopeServiceFactory.create(scope, mockContext, workspaceRoot, undefined as any),
+        () => ScopeServiceFactory.create(scope, mockContext, workspaceRoot, undefined),
         /storage is required for repository scope/,
         'Should throw error when storage is missing for repository scope'
       );

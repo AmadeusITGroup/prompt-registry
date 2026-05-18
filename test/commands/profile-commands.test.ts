@@ -57,7 +57,7 @@ suite('Profile Management Commands', () => {
       registryManagerStub.listProfiles.resolves([]);
       registryManagerStub.createProfile.resolves({} as any);
 
-      const profileCommands = new ProfileCommands(registryManagerStub as any);
+      const profileCommands = new ProfileCommands(registryManagerStub);
 
       const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
       showInputBoxStub.onFirstCall().resolves('Test Profile'); // Name
@@ -216,7 +216,7 @@ suite('Profile Management Commands', () => {
 
     test('should prompt for cleanup options', async () => {
       const showQuickPickStub = sandbox.stub(vscode.window, 'showQuickPick');
-      showQuickPickStub.resolves({ label: 'Keep bundles installed' } as any);
+      showQuickPickStub.resolves({ label: 'Keep bundles installed' });
 
       const result = await showQuickPickStub([
         { label: 'Keep bundles installed' },

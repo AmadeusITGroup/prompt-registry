@@ -37,9 +37,11 @@ function simulateDebouncedRefresh(
 
 suite('UI Source Sync Refresh', () => {
   let sandbox: sinon.SinonSandbox;
+  let clock: sinon.SinonFakeTimers;
 
   setup(() => {
     sandbox = sinon.createSandbox();
+    clock = sandbox.useFakeTimers();
   });
 
   teardown(() => {
@@ -47,7 +49,7 @@ suite('UI Source Sync Refresh', () => {
   });
 
   suite('Debouncing Logic', () => {
-    test('should debounce single event correctly', (done) => {
+    test('should debounce single event correctly', () => {
       // Requirement 11.2: WHEN a source synced event is emitted THEN the TreeView SHALL automatically refresh
       // Requirement 11.3: WHEN a source synced event is emitted THEN the MarketplaceView SHALL automatically refresh
 
@@ -58,14 +60,11 @@ suite('UI Source Sync Refresh', () => {
 
       simulateDebouncedRefresh(events, 500, refreshCallback);
 
-      // Wait for debounce
-      setTimeout(() => {
-        assert.strictEqual(refreshCallback.callCount, 1, 'Should call refresh once after debounce');
-        done();
-      }, 600);
+      clock.tick(500);
+      assert.strictEqual(refreshCallback.callCount, 1, 'Should call refresh once after debounce');
     });
 
-    test('should debounce multiple rapid events to single refresh', (done) => {
+    test('should debounce multiple rapid events to single refresh', () => {
       // Requirement 11.4: WHEN the update check triggers source syncs THEN the UI SHALL reflect the latest bundle metadata without user intervention
 
       const refreshCallback = sandbox.spy();
@@ -77,11 +76,8 @@ suite('UI Source Sync Refresh', () => {
 
       simulateDebouncedRefresh(events, 500, refreshCallback);
 
-      // Wait for debounce
-      setTimeout(() => {
-        assert.strictEqual(refreshCallback.callCount, 1, 'Should call refresh only once after debounce');
-        done();
-      }, 600);
+      clock.tick(500);
+      assert.strictEqual(refreshCallback.callCount, 1, 'Should call refresh only once after debounce');
     });
 
     test('should use 500ms debounce delay', () => {

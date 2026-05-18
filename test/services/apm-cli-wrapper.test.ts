@@ -26,7 +26,7 @@ suite('ApmCliWrapper', () => {
     mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
 
     // Replace getInstance to return mock
-    sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
+    sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime);
 
     wrapper = new ApmCliWrapper();
   });

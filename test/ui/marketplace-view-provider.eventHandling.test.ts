@@ -34,7 +34,7 @@ function createMockManifest(): DeploymentManifest {
     bundle_settings: {
       include_common_in_environment_bundles: true,
       create_common_bundle: true,
-      compression: 'zip' as any,
+      compression: 'zip',
       naming: {
         environment_bundle: 'bundle'
       }
@@ -101,7 +101,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
     } as any;
 
     // Create MarketplaceViewProvider
-    new MarketplaceViewProvider(mockContext, mockRegistryManager as any, mockSetupStateManager as any);
+    new MarketplaceViewProvider(mockContext, mockRegistryManager, mockSetupStateManager);
   });
 
   teardown(() => {

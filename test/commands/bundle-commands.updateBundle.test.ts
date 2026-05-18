@@ -49,7 +49,7 @@ suite('BundleCommands - updateBundle() Integration', () => {
       extensionPath: '/mock/extension/path',
       extensionUri: vscode.Uri.file('/mock/extension/path'),
       environmentVariableCollection: {} as any,
-      extensionMode: 3 as any,
+      extensionMode: 3,
       storageUri: vscode.Uri.file('/mock/storage'),
       globalStorageUri: vscode.Uri.file('/mock/global/storage'),
       logUri: vscode.Uri.file('/mock/log'),
@@ -60,7 +60,7 @@ suite('BundleCommands - updateBundle() Integration', () => {
       globalStoragePath: '/mock/global/storage',
       logPath: '/mock/log',
       extension: {} as any
-    } as vscode.ExtensionContext;
+    };
 
     // Initialize real RegistryManager
     registryManager = RegistryManager.getInstance(mockContext);

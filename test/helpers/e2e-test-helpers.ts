@@ -77,7 +77,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
       },
       keys: () => Array.from(globalStateData.keys()),
       setKeysForSync: () => {}
-    } as any,
+    },
     workspaceState: {
       get: <T>(key: string, defaultValue?: T): T | undefined => {
         return workspaceStateData.has(key) ? workspaceStateData.get(key) : defaultValue;
@@ -92,7 +92,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
     extensionPath: '/mock/extension/path',
     extensionUri: vscode.Uri.file('/mock/extension/path'),
     environmentVariableCollection: {} as any,
-    extensionMode: 3 as any, // ExtensionMode.Test
+    extensionMode: 3, // ExtensionMode.Test
     storageUri: vscode.Uri.file(tempStoragePath),
     globalStorageUri: vscode.Uri.file(tempStoragePath),
     logUri: vscode.Uri.file(path.join(tempStoragePath, 'logs')),
@@ -108,7 +108,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
     globalStoragePath: tempStoragePath,
     logPath: path.join(tempStoragePath, 'logs'),
     extension: {} as any
-  } as vscode.ExtensionContext;
+  };
 
   // Initialize storage and create directories
   const storage = new RegistryStorage(mockContext);

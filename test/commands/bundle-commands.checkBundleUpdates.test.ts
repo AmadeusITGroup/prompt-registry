@@ -51,7 +51,7 @@ suite('BundleCommands - Check Bundle Updates Fix', () => {
   setup(() => {
     sandbox = sinon.createSandbox();
     mockRegistryManager = sandbox.createStubInstance(RegistryManager);
-    bundleCommands = new BundleCommands(mockRegistryManager as any);
+    bundleCommands = new BundleCommands(mockRegistryManager);
 
     // Mock VS Code APIs
     mockShowQuickPick = sandbox.stub(vscode.window, 'showQuickPick');

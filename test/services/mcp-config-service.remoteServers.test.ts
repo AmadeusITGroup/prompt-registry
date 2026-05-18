@@ -54,7 +54,7 @@ suite('McpConfigService - Remote Server Support', () => {
         const config: McpServerConfig = {
           command: 'node',
           args: ['server.js']
-        } as McpStdioServerConfig;
+        };
         assert.strictEqual(isStdioServerConfig(config), true);
       });
 
@@ -105,7 +105,7 @@ suite('McpConfigService - Remote Server Support', () => {
         const config: McpServerConfig = {
           command: 'node',
           args: ['server.js']
-        } as McpStdioServerConfig;
+        };
         assert.strictEqual(isRemoteServerConfig(config), false);
       });
 

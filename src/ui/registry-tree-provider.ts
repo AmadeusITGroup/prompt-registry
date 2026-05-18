@@ -526,7 +526,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
         profileIds.forEach((id) => addedProfileIds.add(id));
       } catch (error) {
         // Hub might be missing or fail to load
-        this.logger.warn(`Failed to load hub ${hubId} for favorites view`, error as Error);
+        this.logger.warn(`Failed to load hub ${hubId} for favorites view`, error);
       }
     }
 
@@ -812,7 +812,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
         );
       } catch (error) {
         // Bundle not found in registry - display with warning
-        this.logger.debug(`Bundle '${profileBundle.id}' not found in registry`, error as Error);
+        this.logger.debug(`Bundle '${profileBundle.id}' not found in registry`, error);
         items.push(
           new RegistryTreeItem(
             `${profileBundle.id} (not found)`,
@@ -882,7 +882,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
           items.push(treeItem);
         } catch (error) {
           // Bundle details not available - fall back to ID display
-          this.logger.debug(`Could not get details for bundle '${bundle.bundleId}'`, error as Error);
+          this.logger.debug(`Could not get details for bundle '${bundle.bundleId}'`, error);
           const updateInfo = this.getUpdateInfo(bundle.bundleId);
           const hasUpdate = updateInfo !== undefined;
 

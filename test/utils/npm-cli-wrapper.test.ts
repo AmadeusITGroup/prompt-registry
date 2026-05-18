@@ -36,7 +36,7 @@ suite('NpmCliWrapper', () => {
   suite('isAvailable()', () => {
     test('should return true when npm is available', async () => {
       const { process, emitEvents } = createSuccessProcess();
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
+      sandbox.stub(childProcess, 'spawn').returns(process);
 
       const resultPromise = npmWrapper.isAvailable();
       emitEvents();
@@ -47,7 +47,7 @@ suite('NpmCliWrapper', () => {
 
     test('should return false when npm is not available', async () => {
       const { process, emitEvents } = createFailureProcess(1);
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
+      sandbox.stub(childProcess, 'spawn').returns(process);
 
       const resultPromise = npmWrapper.isAvailable();
       emitEvents();
@@ -58,7 +58,7 @@ suite('NpmCliWrapper', () => {
 
     test('should return false when spawn errors', async () => {
       const { process, emitEvents } = createErrorProcess(new Error('ENOENT'));
-      sandbox.stub(childProcess, 'spawn').returns(process as any);
+      sandbox.stub(childProcess, 'spawn').returns(process);
 
       const resultPromise = npmWrapper.isAvailable();
       emitEvents();
@@ -72,7 +72,7 @@ suite('NpmCliWrapper', () => {
     test('should pass shell option to spawn', async () => {
       const spawnStub = sandbox.stub(childProcess, 'spawn');
       const { process, emitEvents } = createSuccessProcess();
-      spawnStub.returns(process as any);
+      spawnStub.returns(process);
 
       const resultPromise = npmWrapper.isAvailable();
       emitEvents();

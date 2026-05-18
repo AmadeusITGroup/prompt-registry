@@ -25,7 +25,7 @@ function createMockManifest(): DeploymentManifest {
     bundle_settings: {
       include_common_in_environment_bundles: true,
       create_common_bundle: true,
-      compression: 'zip' as any,
+      compression: 'zip',
       naming: {
         environment_bundle: 'bundle'
       }

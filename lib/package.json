@@ -62,10 +62,10 @@
   "devDependencies": {
     "@types/archiver": "^7.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/mocha": "^10.0.6",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.11.0",
     "@types/yauzl": "^2.10.3",
-    "mocha": "^10.2.0",
+    "mocha": "^11.7.5",
     "typescript": "^5.3.3"
   },
   "peerDependencies": {

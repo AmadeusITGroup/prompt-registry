@@ -95,8 +95,8 @@ suite('Update System Integration', () => {
 
     // Create UpdateChecker
     const updateChecker = new UpdateChecker(
-      mockRegistryManager as any,
-      mockRegistryStorage as any,
+      mockRegistryManager,
+      mockRegistryStorage,
       mockMemento
     );
 
@@ -145,15 +145,15 @@ suite('Update System Integration', () => {
     // Create all components
     const bundleNotifications = new BundleUpdateNotifications();
     const updateChecker = new UpdateChecker(
-      mockRegistryManager as any,
-      mockRegistryStorage as any,
+      mockRegistryManager,
+      mockRegistryStorage,
       mockMemento
     );
     const autoUpdateService = new AutoUpdateService(
-      mockRegistryManager as any, // BundleOperations
-      mockRegistryManager as any, // SourceOperations
+      mockRegistryManager, // BundleOperations
+      mockRegistryManager, // SourceOperations
       bundleNotifications,
-      mockRegistryStorage as any
+      mockRegistryStorage
     );
     const updateScheduler = new UpdateScheduler(mockContext, updateChecker);
 
@@ -201,8 +201,8 @@ suite('Update System Integration', () => {
 
     // Create UpdateChecker
     const updateChecker = new UpdateChecker(
-      mockRegistryManager as any,
-      mockRegistryStorage as any,
+      mockRegistryManager,
+      mockRegistryStorage,
       mockMemento
     );
 

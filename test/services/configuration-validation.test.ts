@@ -57,7 +57,7 @@ suite('Configuration Validation', () => {
             .withArgs('frequency', 'daily').returns(frequency)
         } as any);
 
-        const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+        const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
         await scheduler.initialize();
 
         // Should not log any warnings for valid values
@@ -87,7 +87,7 @@ suite('Configuration Validation', () => {
           .withArgs('frequency', 'daily').returns(invalidFrequency)
       } as any);
 
-      const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+      const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
       await scheduler.initialize();
 
       // Should log warning for invalid value
@@ -126,7 +126,7 @@ suite('Configuration Validation', () => {
         // Mock update checker to return empty results
         mockUpdateChecker.checkForUpdates.resolves([]);
 
-        const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+        const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
         await scheduler.initialize();
 
         // Trigger a check to test notification preference validation
@@ -172,7 +172,7 @@ suite('Configuration Validation', () => {
         }
       ]);
 
-      const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+      const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
       await scheduler.initialize();
 
       // Trigger a check to test notification preference validation
@@ -209,7 +209,7 @@ suite('Configuration Validation', () => {
           .withArgs('frequency', 'daily').returns(123) // Invalid type
       } as any);
 
-      const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+      const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
       await scheduler.initialize();
 
       // Should log warning and use default
@@ -233,7 +233,7 @@ suite('Configuration Validation', () => {
           .withArgs('frequency', 'daily').returns(null)
       } as any);
 
-      const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
+      const scheduler = new UpdateScheduler(mockContext, mockUpdateChecker);
       await scheduler.initialize();
 
       // Should log warning and use default
